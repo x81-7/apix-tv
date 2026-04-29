@@ -96,6 +96,13 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
+        <!-- Internal update screen -->
+        <activity
+            android:name=".UpdateActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|layoutDirection"
+            android:theme="@style/Theme.TVPlus.NoActionBar" />
+
         <!-- Sub Menu Activity (legacy) -->
         <activity
             android:name=".SubMenuActivity"
