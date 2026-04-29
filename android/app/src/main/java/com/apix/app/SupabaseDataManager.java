@@ -638,6 +638,23 @@ public class SupabaseDataManager {
         cfg.drmClearKeyMode = as.optString("drmClearKeyMode", null);
         cfg.backupUrl = as.optString("backupUrl", null);
         cfg.subtitleUrl = as.optString("subtitleUrl", null);
+        cfg.forcedAspectRatio = as.optString("forcedAspectRatio", null);
+        if (cfg.forcedAspectRatio != null && (cfg.forcedAspectRatio.isEmpty() || "null".equals(cfg.forcedAspectRatio))) cfg.forcedAspectRatio = null;
+        cfg.lockAspectRatio = as.optBoolean("lockAspectRatio", false);
+
+        if (!as.isNull("logoOverlay")) {
+            JSONObject lo = as.optJSONObject("logoOverlay");
+            if (lo != null) {
+                cfg.logoOverlay = new RemoteModels.LogoOverlay();
+                cfg.logoOverlay.url = lo.optString("url", null);
+                cfg.logoOverlay.position = lo.optString("position", null);
+                cfg.logoOverlay.offsetX = lo.optInt("offsetX", 0);
+                cfg.logoOverlay.offsetY = lo.optInt("offsetY", 0);
+                cfg.logoOverlay.width = lo.optInt("width", 80);
+                cfg.logoOverlay.height = lo.optInt("height", 40);
+                cfg.logoOverlay.opacity = (float) lo.optDouble("opacity", 1.0);
+            }
+        }
 
         // headers
         if (!as.isNull("headers")) {
