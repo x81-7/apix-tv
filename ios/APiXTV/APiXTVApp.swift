@@ -9,6 +9,7 @@ struct APiXTVApp: App {
             RootView()
                 .environmentObject(viewModel)
                 .preferredColorScheme(.dark)
+                .protectedFromScreenCapture()
                 .onOpenURL { url in
                     handleExternal(url: url)
                 }
