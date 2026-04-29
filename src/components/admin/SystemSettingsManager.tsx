@@ -126,6 +126,30 @@ const SystemSettingsManager: React.FC = () => {
     }
   };
 
+  const handleApplyAudioSources = async () => {
+    const sources = audioSources.map((a) => ({ name: a.name.trim(), url: a.url.trim() })).filter((a) => a.name && a.url);
+    if (sources.length === 0 || selectedSubChannels.length === 0) {
+      toast.error('أضف مصدر صوت واحد على الأقل واختر القنوات الفرعية');
+      return;
+    }
+    setUploadingAudio(true);
+    try {
+      for (const id of selectedSubChannels) {
+        const target = subChannelOptions.find((s) => s.id === id);
+        const currentStream = target?.android_stream && typeof target.android_stream === 'object' ? target.android_stream : {};
+        const existing = Array.isArray(currentStream.audioSources) ? currentStream.audioSources : [];
+        const merged = [...existing.filter((a: any) => !sources.some((s) => s.url === a?.url)), ...sources];
+        await adminDb.update('sub_channels', { id }, { android_stream: { ...currentStream, audioSources: merged } }, true);
+      }
+      await adminDb.forceReencrypt().catch(() => null);
+      toast.success(`تم رفع ${sources.length} مصدر صوت إلى ${selectedSubChannels.length} قناة فرعية`);
+    } catch (e: any) {
+      toast.error(`فشل رفع الأصوات: ${e?.message ?? 'خطأ غير معروف'}`);
+    } finally {
+      setUploadingAudio(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-card rounded-2xl p-8 border border-border flex items-center justify-center">
