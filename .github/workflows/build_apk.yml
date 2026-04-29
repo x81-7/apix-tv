@@ -52,6 +52,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
+          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          CLOUD_URL: ${{ secrets.CLOUD_URL }}
+          CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         working-directory: ./android
         shell: bash
         run: |
@@ -71,6 +74,9 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
+          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          CLOUD_URL: ${{ secrets.CLOUD_URL }}
+          CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         working-directory: ./android
         shell: bash
         run: |
