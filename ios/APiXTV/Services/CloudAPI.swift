@@ -131,4 +131,20 @@ final class CloudAPI {
               let first = raw.first else { return nil }
         return first["value"]
     }
+
+    /// Fetches developer-allow-list UUIDs from `system_settings.developer_uuids`.
+    /// Used by the strict emulator gate so the team can test on iOS Simulator.
+    /// The value is expected to be a JSON array of strings.
+    func fetchDeveloperUUIDs() async -> [String] {
+        do {
+            let value = try await fetchSettingValue(key: "developer_uuids")
+            if let arr = value as? [String] { return arr }
+            if let arr = value as? [Any] { return arr.compactMap { $0 as? String } }
+        } catch {
+            #if DEBUG
+            print("fetchDeveloperUUIDs error:", error)
+            #endif
+        }
+        return []
+    }
 }
