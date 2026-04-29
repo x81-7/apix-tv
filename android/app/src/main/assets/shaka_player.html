@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.1/shaka-player.compiled.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    .stage { position: fixed; inset: 0; }
+    video {
+      width: 100%; height: 100%; object-fit: contain; background: #000;
+      pointer-events: none; outline: none;
+    }
+    /* secondary headless audio element — invisible */
+    #audio2 { display: none; }
+    /* Smart Logo Overlay — absolute positioned via JS (% units) */
+    #logo {
+      position: absolute; pointer-events: none;
+      max-width: 50%; max-height: 50%;
+      display: none;
+    }
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-start-playback-button,
+    video::-webkit-media-controls-overlay-play-button,
+    video::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none !important; opacity: 0 !important; }
+    #cover {
+      position: fixed; inset: 0; background: #000; z-index: 9999;
+      transition: opacity .25s ease;
+    }
+    #cover.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="cover"></div>
+  <div class="stage">
+    <video id="video" playsinline autoplay muted preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback noplaybackrate"></video>
+    <video id="audio2" playsinline preload="auto"></video>
+    <img id="logo" />
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const audio2 = document.getElementById('audio2');
+    const logo = document.getElementById('logo');
+    let player = null;
+    let audioPlayer = null;
+    let lockAspect = false;
+
+    function sendState() {
+        if(window.AndroidHybrid) {
+            let buffering = video.readyState < 3;
+            window.AndroidHybrid.updateState(video.currentTime || 0, video.duration || 0, video.paused, buffering);
+        }
+    }
+
+    function sendTracks() {
+        if(!player || !window.AndroidHybrid) return;
+        let tracks = player.getVariantTracks().filter(t => t.height).sort((a,b) => b.height - a.height);
+        let heights = [...new Set(tracks.map(t => t.height))];
+        let audios = player.getAudioLanguagesAndRoles().map(a => a.language);
+        window.AndroidHybrid.updateTracks(heights.join(','), audios.join(','));
+    }
+
+    function applyAspect(mode) {
+      // 4 supported modes: original/fit, stretch/fill, zoom/cover, 16:9, 4:3
+      const m = String(mode || '').toLowerCase();
+      if (m === 'fill' || m === 'stretch') { video.style.objectFit = 'fill'; }
+      else if (m === 'zoom' || m === 'cover' || m === 'crop') { video.style.objectFit = 'cover'; }
+      else if (m === '16:9') { video.style.objectFit = 'contain'; video.style.aspectRatio = '16/9'; }
+      else if (m === '4:3')  { video.style.objectFit = 'contain'; video.style.aspectRatio = '4/3'; }
+      else { video.style.objectFit = 'contain'; video.style.aspectRatio = ''; }
+    }
+
+    function applyLogo(cfg) {
+      if (!cfg || !cfg.url) return;
+      logo.src = cfg.url;
+      logo.style.opacity = (typeof cfg.opacity === 'number' && cfg.opacity > 0) ? cfg.opacity : 1;
+      const wPct = cfg.width || 12;
+      const xPct = Math.max(0, Math.min(100, cfg.offsetX || 0));
+      const yPct = Math.max(0, Math.min(100, cfg.offsetY || 0));
+      logo.style.width = wPct + '%';
+      logo.style.height = 'auto';
+      // Reset positioning, then apply named position OR x/y%
+      logo.style.left = logo.style.right = logo.style.top = logo.style.bottom = 'auto';
+      switch ((cfg.position || '').toLowerCase()) {
+        case 'top-left':     logo.style.left = xPct + '%'; logo.style.top = yPct + '%'; break;
+        case 'top-right':    logo.style.right = xPct + '%'; logo.style.top = yPct + '%'; break;
+        case 'bottom-left':  logo.style.left = xPct + '%'; logo.style.bottom = yPct + '%'; break;
+        case 'bottom-right': logo.style.right = xPct + '%'; logo.style.bottom = yPct + '%'; break;
+        default:             logo.style.left = xPct + '%'; logo.style.top = yPct + '%';
+      }
+      logo.onload = () => { logo.style.display = 'block'; };
+    }
+
+    function startExternalAudio(url) {
+      if (!url) return;
+      // Mute main, play external audio in second element synchronized.
+      video.muted = true;
+      audio2.src = url;
+      audio2.muted = false;
+      audio2.volume = 1.0;
+      audio2.play().catch(()=>{});
+      // Mirror play/pause + correct drift > 1.5s.
+      video.addEventListener('play', () => audio2.play().catch(()=>{}));
+      video.addEventListener('pause', () => audio2.pause());
+      setInterval(() => {
+        if (!audio2.paused && Math.abs((audio2.currentTime||0) - (video.currentTime||0)) > 1.5) {
+          try { audio2.currentTime = video.currentTime; } catch(e){}
+        }
+      }, 2000);
+    }
+
+    async function init() {
+        const p = new URLSearchParams(window.location.search);
+        const url = p.get('url');
+        const ck = p.get('ck');
+        const aspectMode = p.get('aspect') || '';
+        lockAspect = p.get('lock') === '1';
+        const logoUrl = p.get('logo');
+        const logoPos = p.get('logoPos');
+        const logoX = parseInt(p.get('logoX') || '0', 10);
+        const logoY = parseInt(p.get('logoY') || '0', 10);
+        const logoW = parseInt(p.get('logoW') || '0', 10);
+        const logoOpa = parseFloat(p.get('logoOpa') || '1');
+        const audio2Url = p.get('audio2');
+
+        applyAspect(aspectMode);
+        if (logoUrl) applyLogo({ url: logoUrl, position: logoPos, offsetX: logoX, offsetY: logoY, width: logoW, opacity: logoOpa });
+
+        shaka.polyfill.installAll();
+        player = new shaka.Player(video);
+
+        const drmConfig = { clearKeys: {} };
+        if (ck && ck.includes(':')) {
+            const parts = ck.split(':');
+            const kid = parts[0].replace(/[^a-fA-F0-9]/g, '');
+            const key = parts[1].replace(/[^a-fA-F0-9]/g, '');
+            drmConfig.clearKeys[kid] = key;
+            if (kid.length === 32) {
+                const rKid = kid.substring(6,8) + kid.substring(4,6) + kid.substring(2,4) + kid.substring(0,2) + 
+                             kid.substring(10,12) + kid.substring(8,10) + kid.substring(14,16) + kid.substring(12,14) + kid.substring(16);
+                drmConfig.clearKeys[rKid] = key;
+            }
+        }
+        player.configure({ drm: drmConfig });
+
+        player.addEventListener('error', (e) => {
+            if(window.AndroidHybrid) window.AndroidHybrid.error(e.detail?.message || "خطأ في تشغيل البث");
+        });
+
+        setInterval(sendState, 500);
+
+        try {
+            await player.load(url);
+            if (!audio2Url) { video.muted = false; }
+            video.play();
+            video.addEventListener('playing', () => {
+                const c = document.getElementById('cover');
+                if (c) c.classList.add('hidden');
+            }, { once: true });
+            sendTracks();
+            if (audio2Url) startExternalAudio(audio2Url);
+        } catch (e) {
+            if(window.AndroidHybrid) window.AndroidHybrid.error("فشل تحميل البث، قد يكون الرابط أو المفتاح خاطئاً");
+        }
+    }
+
+    window.playVid = () => video.play();
+    window.pauseVid = () => video.pause();
+    window.seekVid = (sec) => { video.currentTime += sec; sendState(); };
+    window.seekTo = (sec) => { video.currentTime = sec; sendState(); };
+    window.setQ = (h) => {
+        if(h == -1) player.configure({abr:{enabled:true}});
+        else { player.configure({abr:{enabled:false}}); player.selectVariantTrack(player.getVariantTracks().find(t=>t.height==h), true); }
+    };
+    window.setA = (lang) => { player.selectAudioLanguage(lang); };
+    window.setFit = (mode) => {
+        // If aspect is locked from panel, ignore manual changes.
+        if (lockAspect) return;
+        if (typeof mode === 'string') { applyAspect(mode); return; }
+        const modes = ['contain', 'fill', 'cover'];
+        video.style.objectFit = modes[mode] || 'contain';
+    };
+    window.isAspectLocked = () => lockAspect;
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

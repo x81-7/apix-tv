@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+  <style>
+    /* المشغل المخفي: لا أزرار، لا واجهة، فقط شاشة الفيديو */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    video {
+      width: 100%; height: 100%; object-fit: contain; background: #000;
+      pointer-events: none; outline: none;
+    }
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-start-playback-button,
+    video::-webkit-media-controls-overlay-play-button,
+    video::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none !important; opacity: 0 !important; }
+    #cover {
+      position: fixed; inset: 0; background: #000; z-index: 9999;
+      transition: opacity .25s ease;
+    }
+    #cover.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="cover"></div>
+  <video id="video" playsinline autoplay muted preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback noplaybackrate"></video>
+
+  <script>
+    const video = document.getElementById('video');
+    let player = null;
+
+    // دالة تحويل Hex إلى Base64Url (مطلوبة إجبارياً في Dash.js)
+    function hexToBase64Url(hex) {
+        let str = '';
+        for (let i = 0; i < hex.length; i += 2) {
+            str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+        }
+        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    // إرسال حالة التشغيل إلى تطبيق الأندرويد (Kotlin)
+    function sendState() {
+        if(window.AndroidHybrid) {
+            let buffering = video.readyState < 3;
+            window.AndroidHybrid.updateState(video.currentTime || 0, video.duration || 0, video.paused, buffering);
+        }
+    }
+
+    // استخراج الجودات والصوتيات وإرسالها للأندرويد
+    function sendTracks() {
+        if(!player || !window.AndroidHybrid) return;
+        try {
+            // الجودات
+            let bitrates = player.getBitrateInfoListFor("video") || [];
+            let heights = [...new Set(bitrates.map(b => b.height).filter(h => h))].sort((a,b) => b - a);
+            
+            // الصوتيات
+            let audioTracks = player.getTracksFor("audio") || [];
+            let audios = audioTracks.map(a => a.lang || a.id || 'unknown');
+            
+            window.AndroidHybrid.updateTracks(heights.join(','), audios.join(','));
+        } catch(e) {}
+    }
+
+    function init() {
+        // 🔥 استخراج الرابط بطريقة آمنة جداً تمنع تقطع الرابط إذا كان يحتوي على &
+        let search = window.location.search; 
+        let ck = null;
+        let url = null;
+        
+        let ckIndex = search.lastIndexOf('&ck=');
+        if (ckIndex !== -1) {
+            ck = search.substring(ckIndex + 4);
+            url = search.substring(5, ckIndex); // 5 تعني تجاوز "?url="
+        } else {
+            url = search.substring(5);
+        }
+        
+        // فك تشفير الرابط تحسباً لأي مسافات أو رموز
+        if(!url) return;
+        try { url = decodeURIComponent(url); } catch(e) {}
+
+        if (typeof dashjs === 'undefined') {
+            if(window.AndroidHybrid) window.AndroidHybrid.error('فشل تحميل مكتبة dash.js');
+            return;
+        }
+
+        player = dashjs.MediaPlayer().create();
+        
+        // إعدادات التشفير (DRM) وعكس المفاتيح لقنوات MBC
+        if (ck && ck.includes(':')) {
+            const parts = ck.split(':');
+            const kidHex = parts[0].replace(/[^a-fA-F0-9]/g, '');
+            const keyHex = parts[1].replace(/[^a-fA-F0-9]/g, '');
+            
+            if (kidHex && keyHex) {
+                let clearKeys = {};
+                clearKeys[hexToBase64Url(kidHex)] = hexToBase64Url(keyHex);
+                
+                // إضافة المفتاح المعكوس بذكاء
+                if (kidHex.length === 32) {
+                    let rKid = kidHex.substring(6,8) + kidHex.substring(4,6) + kidHex.substring(2,4) + kidHex.substring(0,2) + 
+                               kidHex.substring(10,12) + kidHex.substring(8,10) + kidHex.substring(14,16) + kidHex.substring(12,14) + kidHex.substring(16);
+                    clearKeys[hexToBase64Url(rKid)] = hexToBase64Url(keyHex);
+                }
+                
+                player.setProtectionData({
+                    'org.w3.clearkey': { clearkeys: clearKeys }
+                });
+            }
+        }
+
+        // إعدادات إعادة المحاولة + معالجة CORS و live latency
+        player.updateSettings({
+            debug: { logLevel: 0 },
+            streaming: {
+                retryAttempts: { MPD: 5, MediaSegment: 5, InitializationSegment: 5 },
+                retryIntervals: { MPD: 1000, MediaSegment: 1000 },
+                lowLatencyEnabled: false,
+                abr: { autoSwitchBitrate: { video: true } }
+            }
+        });
+
+        // كتم الأخطاء البسيطة وإرسال الفادح فقط
+        player.on(dashjs.MediaPlayer.events.ERROR, function(e) {
+            console.error("Dash.js Error: ", e);
+            const code = e.error && (e.error.code || e.error);
+            // أخطاء فادحة فقط
+            if (code === 'manifestError' || code === 27 || code === 'mediaError') {
+                if(window.AndroidHybrid) window.AndroidHybrid.error('فشل تحميل البث MPD');
+            }
+        });
+
+        // إخفاء الغطاء الأسود + رفع الكتم عند بدء التشغيل
+        video.addEventListener('playing', () => {
+            video.muted = false;
+            const c = document.getElementById('cover');
+            if (c) c.classList.add('hidden');
+        }, { once: true });
+
+        // تشغيل الرابط
+        try {
+            player.initialize(video, url, true);
+        } catch(e) {
+            if(window.AndroidHybrid) window.AndroidHybrid.error('فشل بدء المشغل: ' + (e.message || e));
+            return;
+        }
+        
+        // إرسال الجودات المتاحة بمجرد تحميل بيانات البث
+        player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, sendTracks);
+        player.on(dashjs.MediaPlayer.events.PLAYBACK_PLAYING, sendTracks);
+        
+        setInterval(sendState, 500);
+    }
+
+    // ==========================================
+    // الأوامر التي يستقبلها الويب من أزرار الكوتلن
+    // ==========================================
+    window.playVid = () => video.play();
+    window.pauseVid = () => video.pause();
+    window.seekVid = (sec) => { video.currentTime += sec; sendState(); };
+    window.seekTo = (sec) => { video.currentTime = sec; sendState(); };
+    
+    // تغيير الأبعاد
+    window.setFit = (mode) => {
+        const modes = ['contain', 'fill', 'cover'];
+        video.style.objectFit = modes[mode] || 'contain';
+    };
+
+    // تغيير الجودة
+    window.setQ = (h) => {
+        if(h == -1) {
+            player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } });
+        } else {
+            player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } });
+            let bitrates = player.getBitrateInfoListFor("video");
+            let match = bitrates.find(b => b.height == h);
+            if(match) player.setQualityFor("video", match.qualityIndex);
+        }
+    };
+
+    // تغيير الصوت
+    window.setA = (lang) => {
+        let audioTracks = player.getTracksFor("audio");
+        let match = audioTracks.find(a => (a.lang || a.id || 'unknown') === lang);
+        if(match) player.setCurrentTrack(match);
+    };
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

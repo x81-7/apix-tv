@@ -1,0 +1,66 @@
+name: Build Windows (MSI + EXE)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-build.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-windows-${{ hashFiles('windows/**/*.gradle*', 'windows/**/gradle-wrapper.properties') }}
+
+      - name: Inject build secrets
+        shell: bash
+        env:
+          CLOUD_URL: ${{ secrets.CLOUD_URL }}
+          CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
+          # Panel pushes the key as EXTERNAL_PANEL_DECRYPTION_KEY (same as Android).
+          # X_DP_K is kept as a legacy fallback.
+          X_DP_K: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY || secrets.X_DP_K }}
+        run: |
+          # Surface them to Gradle as env vars
+          echo "CLOUD_URL=$CLOUD_URL"           >> $GITHUB_ENV
+          echo "CLOUD_ANON_KEY=$CLOUD_ANON_KEY" >> $GITHUB_ENV
+          echo "X_DP_K=$X_DP_K"                 >> $GITHUB_ENV
+
+      - name: Copy Gradle Wrapper from Android
+        run: |
+          Copy-Item -Path "android\gradlew.bat" -Destination "windows\" -Force
+          Copy-Item -Path "android\gradlew" -Destination "windows\" -Force
+          Copy-Item -Path "android\gradle" -Destination "windows\" -Recurse -Force
+
+      - name: Build MSI + EXE
+        working-directory: windows
+        run: .\gradlew.bat :app:packageMsi :app:packageExe --no-daemon --stacktrace
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: APiX-TV-Windows-MSI
+          path: windows/app/build/compose/binaries/main/msi/*.msi
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: APiX-TV-Windows-EXE
+          path: windows/app/build/compose/binaries/main/exe/*.exe

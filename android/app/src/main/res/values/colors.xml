@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="gold_accent">#FFD700</color>
+    <color name="gold_dark">#B8860B</color>
+    <color name="black">#000000</color>
+    <color name="dark_gray">#1A1A1A</color>
+    <color name="white">#FFFFFF</color>
+    <color name="transparent_black">#80000000</color>
+</resources>

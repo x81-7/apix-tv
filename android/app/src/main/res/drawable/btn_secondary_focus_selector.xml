@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Focused state - Gold glow outline for TV navigation -->
+    <item android:state_focused="true">
+        <layer-list>
+            <!-- Outer glow -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="#44FFD700" />
+                    <size android:width="56dp" android:height="56dp" />
+                </shape>
+            </item>
+            <!-- Inner circle with gold border -->
+            <item android:left="4dp" android:top="4dp" android:right="4dp" android:bottom="4dp">
+                <shape android:shape="oval">
+                    <stroke android:width="3dp" android:color="@color/gold_accent" />
+                    <solid android:color="#33FFFFFF" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    
+    <!-- Pressed state -->
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#55FFD700" />
+        </shape>
+    </item>
+    
+    <!-- Default state - transparent -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>
