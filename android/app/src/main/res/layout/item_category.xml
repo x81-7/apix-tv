@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="?android:attr/selectableItemBackground">
+
+    <!-- Category Icon -->
+    <ImageView
+        android:id="@+id/category_icon"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:tint="@color/white"
+        android:contentDescription="Icon" />
+
+    <TextView
+        android:id="@+id/category_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/white"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:textAllCaps="true"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:layout_marginTop="3dp" />
+
+    <View
+        android:id="@+id/category_indicator"
+        android:layout_width="24dp"
+        android:layout_height="3dp"
+        android:layout_marginTop="3dp"
+        android:background="@color/gold_accent"
+        android:visibility="invisible" />
+
+</LinearLayout>

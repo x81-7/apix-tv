@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.1/shaka-player.compiled.js"></script>
+  <style>
+    /* شاشة سوداء كاملة بدون أيقونة تشغيل افتراضية */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    video {
+      width: 100%; height: 100%; object-fit: contain; background: #000;
+      pointer-events: none; outline: none;
+    }
+    /* إخفاء أيقونة التشغيل الافتراضية للـ WebView */
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-start-playback-button,
+    video::-webkit-media-controls-overlay-play-button,
+    video::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none !important; opacity: 0 !important; }
+    /* غطاء أسود يخفي أي شيء حتى يبدأ الفيديو فعلياً */
+    #cover {
+      position: fixed; inset: 0; background: #000; z-index: 9999;
+      transition: opacity .25s ease;
+    }
+    #cover.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="cover"></div>
+  <video id="video" playsinline autoplay muted preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback noplaybackrate"></video>
+
+  <script>
+    const video = document.getElementById('video');
+    let player = null;
+
+    // إرسال وقت الفيديو وحالة التشغيل إلى كوتلن
+    function sendState() {
+        if(window.AndroidHybrid) {
+            let buffering = video.readyState < 3;
+            window.AndroidHybrid.updateState(video.currentTime || 0, video.duration || 0, video.paused, buffering);
+        }
+    }
+
+    // استخراج الجودات ومسارات الصوت وإرسالها إلى كوتلن
+    function sendTracks() {
+        if(!player || !window.AndroidHybrid) return;
+        let tracks = player.getVariantTracks().filter(t => t.height).sort((a,b) => b.height - a.height);
+        let heights = [...new Set(tracks.map(t => t.height))];
+        let audios = player.getAudioLanguagesAndRoles().map(a => a.language);
+        window.AndroidHybrid.updateTracks(heights.join(','), audios.join(','));
+    }
+
+    async function init() {
+        const p = new URLSearchParams(window.location.search);
+        const url = p.get('url');
+        const ck = p.get('ck');
+
+        shaka.polyfill.installAll();
+        player = new shaka.Player(video);
+
+        // كسر حماية القنوات وعكس مفاتيح MBC
+        const drmConfig = { clearKeys: {} };
+        if (ck && ck.includes(':')) {
+            const parts = ck.split(':');
+            const kid = parts[0].replace(/[^a-fA-F0-9]/g, '');
+            const key = parts[1].replace(/[^a-fA-F0-9]/g, '');
+            drmConfig.clearKeys[kid] = key;
+            if (kid.length === 32) {
+                const rKid = kid.substring(6,8) + kid.substring(4,6) + kid.substring(2,4) + kid.substring(0,2) + 
+                             kid.substring(10,12) + kid.substring(8,10) + kid.substring(14,16) + kid.substring(12,14) + kid.substring(16);
+                drmConfig.clearKeys[rKid] = key;
+            }
+        }
+        player.configure({ drm: drmConfig });
+
+        player.addEventListener('error', (e) => {
+            if(window.AndroidHybrid) window.AndroidHybrid.error(e.detail?.message || "خطأ في تشغيل البث");
+        });
+
+        setInterval(sendState, 500);
+
+        try {
+            await player.load(url);
+            video.muted = false;
+            video.play();
+            // إخفاء الغطاء الأسود بمجرد بدء عرض إطار حقيقي
+            video.addEventListener('playing', () => {
+                const c = document.getElementById('cover');
+                if (c) c.classList.add('hidden');
+            }, { once: true });
+            sendTracks(); // إرسال الجودات والصوت للكوتلن بمجرد بدء التشغيل
+        } catch (e) {
+            if(window.AndroidHybrid) window.AndroidHybrid.error("فشل تحميل البث، قد يكون الرابط أو المفتاح خاطئاً");
+        }
+    }
+
+    // دوال الاستقبال (أوامر تأتي من أزرار الكوتلن)
+    window.playVid = () => video.play();
+    window.pauseVid = () => video.pause();
+    window.seekVid = (sec) => { video.currentTime += sec; sendState(); };
+    window.seekTo = (sec) => { video.currentTime = sec; sendState(); };
+    window.setQ = (h) => {
+        if(h == -1) player.configure({abr:{enabled:true}});
+        else { player.configure({abr:{enabled:false}}); player.selectVariantTrack(player.getVariantTracks().find(t=>t.height==h), true); }
+    };
+    window.setA = (lang) => { player.selectAudioLanguage(lang); };
+    window.setFit = (mode) => {
+        const modes = ['contain', 'fill', 'cover'];
+        video.style.objectFit = modes[mode] || 'contain';
+    };
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

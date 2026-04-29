@@ -1,0 +1,88 @@
+name: Build iOS IPA
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build app without signing
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project APiXTV.xcodeproj \
+            -scheme APiXTV \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Package unsigned IPA
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          cp -R "$APP_PATH" Payload/APiXTV.app
+          mkdir -p artifacts
+          /usr/bin/zip -qry artifacts/APiXTV-unsigned.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: APiXTV-unsigned-ipa
+          path: ios/artifacts/APiXTV-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---------------------------------------------------------------------
+      # Simulator build (.app) — drop into Appetize.io / BrowserStack / iOS
+      # simulator. Faster than IPA, no signing or device required.
+      # ---------------------------------------------------------------------
+      - name: Build Simulator .app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project APiXTV.xcodeproj \
+            -scheme APiXTV \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Package Simulator app as ZIP
+        working-directory: ios
+        run: |
+          APP_PATH=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -n 1)
+          mkdir -p artifacts
+          cd "$(dirname "$APP_PATH")"
+          /usr/bin/zip -qry "$GITHUB_WORKSPACE/ios/artifacts/APiXTV-simulator.zip" "$(basename "$APP_PATH")"
+
+      - name: Upload Simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: APiXTV-simulator-app
+          path: ios/artifacts/APiXTV-simulator.zip
+          if-no-files-found: error
+          retention-days: 30

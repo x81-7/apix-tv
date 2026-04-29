@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base Theme -->
+    <style name="Theme.TVPlus" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/gold_accent</item>
+        <item name="colorPrimaryVariant">@color/gold_dark</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="colorSecondary">@color/gold_accent</item>
+        <item name="colorSecondaryVariant">@color/gold_dark</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+        <item name="android:windowBackground">@color/black</item>
+    </style>
+
+    <!-- No Action Bar Theme for WebView -->
+    <style name="Theme.TVPlus.NoActionBar" parent="Theme.TVPlus">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <!-- Fullscreen Theme for Player -->
+    <style name="Theme.TVPlus.Fullscreen" parent="Theme.TVPlus.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <!-- Gold themed Dialog (AppCompat-safe to avoid resource resolution issues) -->
+    <style name="GoldDialogTheme" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:background">#1A1A1A</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="colorAccent">@color/gold_accent</item>
+        <item name="android:windowTitleStyle">@style/GoldDialogTitle</item>
+    </style>
+
+    <style name="GoldDialogTitle" parent="TextAppearance.AppCompat.Title">
+        <item name="android:textColor">@color/gold_accent</item>
+    </style>
+
+</resources>

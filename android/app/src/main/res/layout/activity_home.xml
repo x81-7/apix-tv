@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black"
+    android:fitsSystemWindows="true">
+
+    <!-- Portrait layout: top header + channels + bottom nav -->
+    <LinearLayout
+        android:id="@+id/portrait_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <!-- App Header - fully black -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="10dp"
+            android:background="@color/black">
+
+            <!-- APiX logo text -->
+            <TextView
+                android:id="@+id/app_name_portrait"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-black"
+                android:textColor="@color/white" />
+
+            <ImageButton
+                android:id="@+id/search_button_portrait"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_search"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Search"
+                android:tint="@color/white"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <!-- Category title -->
+        <TextView
+            android:id="@+id/category_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/white"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textAllCaps="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="12dp" />
+
+        <!-- Channels grid -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/channels_recycler"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
+
+        <!-- Bottom Navigation Bar - fixed, no scroll -->
+        <LinearLayout
+            android:id="@+id/bottom_nav_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/black"
+            android:paddingTop="6dp"
+            android:paddingBottom="8dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/categories_recycler"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:overScrollMode="never" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Landscape/TV layout: content on left + sidebar on RIGHT -->
+    <LinearLayout
+        android:id="@+id/landscape_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:layoutDirection="ltr"
+        android:visibility="gone">
+
+        <!-- Content area (LEFT side) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Top bar: category title + clock + search -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:id="@+id/category_title_landscape"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/white"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:textAllCaps="true" />
+
+                <!-- Clock -->
+                <TextView
+                    android:id="@+id/clock_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/gold_accent"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:background="@drawable/clock_border"
+                    android:layout_marginEnd="16dp" />
+
+                <ImageButton
+                    android:id="@+id/search_button_landscape"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_search"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Search"
+                    android:tint="@color/white"
+                    android:focusable="true" />
+            </LinearLayout>
+
+            <!-- Channels grid - 2 columns for bigger cards -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/channels_recycler_landscape"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp" />
+        </LinearLayout>
+
+        <!-- Side Navigation (RIGHT side - fixed) -->
+        <LinearLayout
+            android:layout_width="200dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="#0A0A0A"
+            android:paddingTop="16dp">
+
+            <!-- Gold vertical bar + APiX logo - centered -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="20dp">
+
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="36dp"
+                    android:background="@color/gold_accent"
+                    android:layout_marginEnd="8dp" />
+
+                <TextView
+                    android:id="@+id/app_name_landscape"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="APiX"
+                    android:textColor="@color/white"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-black" />
+            </LinearLayout>
+
+            <!-- Categories list (vertical) with icons -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/categories_recycler_landscape"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:overScrollMode="never" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Search overlay -->
+    <LinearLayout
+        android:id="@+id/search_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#E6000000"
+        android:padding="24dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Search"
+                android:textColor="@color/white"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/search_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cancel"
+                android:textColor="@color/gold_accent"
+                android:textSize="16sp"
+                android:padding="8dp"
+                android:focusable="true"
+                android:clickable="true" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/search_input"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#333333"
+            android:textColor="@color/white"
+            android:textColorHint="#888888"
+            android:hint="Type channel name..."
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textSize="16sp"
+            android:singleLine="true"
+            android:imeOptions="actionSearch"
+            android:focusable="true" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/search_results_recycler"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp"
+            android:clipToPadding="false" />
+    </LinearLayout>
+
+    <!-- Loading -->
+    <ProgressBar
+        android:id="@+id/loading_bar"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/gold_accent"
+        android:visibility="gone" />
+
+    <!-- Error -->
+    <LinearLayout
+        android:id="@+id/error_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/error_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FF4444"
+            android:textSize="16sp"
+            android:gravity="center" />
+    </LinearLayout>
+
+</FrameLayout>

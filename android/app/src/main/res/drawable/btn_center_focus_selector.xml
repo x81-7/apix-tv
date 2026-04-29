@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Focused state - Thick gold border circle for TV D-pad navigation -->
+    <item android:state_focused="true">
+        <layer-list>
+            <!-- Outer glow -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="#44FFD700" />
+                </shape>
+            </item>
+            <!-- Inner circle with gold border -->
+            <item android:left="3dp" android:top="3dp" android:right="3dp" android:bottom="3dp">
+                <shape android:shape="oval">
+                    <solid android:color="#22FFD700" />
+                    <stroke android:width="4dp" android:color="#FFD700" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    
+    <!-- Pressed state -->
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#55FFD700" />
+            <stroke android:width="3dp" android:color="#FFD700" />
+        </shape>
+    </item>
+    
+    <!-- Default state - Transparent (no gold circle) -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>
