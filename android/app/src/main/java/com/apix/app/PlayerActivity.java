@@ -48,14 +48,15 @@ public class PlayerActivity extends AppCompatActivity {
 
         StreamAnalyzer.analyze(config);
 
-        // Panel-driven aspect ratio enforcement (4 modes: fit, fill, zoom, original)
-        applyAspectRatio(config);
-
         engine = new PlayerEngine(this, config);
         engine.build(playerView);
 
-        // Hide the resize button entirely if the panel locked aspect ratio.
-        applyResizeButtonVisibility(config);
+        // Panel-driven aspect ratio enforcement — applied AFTER engine.build()
+        // so it overrides the layout default (app:resize_mode="fit").
+        applyAspectRatio(config);
+
+        // Wire up the resize button to cycle modes (or hide if panel locked).
+        setupResizeButton(config);
 
         // External audio source: keep main video playing MUTED while a headless
         // ExoPlayer plays the external audio source (m3u8/mp3/etc.) in sync.
@@ -82,10 +83,48 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    private void applyResizeButtonVisibility(StreamConfig config) {
+    /**
+     * Wires the on-screen resize button.
+     *  - If the panel set lockAspectRatio = true, the button is hidden.
+     *  - Otherwise clicking cycles: FIT → FILL → ZOOM → FIXED_WIDTH (16:9)
+     *    → FIXED_HEIGHT (4:3) → back to FIT, with a Toast label.
+     */
+    private void setupResizeButton(StreamConfig config) {
+        View resizeBtn = playerView.findViewById(R.id.exo_resize);
+        if (resizeBtn == null) return;
+
         if (config != null && config.lockAspectRatio) {
-            View resizeBtn = playerView.findViewById(R.id.exo_resize);
-            if (resizeBtn != null) resizeBtn.setVisibility(View.GONE);
+            resizeBtn.setVisibility(View.GONE);
+            return;
+        }
+        resizeBtn.setVisibility(View.VISIBLE);
+
+        resizeBtn.setOnClickListener(v -> {
+            int next = nextResizeMode(playerView.getResizeMode());
+            playerView.setResizeMode(next);
+            Toast.makeText(PlayerActivity.this, resizeModeLabel(next), Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private int nextResizeMode(int current) {
+        switch (current) {
+            case AspectRatioFrameLayout.RESIZE_MODE_FIT:          return AspectRatioFrameLayout.RESIZE_MODE_FILL;
+            case AspectRatioFrameLayout.RESIZE_MODE_FILL:         return AspectRatioFrameLayout.RESIZE_MODE_ZOOM;
+            case AspectRatioFrameLayout.RESIZE_MODE_ZOOM:         return AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH;
+            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH:  return AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT;
+            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT:
+            default:                                              return AspectRatioFrameLayout.RESIZE_MODE_FIT;
+        }
+    }
+
+    private String resizeModeLabel(int mode) {
+        switch (mode) {
+            case AspectRatioFrameLayout.RESIZE_MODE_FIT:          return "ملائم (Fit)";
+            case AspectRatioFrameLayout.RESIZE_MODE_FILL:         return "تمدد (Stretch)";
+            case AspectRatioFrameLayout.RESIZE_MODE_ZOOM:         return "تكبير (Zoom)";
+            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH:  return "16:9";
+            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT: return "4:3";
+            default:                                              return "";
         }
     }
 
