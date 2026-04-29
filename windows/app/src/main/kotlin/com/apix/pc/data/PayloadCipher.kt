@@ -1,6 +1,5 @@
 package com.apix.pc.data
 
-import android.util.Base64Stub
 import org.json.JSONObject
 import java.util.Base64
 import javax.crypto.Cipher

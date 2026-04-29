@@ -67,7 +67,10 @@ object SupabaseClient {
                 return@use BundleResult(true, emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())
             }
             if (!r.isSuccessful) return@runCatching null
-            val raw = r.body?.string() ?: return@runCatching null
+            val envelope = r.body?.string() ?: return@runCatching null
+            // cached-data is AES-256-GCM encrypted ({iv,data}). Decrypt first.
+            val raw = runCatching { PayloadCipher.decryptEnvelope(envelope) }
+                .getOrElse { return@runCatching null }
             val obj = JSONObject(raw)
             val cats = obj.optJSONArray("categories") ?: JSONArray()
             val chans = obj.optJSONArray("channels") ?: JSONArray()
