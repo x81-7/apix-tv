@@ -21,6 +21,28 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
+      - name: Inject Cloud secrets into Info.plist
+        working-directory: ios
+        env:
+          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          CLOUD_URL: ${{ secrets.CLOUD_URL }}
+          CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
+        run: |
+          PLIST="APiXTV/Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            echo "Info.plist not found at $PLIST"; exit 1;
+          fi
+          set_or_add() {
+            local key="$1"; local val="$2"
+            if [ -z "$val" ]; then echo "Skipping $key (empty)"; return; fi
+            /usr/libexec/PlistBuddy -c "Set :$key $val" "$PLIST" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :$key string $val" "$PLIST"
+            echo "Injected $key"
+          }
+          set_or_add APIX_ENCRYPTION_KEY "$ENCRYPTION_SECRET_KEY"
+          set_or_add APIX_CLOUD_URL "$CLOUD_URL"
+          set_or_add APIX_CLOUD_ANON_KEY "$CLOUD_ANON_KEY"
+
       - name: Build app without signing
         working-directory: ios
         run: |
