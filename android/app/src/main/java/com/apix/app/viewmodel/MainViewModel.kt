@@ -143,7 +143,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         actionType = "direct_play",
                         stream = sc.stream,
                         androidStream = sc.androidStream,
-                        androidActionType = sc.androidActionType
+                        androidActionType = sc.androidActionType,
+                        forcedAspectRatio = sc.forcedAspectRatio,
+                        lockAspectRatio = sc.lockAspectRatio
                     ))
                 }
             }
@@ -154,6 +156,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun buildPlayerConfig(channel: Channel): PlayerConfig? {
         val config = PlayerConfig(title = channel.name)
+        config.forcedAspectRatio = channel.forcedAspectRatio
+        config.lockAspectRatio = channel.lockAspectRatio
 
         if (channel.androidStream?.url != null) {
             config.url = channel.androidStream!!.url!!

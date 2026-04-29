@@ -8,7 +8,9 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.ProgressBar;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.provider.Settings;
 
@@ -29,6 +31,13 @@ public class SplashActivity extends AppCompatActivity {
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
+    private LinearLayout updatePanel;
+    private TextView updateTitle;
+    private TextView updateMessage;
+    private TextView updateStatus;
+    private ProgressBar updateProgress;
+    private Button updateInstallButton;
+    private Button updateSkipButton;
     private boolean bootStarted = false;
 
     @Override
@@ -62,6 +71,13 @@ public class SplashActivity extends AppCompatActivity {
         statusText = findViewById(R.id.splash_status);
         progressBar = findViewById(R.id.splash_progress);
         errorText = findViewById(R.id.splash_error);
+        updatePanel = findViewById(R.id.splash_update_panel);
+        updateTitle = findViewById(R.id.update_title);
+        updateMessage = findViewById(R.id.update_message);
+        updateStatus = findViewById(R.id.update_status);
+        updateProgress = findViewById(R.id.update_progress);
+        updateInstallButton = findViewById(R.id.update_install_button);
+        updateSkipButton = findViewById(R.id.update_skip_button);
 
         statusText.setVisibility(View.VISIBLE);
         statusText.setText("التحقق من إذن الإشعارات...");
@@ -168,7 +184,7 @@ public class SplashActivity extends AppCompatActivity {
                 String downloadUrl = update.optString("downloadUrl", "");
                 String message = update.optString("message", "هناك تحديث جديد متوفر");
                 String versionName = update.optString("versionName", "");
-                String installMode = update.optString("installMode", "external");
+                String installMode = update.optString("installMode", "internal");
                 boolean forceUpdate = update.optBoolean("forceUpdate", false);
 
                 // If a target versionCode is set in the panel and we're below it, also force.
@@ -178,7 +194,7 @@ public class SplashActivity extends AppCompatActivity {
                 final boolean mustForce = forceUpdate || belowRequired;
 
                 if (isActive && !downloadUrl.isEmpty()) {
-                    runOnUiThread(() -> showUpdateDialog(message, downloadUrl, versionName, installMode, mustForce));
+                    runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
                     runOnUiThread(this::proceedToMain);
                 }
@@ -189,32 +205,45 @@ public class SplashActivity extends AppCompatActivity {
         }).start();
     }
 
-    private void showUpdateDialog(String message, String downloadUrl, String versionName, String installMode, boolean force) {
+    private void showInternalUpdatePage(String message, String downloadUrl, String versionName, boolean force) {
+        progressBar.setVisibility(View.GONE);
+        statusText.setVisibility(View.GONE);
+        errorText.setVisibility(View.GONE);
+        updatePanel.setVisibility(View.VISIBLE);
         String title = (force ? "تحديث إلزامي" : "تحديث جديد") + (!versionName.isEmpty() ? " (" + versionName + ")" : "");
-        AlertDialog.Builder b = new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-                .setTitle(title)
-                .setMessage(message + (force ? "\n\nهذا التحديث إلزامي ولا يمكن المتابعة بدونه." : ""))
-                .setCancelable(!force)
-                .setPositiveButton("تثبيت", (dialog, which) -> {
-                    if ("internal".equalsIgnoreCase(installMode)) {
-                        UpdateInstaller.downloadAndInstall(SplashActivity.this, downloadUrl);
-                        if (force) {
-                            // Keep splash alive — installer will replace the app.
-                            return;
-                        }
-                    } else {
-                        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))); } catch (Exception ignored) {}
-                    }
-                    if (!force) proceedToMain();
-                    else finishAffinity();
-                });
-        if (!force) {
-            b.setNegativeButton("إلغاء", (dialog, which) -> { dialog.dismiss(); proceedToMain(); })
-             .setOnCancelListener(dialog -> proceedToMain());
-        } else {
-            b.setNegativeButton("خروج", (dialog, which) -> { finishAffinity(); System.exit(0); });
-        }
-        b.show();
+        updateTitle.setText(title);
+        updateMessage.setText(message + (force ? "\n\nيجب تثبيت هذا التحديث قبل استخدام التطبيق." : ""));
+        updateStatus.setText("جاهز لتنزيل التحديث داخل التطبيق");
+        updateProgress.setProgress(0);
+        updateSkipButton.setVisibility(force ? View.GONE : View.VISIBLE);
+        updateSkipButton.setOnClickListener(v -> proceedToMain());
+        updateInstallButton.setOnClickListener(v -> {
+            updateInstallButton.setEnabled(false);
+            updateSkipButton.setEnabled(false);
+            updateStatus.setText("جاري تنزيل التحديث...");
+            UpdateInstaller.download(SplashActivity.this, downloadUrl, new UpdateInstaller.Callback() {
+                @Override public void onProgress(int percent) {
+                    updateProgress.setProgress(percent);
+                    updateStatus.setText("تم تنزيل " + percent + "%");
+                }
+
+                @Override public void onReady(java.io.File apk) {
+                    updateProgress.setProgress(100);
+                    updateStatus.setText("اكتمل التنزيل، افتح نافذة التثبيت لإكمال التحديث");
+                    updateInstallButton.setText("فتح التثبيت");
+                    updateInstallButton.setEnabled(true);
+                    updateInstallButton.setOnClickListener(btn -> UpdateInstaller.installApk(SplashActivity.this, apk));
+                    UpdateInstaller.installApk(SplashActivity.this, apk);
+                }
+
+                @Override public void onError(String err) {
+                    updateStatus.setText("فشل تنزيل التحديث، تحقق من الرابط وحاول مرة أخرى");
+                    updateInstallButton.setText("إعادة المحاولة");
+                    updateInstallButton.setEnabled(true);
+                    if (!force) updateSkipButton.setEnabled(true);
+                }
+            });
+        });
     }
 
     private void proceedToMain() {

@@ -43,6 +43,8 @@ object SupabaseRepository {
                             externalUrl = rCh.externalUrl, preferredPlayer = rCh.preferredPlayer,
                             androidActionType = rCh.androidActionType,
                             pinCode = rCh.pinCode,
+                             forcedAspectRatio = rCh.forcedAspectRatio,
+                             lockAspectRatio = rCh.lockAspectRatio,
                             stream = rCh.stream?.let { s -> StreamConfig(s.url, s.userAgent, s.referrer, s.cookies) },
                             androidStream = convertAndroidStream(rCh.androidStream))
                     }, hidden = rCat.hidden)
@@ -85,6 +87,8 @@ object SupabaseRepository {
                             preferredPlayer = sc.preferredPlayer,
                             pinCode = sc.pinCode,
                             androidActionType = sc.androidActionType,
+                             forcedAspectRatio = sc.forcedAspectRatio,
+                             lockAspectRatio = sc.lockAspectRatio,
                             stream = sc.stream?.let { s -> StreamConfig(s.url, s.userAgent, s.referrer, s.cookies) },
                             androidStream = convertAndroidStream(sc.androidStream))
                     })
@@ -105,7 +109,10 @@ object SupabaseRepository {
             customHeaders = r.customHeaders?.map { CustomHeader(it.key, it.value) },
             drmLicenseHeaders = r.drmLicenseHeaders?.map { CustomHeader(it.key, it.value) },
             servers = r.servers?.map { Server(it.name, it.url) },
-            audioSources = r.audioSources?.map { AudioSource(it.name, it.url) }
+             audioSources = r.audioSources?.map { AudioSource(it.name, it.url) },
+             forcedAspectRatio = r.forcedAspectRatio,
+             lockAspectRatio = r.lockAspectRatio,
+             logoOverlay = r.logoOverlay?.let { LogoOverlay(it.url, it.position, it.offsetX, it.offsetY, it.width, it.height, it.opacity) }
         )
     }
 }

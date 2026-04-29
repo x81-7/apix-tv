@@ -31,6 +31,12 @@ public final class UpdateInstaller {
 
     private UpdateInstaller() {}
 
+    public interface Callback {
+        void onProgress(int percent);
+        void onReady(File apk);
+        void onError(String message);
+    }
+
     /** Entry point. Runs on a background thread. */
     public static void downloadAndInstall(final Activity activity, final String url) {
         final ProgressDialog dialog = new ProgressDialog(activity);
@@ -60,6 +66,20 @@ public final class UpdateInstaller {
                     fallbackToBrowser(activity, url);
                 }
             });
+        }).start();
+    }
+
+    public static void download(final Activity activity, final String url, final Callback callback) {
+        new Thread(() -> {
+            try {
+                File apk = downloadApk(activity, url, (pct) -> {
+                    new Handler(Looper.getMainLooper()).post(() -> callback.onProgress(pct));
+                });
+                new Handler(Looper.getMainLooper()).post(() -> callback.onReady(apk));
+            } catch (Exception e) {
+                Log.e(TAG, "Download failed", e);
+                new Handler(Looper.getMainLooper()).post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "download_failed"));
+            }
         }).start();
     }
 
@@ -96,7 +116,7 @@ public final class UpdateInstaller {
         return out;
     }
 
-    private static void installApk(Activity activity, File apk) {
+    public static void installApk(Activity activity, File apk) {
         try {
             Uri uri = FileProvider.getUriForFile(
                     activity, activity.getPackageName() + ".updateprovider", apk);
