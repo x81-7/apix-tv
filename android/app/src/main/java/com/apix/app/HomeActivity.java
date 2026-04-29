@@ -266,6 +266,8 @@ public class HomeActivity extends AppCompatActivity {
                         ch.stream = sc.stream;
                         ch.androidStream = sc.androidStream;
                         ch.androidActionType = sc.androidActionType;
+                        ch.forcedAspectRatio = sc.forcedAspectRatio;
+                        ch.lockAspectRatio = sc.lockAspectRatio;
                         results.add(ch);
                     }
                 }
