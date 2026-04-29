@@ -1,5 +1,6 @@
 // Device handshake: receives MediaDrm ID + integrity payload, returns ban status
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { encryptedJson, plainJson } from "../_shared/encrypted-response.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as HandshakePayload;
     if (!body.device_id || body.device_id.length < 8) {
-      return json({ status: "ERROR", message: "invalid device_id" }, 400);
+      return plainJson({ status: "ERROR", message: "invalid device_id" }, 400);
     }
     const platform = String(body.platform ?? "android").toLowerCase();
 
@@ -307,7 +308,7 @@ Deno.serve(async (req) => {
 
     await supabase.from("app_users").upsert(upsertPayload, { onConflict: "device_id" });
 
-    return json({
+    return encryptedJson({
       status,
       ban_until: banUntil?.toISOString() ?? null,
       ban_reason: banReason,
@@ -316,7 +317,7 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("handshake error", e);
-    return json({ status: "ERROR", message: String(e) }, 500);
+    return plainJson({ status: "ERROR", message: String(e) }, 500);
   }
 });
 
