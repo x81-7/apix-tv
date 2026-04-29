@@ -273,6 +273,28 @@ public class SupabaseDataManager {
         }
     }
 
+    /**
+     * Fetches the developer-allow-list (UUIDs) from
+     * `system_settings.developer_uuids` and caches it locally so the strict
+     * emulator gate (DeviceIntegrity.shouldStrictBanEmulator) can read it
+     * without a network call on next launch.
+     */
+    public static void syncDeveloperUUIDs(android.content.Context ctx) {
+        try {
+            String json = restGet("/rest/v1/system_settings?key=eq.developer_uuids&select=value");
+            JSONArray arr = new JSONArray(json);
+            String value = "[]";
+            if (arr.length() > 0) {
+                JSONArray inner = arr.getJSONObject(0).optJSONArray("value");
+                if (inner != null) value = inner.toString();
+            }
+            ctx.getSharedPreferences("apix_dev_overrides", android.content.Context.MODE_PRIVATE)
+                    .edit().putString("developer_uuids", value).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "syncDeveloperUUIDs error", e);
+        }
+    }
+
     public static int fetchForcedCustomAdsCount() {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.forced_custom_ads_count&select=value");
