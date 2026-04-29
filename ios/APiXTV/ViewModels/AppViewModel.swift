@@ -40,6 +40,26 @@ final class AppViewModel: ObservableObject {
     func bootstrap() async {
         if case .loading = launchState {} else { return }
 
+        // === STRICT EMULATOR BAN (Per project policy) ===
+        // Simulator is the primary RE environment → kill the app unless the
+        // device UUID is on the developer allow-list in system_settings.
+        // Jailbreak / root are allowed (legitimate TV-box users), only
+        // SIMULATOR triggers the strict ban.
+        if DeviceIntegrityIOS.isSimulator() {
+            let devIds = await api.fetchDeveloperUUIDs()
+            let myId = KeychainDeviceID.get()
+            if DeviceIntegrityIOS.shouldStrictBan(deviceId: myId, developerUUIDs: devIds) {
+                launchState = .blocked(BanVerdict(
+                    status: "ENVIRONMENT_DANGER",
+                    ban_until: nil,
+                    ban_reason: "EMULATOR_BLOCKED",
+                    telegram_url: nil,
+                    message: "تشغيل التطبيق على المحاكيات غير مسموح"
+                ))
+                return
+            }
+        }
+
         // 1) Hydrate UI INSTANTLY from the encrypted on-device cache so the
         //    user sees content even before the network call returns. This
         //    matches the Android behaviour and slashes Supabase egress for
