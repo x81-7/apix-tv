@@ -64,6 +64,15 @@ public final class HandshakeClient {
             while ((n = is.read(buf)) > 0) baos.write(buf, 0, n);
             String resp = baos.toString("UTF-8");
             JSONObject jo = new JSONObject(resp);
+            // If response is the AES-GCM envelope { iv, data }, decrypt it.
+            if (code >= 200 && code < 300 && jo.has("iv") && jo.has("data")) {
+                try {
+                    String plain = com.apix.app.PayloadCipher.decryptEnvelope(resp);
+                    jo = new JSONObject(plain);
+                } catch (Throwable dec) {
+                    Log.w("HS", "envelope decrypt failed", dec);
+                }
+            }
             v.status = jo.optString("status", "ACTIVE");
             v.banUntil = jo.optString("ban_until", null);
             v.reason = jo.optString("ban_reason", null);
