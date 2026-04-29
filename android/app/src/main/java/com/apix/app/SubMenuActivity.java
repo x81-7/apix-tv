@@ -70,6 +70,10 @@ public class SubMenuActivity extends AppCompatActivity {
                 ch.androidStream = sc.androidStream;
                 ch.androidActionType = sc.androidActionType;
                 ch.preferredPlayer = sc.preferredPlayer;
+                ch.forcedAspectRatio = sc.forcedAspectRatio;
+                ch.lockAspectRatio = sc.lockAspectRatio;
+                ch.offlineCacheEnabled = sc.offlineCacheEnabled;
+                ch.cacheVersion = sc.cacheVersion;
                 channels.add(ch);
             }
         }
@@ -113,6 +117,10 @@ public class SubMenuActivity extends AppCompatActivity {
         // بناء الـ config أولاً قبل استخدامه
         StreamConfig config = new StreamConfig();
         config.title = channel.name;
+        config.forcedAspectRatio = channel.androidStream != null && channel.androidStream.forcedAspectRatio != null
+            ? channel.androidStream.forcedAspectRatio : channel.forcedAspectRatio;
+        config.lockAspectRatio = channel.androidStream != null
+            ? channel.androidStream.lockAspectRatio : channel.lockAspectRatio;
 
         if (channel.androidStream != null && channel.androidStream.url != null) {
             config.url = channel.androidStream.url;
@@ -173,6 +181,18 @@ public class SubMenuActivity extends AppCompatActivity {
 
             config.backupUrl = channel.androidStream.backupUrl;
             config.subtitleUrl = channel.androidStream.subtitleUrl;
+            config.forcedAspectRatio = channel.androidStream.forcedAspectRatio != null ? channel.androidStream.forcedAspectRatio : config.forcedAspectRatio;
+            config.lockAspectRatio = channel.androidStream.lockAspectRatio;
+            if (channel.androidStream.logoOverlay != null) {
+                config.logoOverlay = new StreamConfig.LogoOverlay();
+                config.logoOverlay.url = channel.androidStream.logoOverlay.url;
+                config.logoOverlay.position = channel.androidStream.logoOverlay.position;
+                config.logoOverlay.offsetX = channel.androidStream.logoOverlay.offsetX;
+                config.logoOverlay.offsetY = channel.androidStream.logoOverlay.offsetY;
+                config.logoOverlay.width = channel.androidStream.logoOverlay.width;
+                config.logoOverlay.height = channel.androidStream.logoOverlay.height;
+                config.logoOverlay.opacity = channel.androidStream.logoOverlay.opacity;
+            }
 
             if (channel.androidStream.audioSources != null) {
                 config.audioSources = new java.util.ArrayList<>();
