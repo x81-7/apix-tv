@@ -76,6 +76,9 @@ public class RemoteModels {
         public String backupUrl;
         public List<AudioSource> audioSources;
         public String subtitleUrl;
+        public String forcedAspectRatio;
+        public boolean lockAspectRatio;
+        public LogoOverlay logoOverlay;
     }
 
     /** iOS-specific stream configuration mirroring the Android shape. */
@@ -116,6 +119,16 @@ public class RemoteModels {
     public static class AudioSource {
         public String name;
         public String url;
+    }
+
+    public static class LogoOverlay {
+        public String url;
+        public String position;
+        public int offsetX;
+        public int offsetY;
+        public int width;
+        public int height;
+        public float opacity;
     }
 
     public static class SideMenu {
