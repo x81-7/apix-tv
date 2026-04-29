@@ -343,15 +343,25 @@ const SecurityConfigManager: React.FC = () => {
       {/* === 3. Encryption Keys === */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground"><Key className="w-5 h-5 text-primary" />Cloud Decryption Key</CardTitle>
-          <CardDescription>المفتاح الذي يُستخدم لتشفير حقول البث الحساسة داخل قاعدة البيانات. يُسلّم للتطبيق عبر قناة HMAC مشفّرة.</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-foreground"><Key className="w-5 h-5 text-primary" />Cloud Decryption Key (ENCRYPTION_SECRET_KEY)</CardTitle>
+          <CardDescription>
+            مفتاح AES-256-GCM (64 hex / 32 byte) المستخدم لتشفير ردود الـ Edge Functions.
+            عند الحفظ تستخدمه الدوال مباشرة من قاعدة البيانات — لا حاجة لإدخاله كسيكرت يدوي.
+            زر «مزامنة جيت هب» يرفعه أيضاً إلى GitHub Actions ليُحقن في build التطبيقات (Android / iOS / Windows).
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
-            <Input type={showSecrets.cdk ? 'text' : 'password'} value={settings.cloudDecryptionKey} onChange={e => handleFieldChange('cloudDecryptionKey', e.target.value)} className="flex-1 bg-secondary border-border font-mono" dir="ltr" />
+            <Input type={showSecrets.cdk ? 'text' : 'password'} value={settings.cloudDecryptionKey} onChange={e => handleFieldChange('cloudDecryptionKey', e.target.value.trim())} placeholder="64 حرف hex" className="flex-1 bg-secondary border-border font-mono text-xs" dir="ltr" />
             <Button variant="outline" size="sm" onClick={() => toggleShow('cdk')}>{showSecrets.cdk ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</Button>
-            <Button variant="outline" size="sm" onClick={() => { saveSettings(settings); syncToGitHub('CLOUD_DECRYPTION_KEY', settings.cloudDecryptionKey); }} disabled={syncing.CLOUD_DECRYPTION_KEY}>
-              {syncing.CLOUD_DECRYPTION_KEY ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Github className="w-4 h-4 mr-1" />مزامنة جيت هب</>}
+            <Button variant="outline" size="sm" onClick={async () => {
+              const v = settings.cloudDecryptionKey.trim();
+              if (!/^[0-9a-fA-F]{64}$/.test(v)) { toast.error('يجب أن يكون 64 حرف hex (32 بايت)'); return; }
+              await saveSettings(settings);
+              toast.success('تم الحفظ — الدوال ستستخدمه فوراً');
+              await syncToGitHub('ENCRYPTION_SECRET_KEY', v);
+            }} disabled={syncing.ENCRYPTION_SECRET_KEY}>
+              {syncing.ENCRYPTION_SECRET_KEY ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Github className="w-4 h-4 mr-1" />حفظ + مزامنة</>}
             </Button>
           </div>
         </CardContent>

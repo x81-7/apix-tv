@@ -16,7 +16,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ENCRYPTION_SECRET_KEY = Deno.env.get("ENCRYPTION_SECRET_KEY") ?? "";
 
 const SOFT_TTL_MS = 30_000;
 
@@ -54,9 +53,28 @@ function decodeKey(raw: string): Uint8Array {
   return out;
 }
 
+async function resolveSecret(): Promise<string> {
+  // 1) Panel-managed value (system_settings.security_config.cloudDecryptionKey)
+  try {
+    const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data } = await sb
+      .from("system_settings")
+      .select("value")
+      .eq("key", "security_config")
+      .maybeSingle();
+    const v = (data?.value ?? null) as Record<string, unknown> | null;
+    const k = v?.cloudDecryptionKey;
+    if (typeof k === "string" && k.trim()) return k.trim();
+  } catch (_) { /* fall through */ }
+  // 2) Legacy env-var fallback
+  return Deno.env.get("ENCRYPTION_SECRET_KEY") ?? "";
+}
+
 async function getKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
-  const raw = decodeKey(ENCRYPTION_SECRET_KEY);
+  const secret = await resolveSecret();
+  if (!secret) throw new Error("No encryption key configured (panel or env)");
+  const raw = decodeKey(secret);
   cachedKey = await crypto.subtle.importKey(
     "raw",
     raw,
@@ -148,16 +166,10 @@ Deno.serve(async (req) => {
 
     if (req.method === "POST" && url.pathname.endsWith("/invalidate")) {
       memCache = null;
+      cachedKey = null; // also flush key so panel updates take effect immediately
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    }
-
-    if (!ENCRYPTION_SECRET_KEY) {
-      return new Response(
-        JSON.stringify({ error: "Server misconfigured: ENCRYPTION_SECRET_KEY missing" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
     }
 
     const ifNoneMatch = req.headers.get("if-none-match") ?? "";
