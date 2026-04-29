@@ -21,7 +21,9 @@ data class Channel(
     var preferredPlayer: String? = null,
     var androidStream: AndroidStreamConfig? = null,
     var androidActionType: String? = null,
-    var pinCode: String? = null
+    var pinCode: String? = null,
+    var forcedAspectRatio: String? = null,
+    var lockAspectRatio: Boolean = false
 )
 
 data class StreamConfig(
@@ -117,7 +119,9 @@ data class SubChannel(
     var hidden: Boolean = false,
     var androidStream: AndroidStreamConfig? = null,
     var androidActionType: String? = null,
-    var pinCode: String? = null
+    var pinCode: String? = null,
+    var forcedAspectRatio: String? = null,
+    var lockAspectRatio: Boolean = false
 )
 
 /**
