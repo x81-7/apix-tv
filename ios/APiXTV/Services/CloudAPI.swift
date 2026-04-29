@@ -56,17 +56,23 @@ final class CloudAPI {
                 return Bundle(categories: [], channels: [], sideMenus: [], subChannels: [], notModified: true)
             }
             guard 200..<300 ~= http.statusCode else { return nil }
+            // cached-data is AES-256-GCM encrypted ({iv,data}). Decrypt first.
+            let plain: Data
+            do {
+                plain = try PayloadCipher.decrypt(envelope: data)
+            } catch {
+                #if DEBUG
+                print("CloudAPI.fetchBundle decrypt error:", error)
+                #endif
+                return nil
+            }
             struct Wrapper: Decodable {
                 let categories: [CategoryRow]
                 let channels: [Channel]
                 let sideMenus: [SideMenu]
                 let subChannels: [SubChannel]
-                // No explicit CodingKeys — rely on `convertFromSnakeCase` so
-                // server keys "side_menus" / "sub_channels" map automatically
-                // to camelCase. (Mixing explicit raw values with the snake-case
-                // strategy silently breaks decoding.)
             }
-            let w = try decoder.decode(Wrapper.self, from: data)
+            let w = try decoder.decode(Wrapper.self, from: plain)
             return Bundle(
                 categories: w.categories,
                 channels: w.channels,

@@ -22,6 +22,12 @@ android {
         def extKey = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY") ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
         buildConfigField "String", "X_DP_K", "\"${extKey}\""
 
+        // AES-256-GCM key (hex, 64 chars / 32 bytes) used to decrypt the
+        // cached-data Edge Function payload. MUST match the Supabase env
+        // var ENCRYPTION_SECRET_KEY. Override at build time via env var.
+        def encKey = System.getenv("ENCRYPTION_SECRET_KEY") ?: "0000000000000000000000000000000000000000000000000000000000000000"
+        buildConfigField "String", "ENCRYPTION_SECRET_KEY", "\"${encKey}\""
+
         // AdMob App ID is now baked directly into AndroidManifest.xml by the
         // dashboard (update-android-config edge function). No env var, no
         // placeholder, no fallback path — the value in the manifest is the

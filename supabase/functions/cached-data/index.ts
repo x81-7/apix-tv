@@ -1,11 +1,8 @@
 // Edge Function: cached-data
 // Aggregates categories + channels + side_menus + sub_channels + system_settings
-// into a single response, with ETag (max(updated_at) + cache_version sum) and
-// long Cache-Control. Used by Android/iOS/Windows apps to drastically reduce DB
-// load — clients send If-None-Match and receive 304 when nothing changed.
-//
-// In-memory edge cache (per warm instance) stores the last computed bundle so
-// concurrent users hit DB at most once per ~30s window.
+// into a single response, AES-256-GCM encrypted with ENCRYPTION_SECRET_KEY
+// (32-byte key, hex or base64). Always returns { iv, data } — clients MUST
+// decrypt to read channels/DRM keys. ETag still works for 304s.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -19,11 +16,8 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ENCRYPTION_SECRET_KEY = Deno.env.get("ENCRYPTION_SECRET_KEY") ?? "";
 
-// Soft TTL — within this window, warm instance returns the cached payload
-// without re-querying Postgres. Set to 30s; clients still always send
-// If-None-Match so they discover changes nearly instantly when a new instance
-// serves them.
 const SOFT_TTL_MS = 30_000;
 
 interface Bundle {
@@ -32,13 +26,67 @@ interface Bundle {
   side_menus: any[];
   sub_channels: any[];
   system_settings: any[];
-  bundle_version: number; // sum of cache_version across channels+sub_channels
+  bundle_version: number;
   generated_at: number;
 }
 
-let memCache: { etag: string; body: string; computedAt: number } | null = null;
+let memCache: { etag: string; encrypted: string; computedAt: number } | null = null;
+let cachedKey: CryptoKey | null = null;
 
-async function buildBundle(): Promise<{ bundle: Bundle; etag: string; body: string }> {
+// ---------- Key + encryption helpers ----------
+
+function decodeKey(raw: string): Uint8Array {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("ENCRYPTION_SECRET_KEY is not set");
+  // Try hex first (64 chars)
+  if (/^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length === 64) {
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) out[i] = parseInt(trimmed.substr(i * 2, 2), 16);
+    return out;
+  }
+  // Otherwise treat as base64
+  const bin = atob(trimmed.replace(/-/g, "+").replace(/_/g, "/"));
+  if (bin.length !== 32) {
+    throw new Error(`ENCRYPTION_SECRET_KEY must decode to 32 bytes (got ${bin.length})`);
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function getKey(): Promise<CryptoKey> {
+  if (cachedKey) return cachedKey;
+  const raw = decodeKey(ENCRYPTION_SECRET_KEY);
+  cachedKey = await crypto.subtle.importKey(
+    "raw",
+    raw,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"],
+  );
+  return cachedKey;
+}
+
+function b64encode(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.byteLength; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+async function encryptPayload(plain: string): Promise<{ iv: string; data: string }> {
+  const key = await getKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode(plain),
+  );
+  return { iv: b64encode(iv), data: b64encode(new Uint8Array(ct)) };
+}
+
+// ---------- Bundle build ----------
+
+async function buildBundle(): Promise<{ etag: string; encrypted: string }> {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false },
   });
@@ -57,15 +105,10 @@ async function buildBundle(): Promise<{ bundle: Bundle; etag: string; body: stri
   if (subs.error) throw subs.error;
   if (settings.error) throw settings.error;
 
-  // Compute a global bundle_version: sum of cache_version on channels+sub_channels.
-  // Any change in the panel bumps a row, which changes this sum → ETag changes →
-  // clients refetch. Other tables (categories/menus/settings) use updated_at for
-  // hashing.
   let bundleVersion = 0;
   for (const c of chans.data ?? []) bundleVersion += Number((c as any).cache_version ?? 0);
   for (const s of subs.data ?? []) bundleVersion += Number((s as any).cache_version ?? 0);
 
-  // Hash other tables' max updated_at into a short suffix.
   const maxTs = (rows: any[]) =>
     rows.reduce((m, r) => {
       const t = Date.parse(r.updated_at ?? r.created_at ?? "") || 0;
@@ -87,10 +130,13 @@ async function buildBundle(): Promise<{ bundle: Bundle; etag: string; body: stri
     generated_at: Date.now(),
   };
 
-  const etag = `W/"v${bundleVersion}-a${auxTs}"`;
-  const body = JSON.stringify(bundle);
-  return { bundle, etag, body };
+  const plain = JSON.stringify(bundle);
+  const enc = await encryptPayload(plain);
+  const etag = `W/"v${bundleVersion}-a${auxTs}-e1"`; // suffix bumped: payload format = encrypted v1
+  return { etag, encrypted: JSON.stringify(enc) };
 }
+
+// ---------- HTTP handler ----------
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -100,8 +146,6 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
 
-    // POST /invalidate — called by panel after admin-write to drop the warm cache
-    // immediately so clients see new data on next request.
     if (req.method === "POST" && url.pathname.endsWith("/invalidate")) {
       memCache = null;
       return new Response(JSON.stringify({ ok: true }), {
@@ -109,26 +153,32 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (!ENCRYPTION_SECRET_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Server misconfigured: ENCRYPTION_SECRET_KEY missing" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const ifNoneMatch = req.headers.get("if-none-match") ?? "";
 
-    let payload: { etag: string; body: string };
-    let cacheStatus: "HIT" | "MISS" | "REVALIDATE";
+    let payload: { etag: string; encrypted: string };
+    let cacheStatus: "HIT" | "MISS";
 
     if (memCache && Date.now() - memCache.computedAt < SOFT_TTL_MS) {
-      payload = { etag: memCache.etag, body: memCache.body };
+      payload = { etag: memCache.etag, encrypted: memCache.encrypted };
       cacheStatus = "HIT";
     } else {
       const fresh = await buildBundle();
       memCache = {
         etag: fresh.etag,
-        body: fresh.body,
+        encrypted: fresh.encrypted,
         computedAt: Date.now(),
       };
-      payload = { etag: fresh.etag, body: fresh.body };
-      cacheStatus = memCache ? "MISS" : "REVALIDATE";
+      payload = fresh;
+      cacheStatus = "MISS";
     }
 
-    // 304 path — saves DB & egress (just headers).
     if (ifNoneMatch && ifNoneMatch === payload.etag) {
       return new Response(null, {
         status: 304,
@@ -141,7 +191,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(payload.body, {
+    return new Response(payload.encrypted, {
       status: 200,
       headers: {
         ...corsHeaders,
@@ -149,6 +199,7 @@ Deno.serve(async (req) => {
         ETag: payload.etag,
         "Cache-Control": "public, max-age=10, stale-while-revalidate=60",
         "X-Cache": cacheStatus,
+        "X-Payload-Encryption": "AES-256-GCM",
       },
     });
   } catch (e) {

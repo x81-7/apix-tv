@@ -57,5 +57,11 @@
             </array>
         </dict>
     </array>
+    <!-- AES-256-GCM key (hex, 64 chars) used to decrypt the cached-data
+         Edge Function payload. MUST match the Supabase env var
+         ENCRYPTION_SECRET_KEY. CI replaces this placeholder via PlistBuddy
+         before archiving. -->
+    <key>APIX_ENCRYPTION_KEY</key>
+    <string>$(APIX_ENCRYPTION_KEY)</string>
 </dict>
 </plist>

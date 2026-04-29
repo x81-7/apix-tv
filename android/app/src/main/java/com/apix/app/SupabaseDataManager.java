@@ -167,8 +167,18 @@ public class SupabaseDataManager {
                 String line;
                 while ((line = r.readLine()) != null) sb.append(line);
             }
-            resp.body = sb.toString();
-            JSONObject obj = new JSONObject(resp.body);
+            String envelope = sb.toString();
+            // The Edge Function always returns AES-256-GCM encrypted JSON
+            // { "iv": "...", "data": "..." }. Decrypt before parsing.
+            String plain;
+            try {
+                plain = PayloadCipher.decryptEnvelope(envelope);
+            } catch (Exception decErr) {
+                Log.e(TAG, "cached-data decrypt failed", decErr);
+                return resp;
+            }
+            resp.body = plain;
+            JSONObject obj = new JSONObject(plain);
             resp.categoriesJson = obj.optJSONArray("categories") != null ? obj.getJSONArray("categories").toString() : "[]";
             resp.channelsJson  = obj.optJSONArray("channels") != null ? obj.getJSONArray("channels").toString() : "[]";
             resp.menusJson     = obj.optJSONArray("side_menus") != null ? obj.getJSONArray("side_menus").toString() : "[]";
