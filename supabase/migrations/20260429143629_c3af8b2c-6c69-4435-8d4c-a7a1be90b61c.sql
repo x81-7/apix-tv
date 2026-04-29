@@ -1,5 +1,5 @@
 -- ============================================================
--- APiX TV — full schema (consolidated for new Cloud project)
+-- APiX TV — full consolidated schema for fresh Cloud project
 -- ============================================================
 
 -- updated_at helper
@@ -10,6 +10,19 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
+
+-- bump_cache_version helper
+CREATE OR REPLACE FUNCTION public.bump_cache_version()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.cache_version := COALESCE(OLD.cache_version, 0) + 1;
+  NEW.updated_at    := now();
+  RETURN NEW;
+END;
+$$;
 
 -- 1) system_settings
 CREATE TABLE public.system_settings (
@@ -78,6 +91,7 @@ CREATE TABLE public.channels (
   windows_action_type TEXT,
   offline_cache_enabled BOOLEAN NOT NULL DEFAULT false,
   pin_code TEXT,
+  cache_version BIGINT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -103,6 +117,7 @@ CREATE TABLE public.sub_channels (
   windows_action_type TEXT,
   offline_cache_enabled BOOLEAN NOT NULL DEFAULT false,
   pin_code TEXT,
+  cache_version BIGINT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -187,35 +202,39 @@ CREATE TABLE public.integrity_logs (
 );
 CREATE INDEX idx_integrity_device ON public.integrity_logs(device_id);
 
--- updated_at triggers
+-- updated_at + cache_version triggers
 CREATE TRIGGER trg_system_settings_updated BEFORE UPDATE ON public.system_settings
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER trg_categories_updated BEFORE UPDATE ON public.categories
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER trg_side_menus_updated BEFORE UPDATE ON public.side_menus
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER trg_channels_updated BEFORE UPDATE ON public.channels
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER trg_sub_channels_updated BEFORE UPDATE ON public.sub_channels
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER trg_custom_ads_updated BEFORE UPDATE ON public.custom_ads
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER trg_app_users_updated BEFORE UPDATE ON public.app_users
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+CREATE TRIGGER trg_channels_bump_version
+BEFORE UPDATE ON public.channels
+FOR EACH ROW EXECUTE FUNCTION public.bump_cache_version();
+
+CREATE TRIGGER trg_sub_channels_bump_version
+BEFORE UPDATE ON public.sub_channels
+FOR EACH ROW EXECUTE FUNCTION public.bump_cache_version();
+
 -- RLS
-ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.encryption_keys ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.side_menus ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sub_channels ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.backup_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.custom_ads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ban_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.integrity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_settings    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.encryption_keys    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.side_menus         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.channels           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sub_channels       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.backup_history     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_ads         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_notifications  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_users          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ban_history        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.integrity_logs     ENABLE ROW LEVEL SECURITY;
 
 -- Public read policies
 CREATE POLICY "Public read categories"      ON public.categories      FOR SELECT USING (true);
@@ -242,11 +261,25 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('encrypted-keys', 'encrypted-keys', true)
 ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY "Public read app-builds" ON storage.objects FOR SELECT USING (bucket_id = 'app-builds');
-CREATE POLICY "Auth upload app-builds" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'app-builds');
-CREATE POLICY "Auth update app-builds" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'app-builds');
-CREATE POLICY "Auth delete app-builds" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'app-builds');
-CREATE POLICY "Public read of encrypted-keys" ON storage.objects FOR SELECT USING (bucket_id = 'encrypted-keys');
+CREATE POLICY "Public read app-builds files"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'app-builds' AND name IS NOT NULL);
+
+CREATE POLICY "Auth upload app-builds"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'app-builds');
+
+CREATE POLICY "Auth update app-builds"
+ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'app-builds');
+
+CREATE POLICY "Auth delete app-builds"
+ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'app-builds');
+
+CREATE POLICY "Public read external_key.enc"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'encrypted-keys' AND name = 'external_key.enc');
 
 -- Seeds
 INSERT INTO public.system_settings (key, value, description) VALUES
@@ -260,6 +293,6 @@ INSERT INTO public.system_settings (key, value, description) VALUES
     'showSettingsSection', true, 'darkModeDefault', true, 'allowOrientationChange', true
   ), 'General app behavior settings'),
   ('security_config',
-    '{"official_signature_sha256":"","telegram_url":"https://t.me/your_channel","temp_ban_minutes":15,"temp_ban_threshold":4,"perma_ban_threshold":6,"strike_window_hours":24,"reset_after_days":2,"integrity_check_enabled":true,"anti_debug_enabled":true,"anti_hook_enabled":true}'::jsonb,
-    'Anti-tamper and ban system configuration')
+    '{"official_signature_sha256":"","telegram_url":"https://t.me/your_channel","temp_ban_minutes":15,"temp_ban_threshold":4,"perma_ban_threshold":6,"strike_window_hours":24,"reset_after_days":2,"integrity_check_enabled":true,"anti_debug_enabled":true,"anti_hook_enabled":true,"emulator_block_strict":true,"root_block":false,"developer_override_uuids":[]}'::jsonb,
+    'Security configuration: strict emulator block, no root block, developer-bypass UUIDs')
 ON CONFLICT (key) DO NOTHING;
