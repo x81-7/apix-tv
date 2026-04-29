@@ -253,6 +253,10 @@ public class SplashActivity extends AppCompatActivity {
                 }
             } catch (Exception ignored) {}
 
+            // Mirror developer-allow-list (UUIDs) into local prefs so the
+            // emulator strict-ban gate works offline on next launch.
+            try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
+
             GateActivity.revalidateBypass(SplashActivity.this, currentCode);
             boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
 
