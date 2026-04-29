@@ -145,7 +145,9 @@ fun AppNavigation(
                                     id = sc.id, name = sc.name, imageUrl = sc.imageUrl,
                                     sortOrder = sc.sortOrder, actionType = "direct_play",
                                     stream = sc.stream, androidStream = sc.androidStream,
-                                    androidActionType = sc.androidActionType
+                                    androidActionType = sc.androidActionType,
+                                    forcedAspectRatio = sc.forcedAspectRatio,
+                                    lockAspectRatio = sc.lockAspectRatio
                                 )
                             } ?: emptyList()
                         navigateTo(Screen.SubChannels(channel.name, subChannels))
@@ -373,7 +375,7 @@ fun AppNavigation(
                     val menu = sideMenus[targetId]
                     if (menu != null) {
                         val subChannels = menu.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }?.map { sc ->
-                            Channel(id = sc.id, name = sc.name, imageUrl = sc.imageUrl, sortOrder = sc.sortOrder, actionType = "direct_play", stream = sc.stream, androidStream = sc.androidStream, androidActionType = sc.androidActionType)
+                            Channel(id = sc.id, name = sc.name, imageUrl = sc.imageUrl, sortOrder = sc.sortOrder, actionType = "direct_play", stream = sc.stream, androidStream = sc.androidStream, androidActionType = sc.androidActionType, forcedAspectRatio = sc.forcedAspectRatio, lockAspectRatio = sc.lockAspectRatio)
                         } ?: emptyList()
                         navigateTo(Screen.SubChannels(menu.name, subChannels))
                     }
@@ -381,7 +383,7 @@ fun AppNavigation(
                 "sub_channel" -> {
                     val targetId = action.optString("targetId")
                     val channel = sideMenus.values.asSequence().flatMap { it.channels?.values?.asSequence() ?: emptySequence() }.firstOrNull { it.id == targetId }
-                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = channel.androidStream, androidActionType = channel.androidActionType))
+                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = channel.androidStream, androidActionType = channel.androidActionType, forcedAspectRatio = channel.forcedAspectRatio, lockAspectRatio = channel.lockAspectRatio))
                 }
                 "external_link" -> {
                     val externalUrl = action.optString("externalUrl")
