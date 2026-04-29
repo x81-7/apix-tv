@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Cloud, Upload, HardDrive } from 'lucide-react';
+import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2 } from 'lucide-react';
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +15,9 @@ type Settings = {
   rotation_days?: number;
 };
 
+type AudioSource = { name: string; url: string };
+type SubChannelOption = { id: string; name: string; side_menu_id: string; android_stream?: any; menuName?: string };
+
 const SETTINGS_KEY = 'hybrid_cloud_config';
 
 const SystemSettingsManager: React.FC = () => {
@@ -22,7 +25,11 @@ const SystemSettingsManager: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [bulkCaching, setBulkCaching] = useState<null | 'on' | 'off'>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [audioSources, setAudioSources] = useState<AudioSource[]>([{ name: '', url: '' }]);
+  const [subChannelOptions, setSubChannelOptions] = useState<SubChannelOption[]>([]);
+  const [selectedSubChannels, setSelectedSubChannels] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>({
     fetch_strategy: 'local_first',
     rotation_days: 7,
