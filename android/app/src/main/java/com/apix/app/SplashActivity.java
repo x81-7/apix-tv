@@ -8,7 +8,9 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.ProgressBar;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.provider.Settings;
 
@@ -29,6 +31,13 @@ public class SplashActivity extends AppCompatActivity {
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
+    private LinearLayout updatePanel;
+    private TextView updateTitle;
+    private TextView updateMessage;
+    private TextView updateStatus;
+    private ProgressBar updateProgress;
+    private Button updateInstallButton;
+    private Button updateSkipButton;
     private boolean bootStarted = false;
 
     @Override
@@ -62,6 +71,13 @@ public class SplashActivity extends AppCompatActivity {
         statusText = findViewById(R.id.splash_status);
         progressBar = findViewById(R.id.splash_progress);
         errorText = findViewById(R.id.splash_error);
+        updatePanel = findViewById(R.id.splash_update_panel);
+        updateTitle = findViewById(R.id.update_title);
+        updateMessage = findViewById(R.id.update_message);
+        updateStatus = findViewById(R.id.update_status);
+        updateProgress = findViewById(R.id.update_progress);
+        updateInstallButton = findViewById(R.id.update_install_button);
+        updateSkipButton = findViewById(R.id.update_skip_button);
 
         statusText.setVisibility(View.VISIBLE);
         statusText.setText("التحقق من إذن الإشعارات...");
