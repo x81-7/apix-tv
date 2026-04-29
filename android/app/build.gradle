@@ -14,8 +14,12 @@ android {
         versionCode 2
         versionName "1.0"
 
-        buildConfigField "String", "CLOUD_URL", '"https://xfrcjwybxftxspvpegfb.supabase.co"'
-        buildConfigField "String", "CLOUD_ANON_KEY", '"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmcmNqd3lieGZ0eHNwdnBlZ2ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzkyMzksImV4cCI6MjA5Mjk1NTIzOX0.xtoVGdA1zNJBRKerY16azg8NQSMXwK6Xmid7TERKAR0"'
+        // === Lovable Cloud (NEW project, post-migration 2026-04-29) ===
+        // Override at build time via env vars CLOUD_URL / CLOUD_ANON_KEY
+        def cloudUrl = System.getenv("CLOUD_URL") ?: "https://fefrptfgqkiiwfqcjxbg.supabase.co"
+        def cloudKey = System.getenv("CLOUD_ANON_KEY") ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlZnJwdGZncWtpaXdmcWNqeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0Njc4NTUsImV4cCI6MjA5MzA0Mzg1NX0.vOGObG_IuNlf6oieE1vK0JdeERn_XWzFLqIDIAFgZow"
+        buildConfigField "String", "CLOUD_URL", "\"${cloudUrl}\""
+        buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
 
         // Obfuscated build-time field for external panel decryption (AES-256, 32-byte hex / base64)
         // Default key MUST match the panel generator (see supabase/functions / web watch.html).
