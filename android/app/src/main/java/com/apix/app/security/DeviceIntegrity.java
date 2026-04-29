@@ -137,6 +137,87 @@ public final class DeviceIntegrity {
     }
 
     /**
+     * STRICT emulator detection. Per project policy emulators are banned
+     * outright (primary RE environment). Returns true when the current
+     * runtime looks like an Android emulator (LDPlayer, BlueStacks, Genymotion,
+     * Android Studio AVD, MEmu, Nox, etc.).
+     */
+    public static boolean isEmulator() {
+        try {
+            String fp  = String.valueOf(Build.FINGERPRINT).toLowerCase();
+            String mdl = String.valueOf(Build.MODEL).toLowerCase();
+            String mfr = String.valueOf(Build.MANUFACTURER).toLowerCase();
+            String brd = String.valueOf(Build.BRAND).toLowerCase();
+            String dev = String.valueOf(Build.DEVICE).toLowerCase();
+            String prd = String.valueOf(Build.PRODUCT).toLowerCase();
+            String hw  = String.valueOf(Build.HARDWARE).toLowerCase();
+            String bd  = String.valueOf(Build.BOARD).toLowerCase();
+
+            // 1) Generic Android Studio / SDK emulator markers
+            if (fp.startsWith("generic") || fp.startsWith("unknown") || fp.contains("generic_x86")
+                    || fp.contains("test-keys") || fp.contains("emu") || fp.contains("vbox")
+                    || fp.contains("sdk_gphone") || fp.contains("ranchu") || fp.contains("goldfish")) return true;
+            if (mdl.contains("google_sdk") || mdl.contains("emulator") || mdl.contains("android sdk")) return true;
+            if (mfr.contains("genymotion")) return true;
+            if (brd.startsWith("generic") && dev.startsWith("generic")) return true;
+            if (prd.contains("sdk") || prd.contains("emulator") || prd.contains("simulator") || prd.contains("vbox")) return true;
+            if (hw.contains("goldfish") || hw.contains("ranchu") || hw.contains("vbox") || hw.contains("ttvm")) return true;
+            if (bd.contains("qemu") || bd.contains("vbox")) return true;
+
+            // 2) LDPlayer / BlueStacks / Nox / MEmu — popular RE emulators
+            String[] emuMarkers = {"ldplayer", "bluestacks", "noxplayer", "nox ", "memu", "andy",
+                    "droid4x", "ttvm", "windroye", "mumu", "phoenix os"};
+            String haystack = fp + "|" + mdl + "|" + mfr + "|" + brd + "|" + dev + "|" + prd + "|" + hw + "|" + bd;
+            for (String m : emuMarkers) if (haystack.contains(m)) return true;
+
+            // 3) Telltale files only present in emulator images
+            String[] emuFiles = {
+                "/dev/socket/qemud", "/dev/qemu_pipe", "/system/lib/libc_malloc_debug_qemu.so",
+                "/sys/qemu_trace", "/system/bin/qemu-props", "/dev/socket/genyd",
+                "/dev/socket/baseband_genyd", "/system/lib/libdroid4x.so",
+                "/system/bin/microvirt-prop", "/system/bin/nox-prop", "/system/bin/ldinit",
+                "/system/bin/windroyed", "/proc/ldbinder"
+            };
+            for (String p : emuFiles) {
+                try { if (new File(p).exists()) return true; } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /** Reads developer allow-list (UUIDs) from system_settings cache. */
+    private static java.util.Set<String> developerOverrides(Context ctx) {
+        try {
+            android.content.SharedPreferences sp =
+                    ctx.getSharedPreferences("apix_dev_overrides", Context.MODE_PRIVATE);
+            String json = sp.getString("developer_uuids", null);
+            if (json == null || json.isEmpty()) return java.util.Collections.emptySet();
+            org.json.JSONArray arr = new org.json.JSONArray(json);
+            java.util.HashSet<String> out = new java.util.HashSet<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String v = arr.optString(i, null);
+                if (v != null && !v.isEmpty()) out.add(v.toLowerCase());
+            }
+            return out;
+        } catch (Throwable t) {
+            return java.util.Collections.emptySet();
+        }
+    }
+
+    /**
+     * STRICT emulator gate consumed by SplashActivity.
+     * Returns true ONLY when emulator is detected AND the device id is NOT
+     * present in the developer override list (system_settings.developer_uuids).
+     */
+    public static boolean shouldStrictBanEmulator(Context ctx) {
+        if (!isEmulator()) return false;
+        java.util.Set<String> overrides = developerOverrides(ctx);
+        if (overrides.isEmpty()) return true;
+        String myId = String.valueOf(deviceId(ctx)).toLowerCase();
+        return !overrides.contains(myId);
+    }
+
+    /**
      * isFreshInstall = true the FIRST time we see this install (or after the
      * user wiped app data). Stored in plain SharedPreferences which gets
      * cleared on uninstall + clear-data.

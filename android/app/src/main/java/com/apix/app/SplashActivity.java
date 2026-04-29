@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.provider.Settings;
@@ -33,6 +34,29 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Block screen-recording / casting from capturing splash content.
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE);
+
+        // === STRICT EMULATOR BAN (per project policy) ===
+        // Allowed only when this device's UUID is on the developer override list
+        // (system_settings.developer_uuids → mirrored into local prefs by
+        //  CloudDataManager / SupabaseDataManager on each successful sync).
+        if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
+            try {
+                android.widget.Toast.makeText(this,
+                        "تشغيل التطبيق على المحاكيات غير مسموح",
+                        android.widget.Toast.LENGTH_LONG).show();
+            } catch (Throwable ignored) {}
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                finishAffinity();
+                System.exit(0);
+            }, 1500);
+            setContentView(R.layout.activity_splash);
+            return;
+        }
+
         setContentView(R.layout.activity_splash);
 
         statusText = findViewById(R.id.splash_status);
@@ -228,6 +252,10 @@ public class SplashActivity extends AppCompatActivity {
                     currentCode = gate.optString("bypassCode", "");
                 }
             } catch (Exception ignored) {}
+
+            // Mirror developer-allow-list (UUIDs) into local prefs so the
+            // emulator strict-ban gate works offline on next launch.
+            try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
 
             GateActivity.revalidateBypass(SplashActivity.this, currentCode);
             boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
