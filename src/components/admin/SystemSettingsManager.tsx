@@ -237,6 +237,53 @@ const SystemSettingsManager: React.FC = () => {
 
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Volume2 className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">نظام الأصوات الخارجية</h3>
+            <p className="text-sm text-muted-foreground">أنشئ مجموعة أصوات ثم ارفعها دفعة واحدة إلى القنوات الفرعية المحددة.</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {audioSources.map((audio, index) => (
+            <div key={index} className="grid grid-cols-1 md:grid-cols-[180px_1fr_40px] gap-2 items-center">
+              <Input value={audio.name} onChange={(e) => setAudioSources((list) => list.map((a, i) => i === index ? { ...a, name: e.target.value } : a))} placeholder="اسم المصدر" className="bg-secondary border-border" />
+              <Input value={audio.url} onChange={(e) => setAudioSources((list) => list.map((a, i) => i === index ? { ...a, url: e.target.value } : a))} placeholder="https://audio.example.com/live.m3u8" className="bg-secondary border-border font-mono text-sm" dir="ltr" />
+              <Button type="button" variant="ghost" size="icon" onClick={() => setAudioSources((list) => list.filter((_, i) => i !== index).length ? list.filter((_, i) => i !== index) : [{ name: '', url: '' }])}>
+                <Trash2 className="w-4 h-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setAudioSources((list) => [...list, { name: '', url: '' }])}>
+            <Plus className="w-4 h-4 ml-2" /> إضافة مصدر صوتي
+          </Button>
+        </div>
+        <div className="space-y-2">
+          <Label>القنوات الفرعية</Label>
+          <div className="max-h-64 overflow-auto rounded-lg border border-border bg-secondary/40 p-2 space-y-1">
+            {subChannelOptions.length === 0 ? <p className="text-sm text-muted-foreground p-3">لا توجد قنوات فرعية</p> : subChannelOptions.map((ch) => (
+              <label key={ch.id} className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-background cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-primary"
+                  checked={selectedSubChannels.includes(ch.id)}
+                  onChange={(e) => setSelectedSubChannels((ids) => e.target.checked ? [...ids, ch.id] : ids.filter((id) => id !== ch.id))}
+                />
+                <span className="text-sm text-foreground">{ch.name}</span>
+                {ch.menuName && <span className="text-xs text-muted-foreground">{ch.menuName}</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+        <Button onClick={handleApplyAudioSources} disabled={uploadingAudio || selectedSubChannels.length === 0} className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+          {uploadingAudio ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
+          رفع الأصوات إلى القنوات المحددة
+        </Button>
+      </div>
+
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-3">
           <Cloud className="w-5 h-5 text-foreground" />
           <h3 className="text-lg font-bold text-foreground">سلوك التطبيق</h3>
         </div>
