@@ -48,14 +48,15 @@ public class PlayerActivity extends AppCompatActivity {
 
         StreamAnalyzer.analyze(config);
 
-        // Panel-driven aspect ratio enforcement (4 modes: fit, fill, zoom, original)
-        applyAspectRatio(config);
-
         engine = new PlayerEngine(this, config);
         engine.build(playerView);
 
-        // Hide the resize button entirely if the panel locked aspect ratio.
-        applyResizeButtonVisibility(config);
+        // Panel-driven aspect ratio enforcement — applied AFTER engine.build()
+        // so it overrides the layout default (app:resize_mode="fit").
+        applyAspectRatio(config);
+
+        // Wire up the resize button to cycle modes (or hide if panel locked).
+        setupResizeButton(config);
 
         // External audio source: keep main video playing MUTED while a headless
         // ExoPlayer plays the external audio source (m3u8/mp3/etc.) in sync.
