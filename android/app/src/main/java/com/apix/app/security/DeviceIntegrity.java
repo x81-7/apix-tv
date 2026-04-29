@@ -185,10 +185,12 @@ public final class DeviceIntegrity {
         return false;
     }
 
-    /** Reads developer allow-list (UUIDs) from secure prefs cache. */
+    /** Reads developer allow-list (UUIDs) from system_settings cache. */
     private static java.util.Set<String> developerOverrides(Context ctx) {
         try {
-            String json = SecureCacheManager.readString(ctx, "developer_uuids");
+            android.content.SharedPreferences sp =
+                    ctx.getSharedPreferences("apix_dev_overrides", Context.MODE_PRIVATE);
+            String json = sp.getString("developer_uuids", null);
             if (json == null || json.isEmpty()) return java.util.Collections.emptySet();
             org.json.JSONArray arr = new org.json.JSONArray(json);
             java.util.HashSet<String> out = new java.util.HashSet<>();
