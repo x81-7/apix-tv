@@ -48,6 +48,17 @@ const SystemSettingsManager: React.FC = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      const [{ data: subs }, { data: menus }] = await Promise.all([
+        supabase.from('sub_channels').select('id,name,side_menu_id,android_stream').order('sort_order'),
+        supabase.from('side_menus').select('id,name'),
+      ]);
+      const menuMap = new Map((menus ?? []).map((m: any) => [m.id, m.name]));
+      setSubChannelOptions((subs ?? []).map((s: any) => ({ ...s, menuName: menuMap.get(s.side_menu_id) || '' })));
+    })();
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     try {
