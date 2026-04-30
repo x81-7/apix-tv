@@ -226,6 +226,14 @@ Deno.serve(async (req) => {
       }, { onConflict: 'key' });
 
     try {
+      await fetch(`${SUPABASE_URL}/functions/v1/auto-encrypt-push`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+    } catch (_) { /* best effort */ }
+
+    try {
       await fetch(`${SUPABASE_URL}/functions/v1/cached-data/invalidate`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
