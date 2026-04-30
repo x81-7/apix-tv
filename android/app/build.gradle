@@ -14,10 +14,17 @@ android {
         versionCode 2
         versionName "1.3"
 
-        // === Lovable Cloud (NEW project, post-migration 2026-04-29) ===
-        // Override at build time via env vars CLOUD_URL / CLOUD_ANON_KEY
-        def cloudUrl = System.getenv("CLOUD_URL") ?: "https://fefrptfgqkiiwfqcjxbg.supabase.co"
-        def cloudKey = System.getenv("CLOUD_ANON_KEY") ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlZnJwdGZncWtpaXdmcWNqeGJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0Njc4NTUsImV4cCI6MjA5MzA0Mzg1NX0.vOGObG_IuNlf6oieE1vK0JdeERn_XWzFLqIDIAFgZow"
+        // === Lovable Cloud ===
+        // Remix-safe: defaults come from the current project's generated .env,
+        // not from an older project's hardcoded backend.
+        def envFile = rootProject.file("../.env")
+        def envProps = new Properties()
+        if (envFile.exists()) {
+            envFile.withInputStream { stream -> envProps.load(stream) }
+        }
+        def cleanEnv = { value -> value == null ? null : value.toString().trim().replaceAll('^"|"$', '') }
+        def cloudUrl = System.getenv("CLOUD_URL") ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
+        def cloudKey = System.getenv("CLOUD_ANON_KEY") ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_PUBLISHABLE_KEY")) ?: ""
         buildConfigField "String", "CLOUD_URL", "\"${cloudUrl}\""
         buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
 
