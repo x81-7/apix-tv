@@ -27,6 +27,7 @@ const BackupButton: React.FC = () => {
       if (chansRes.error) errors.push(`channels: ${chansRes.error.message}`);
       if (menusRes.error) errors.push(`side_menus: ${menusRes.error.message}`);
       if (subsRes.error) errors.push(`sub_channels: ${subsRes.error.message}`);
+      if (errors.length) throw new Error(errors.join(' • '));
 
       const categories = catsRes.data ?? [];
       const channels = chansRes.data ?? [];
