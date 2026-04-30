@@ -5,8 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 /**
- * زر تنزيل نسخة احتياطية كاملة من قاعدة البيانات
- * يقرأ جميع الجداول بما فيها القنوات وتفاصيلها الكاملة ويحفظها كملف JSON.
+ * زر تنزيل نسخة نقل القنوات فقط.
+ * لا يصدّر إعدادات النظام أو مفاتيح التشفير حتى لا يحمل الريماكس إعدادات مشروع قديم.
  */
 const BackupButton: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -14,14 +14,12 @@ const BackupButton: React.FC = () => {
   const handleBackup = async () => {
     setLoading(true);
     try {
-      // جلب جميع البيانات من Supabase بشكل متوازي
-      const [catsRes, chansRes, menusRes, subsRes, settingsRes, keysRes] = await Promise.all([
+      // جلب بيانات القنوات فقط بشكل متوازي
+      const [catsRes, chansRes, menusRes, subsRes] = await Promise.all([
         supabase.from('categories').select('*').order('sort_order'),
         supabase.from('channels').select('*').order('sort_order'),
         supabase.from('side_menus').select('*').order('sort_order'),
         supabase.from('sub_channels').select('*').order('sort_order'),
-        supabase.from('system_settings').select('*'),
-        supabase.from('encryption_keys').select('id, key_version, algorithm, is_active, activated_at, rotated_at, created_at'),
       ]);
 
       const errors: string[] = [];
@@ -29,14 +27,12 @@ const BackupButton: React.FC = () => {
       if (chansRes.error) errors.push(`channels: ${chansRes.error.message}`);
       if (menusRes.error) errors.push(`side_menus: ${menusRes.error.message}`);
       if (subsRes.error) errors.push(`sub_channels: ${subsRes.error.message}`);
-      if (settingsRes.error) errors.push(`system_settings: ${settingsRes.error.message}`);
-      if (keysRes.error) errors.push(`encryption_keys: ${keysRes.error.message}`);
+      if (errors.length) throw new Error(errors.join(' • '));
 
       const categories = catsRes.data ?? [];
       const channels = chansRes.data ?? [];
       const sideMenus = menusRes.data ?? [];
       const subChannels = subsRes.data ?? [];
-      const systemSettings = settingsRes.data ?? [];
 
       // بناء هيكل مرتبط: كل قسم يحتوي على قنواته
       const categoriesWithChannels = categories.map((cat) => ({
@@ -78,7 +74,6 @@ const BackupButton: React.FC = () => {
             channels: channels.length,
             sideMenus: sideMenus.length,
             subChannels: subChannels.length,
-            systemSettings: systemSettings.length,
           },
           warnings: errors,
         },
@@ -86,14 +81,12 @@ const BackupButton: React.FC = () => {
           categories: categoriesWithChannels,
           sideMenus: sideMenusWithSubs,
           orphanChannels,
-          systemSettings,
-          // بيانات خام للاستيراد لاحقاً
+          // بيانات خام للاستيراد لاحقاً — قنوات فقط بدون إعدادات/مفاتيح المشروع
           raw: {
             categories,
             channels,
             side_menus: sideMenus,
             sub_channels: subChannels,
-            system_settings: systemSettings,
           },
         },
       };
@@ -132,8 +125,7 @@ const BackupButton: React.FC = () => {
       <div>
         <h3 className="text-lg font-bold text-foreground">النسخ الاحتياطي</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          نزّل نسخة كاملة من جميع البيانات (أقسام، قنوات، روابط، مفاتيح، إعدادات)
-          كملف JSON.
+          نزّل ملف JSON للقنوات فقط: الأقسام، القنوات، القوائم الجانبية، القنوات الفرعية، وروابط البث.
         </p>
       </div>
 
@@ -150,7 +142,7 @@ const BackupButton: React.FC = () => {
         ) : (
           <>
             <Download className="w-4 h-4 mr-2" />
-            تنزيل نسخة احتياطية كاملة
+            تنزيل ملف القنوات JSON
           </>
         )}
       </Button>

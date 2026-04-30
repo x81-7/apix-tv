@@ -37,6 +37,7 @@ public class SupabaseDataManager {
     private static final String KEY_SETTINGS = "settings_json";
     private static final String KEY_LAST_FETCH = "last_fetch_ts";
     private static final String KEY_BUNDLE_ETAG = "bundle_etag";
+    private static final String KEY_CLOUD_URL = "cloud_url";
 
     private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
     private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
@@ -56,6 +57,8 @@ public class SupabaseDataManager {
     /** Load cached data synchronously (for instant UI). Returns null if no cache. */
     public static DataBundle loadCached(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+        if (cachedCloud != null && !cachedCloud.equals(SUPABASE_URL)) return null;
         String catsJson = sp.getString(KEY_CATEGORIES, null);
         if (catsJson == null) return null;
         try {
@@ -82,6 +85,10 @@ public class SupabaseDataManager {
         new Thread(() -> {
             SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             try {
+                String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+                if (cachedCloud == null || !cachedCloud.equals(SUPABASE_URL)) {
+                    sp.edit().clear().putString(KEY_CLOUD_URL, SUPABASE_URL).apply();
+                }
                 String prevEtag = sp.getString(KEY_BUNDLE_ETAG, null);
                 BundleResponse resp = fetchBundleEdge(prevEtag);
 
@@ -116,6 +123,7 @@ public class SupabaseDataManager {
                     .putString(KEY_SIDE_MENUS, menusJson)
                     .putString(KEY_SUB_CHANNELS, subsJson)
                     .putString(KEY_SETTINGS, settingsJson)
+                    .putString(KEY_CLOUD_URL, SUPABASE_URL)
                     .putLong(KEY_LAST_FETCH, System.currentTimeMillis());
                 if (resp.etag != null) ed.putString(KEY_BUNDLE_ETAG, resp.etag);
                 ed.apply();

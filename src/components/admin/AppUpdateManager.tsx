@@ -123,11 +123,30 @@ const AppUpdateManager: React.FC = () => {
 
   const handleToggle = async (checked: boolean) => {
     if (!currentUpdate) return;
-    const updated = { ...currentUpdate, isActive: checked };
+    const updated = { ...currentUpdate, isActive: checked, forceUpdate: checked ? currentUpdate.forceUpdate : false };
     try {
       await adminDb.upsert('system_settings', { key: 'appUpdate', value: updated, description: 'App Update Config' });
       setCurrentUpdate(updated);
+      setForceUpdate(!!updated.forceUpdate);
     } catch { /* ignore */ }
+  };
+
+  const handleDisableUpdate = async () => {
+    const updated: UpdateConfig = {
+      ...(currentUpdate ?? { downloadUrl, message, versionName, installMode }),
+      isActive: false,
+      forceUpdate: false,
+      requiredVersionCode: 0,
+    };
+    try {
+      await adminDb.upsert('system_settings', { key: 'appUpdate', value: updated, description: 'App Update Config' });
+      setCurrentUpdate(updated);
+      setForceUpdate(false);
+      setRequiredVersionCode('');
+      toast.success('تم إلغاء التحديث الإجباري وإخفاء رسالة التحديث');
+    } catch {
+      toast.error('فشل إلغاء التحديث');
+    }
   };
 
   return (
@@ -218,6 +237,9 @@ const AppUpdateManager: React.FC = () => {
           <Button onClick={handleRelease} disabled={saving || !downloadUrl.trim() || !message.trim()} className="w-full bg-primary text-primary-foreground">
             {saving ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Rocket className="w-4 h-4 ml-2" />}
             إطلاق التحديث
+          </Button>
+          <Button type="button" variant="outline" onClick={handleDisableUpdate} className="w-full">
+            إلغاء التحديث الإجباري وإخفاء الرسالة
           </Button>
         </CardContent>
       </Card>
