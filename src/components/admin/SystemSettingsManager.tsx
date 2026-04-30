@@ -150,7 +150,40 @@ const SystemSettingsManager: React.FC = () => {
     }
   };
 
-  if (loading) {
+  const handleResetCache = async () => {
+    if (!confirm('سيتم مسح كاش القنوات القديم وإجبار جميع الأجهزة على إعادة الجلب من الكلاود الحالي. هل أنت متأكد؟')) return;
+    try {
+      // 1. Clear stale cloud config keys saved from old projects
+      await adminDb.delete('system_settings', { key: 'legacy_cloud_url' }).catch(() => null);
+      await adminDb.delete('system_settings', { key: 'old_cloud_config' }).catch(() => null);
+
+      // 2. Bump cache_version on every channel/sub_channel so clients invalidate local cache
+      const [chRes, subRes] = await Promise.all([
+        supabase.from('channels').select('id,cache_version'),
+        supabase.from('sub_channels').select('id,cache_version'),
+      ]);
+      for (const c of chRes.data ?? []) {
+        await adminDb.update('channels', { id: c.id }, { cache_version: (c.cache_version ?? 1) + 1 }, true);
+      }
+      for (const s of subRes.data ?? []) {
+        await adminDb.update('sub_channels', { id: s.id }, { cache_version: (s.cache_version ?? 1) + 1 }, true);
+      }
+
+      // 3. Mark a global cache reset timestamp the apps read on launch
+      await adminDb.upsert('system_settings', {
+        key: 'cache_reset',
+        value: { resetAt: Date.now() },
+        description: 'Force clients to flush local cache and refetch from current cloud',
+      }, true);
+
+      // 4. Re-encrypt + push so the new payload reaches GitHub immediately
+      await adminDb.forceReencrypt().catch(() => null);
+
+      toast.success('تم إعادة ضبط الكاش — ستجلب الأجهزة البيانات من الكلاود الحالي');
+    } catch (e: any) {
+      toast.error(`فشل إعادة الضبط: ${e?.message ?? 'خطأ'}`);
+    }
+  };
     return (
       <div className="bg-card rounded-2xl p-8 border border-border flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
