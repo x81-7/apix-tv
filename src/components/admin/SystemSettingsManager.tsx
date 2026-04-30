@@ -167,9 +167,9 @@ const SystemSettingsManager: React.FC = () => {
             <Upload className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-foreground">استيراد ملف JSON كامل</h3>
+            <h3 className="text-lg font-bold text-foreground">استيراد ملف قنوات JSON</h3>
             <p className="text-sm text-muted-foreground">
-              يحذف البيانات الحالية ويستبدلها بالكامل من الملف (الأقسام، القوائم الجانبية، الأقسام الفرعية، القنوات، والإعدادات).
+              يحذف القنوات الحالية ويستبدلها من الملف فقط، مع تجاهل مفاتيح وإعدادات وتحديثات المشروع القديم.
             </p>
           </div>
         </div>
