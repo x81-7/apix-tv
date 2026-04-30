@@ -172,6 +172,8 @@ const AppUpdateManager: React.FC = () => {
       toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
     }
   };
+
+  return (
     <div className="space-y-6">
       <Card className="border-border bg-card">
         <CardHeader>
