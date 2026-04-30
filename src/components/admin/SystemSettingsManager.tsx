@@ -270,10 +270,25 @@ const SystemSettingsManager: React.FC = () => {
         </div>
       </div>
 
+      {/* Reset cache */}
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Volume2 className="w-5 h-5 text-primary" />
+          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+            <RefreshCw className="w-5 h-5 text-destructive" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">إعادة ضبط الكاش</h3>
+            <p className="text-sm text-muted-foreground">
+              يمسح بيانات القنوات و Cloud URL القديمة المخزنة في الأجهزة، ويجبر التطبيقات على إعادة الجلب من الكلاود الحالي.
+            </p>
+          </div>
+        </div>
+        <Button onClick={handleResetCache} variant="destructive" className="w-full">
+          <RefreshCw className="w-4 h-4 ml-2" /> إعادة ضبط الكاش الآن
+        </Button>
+      </div>
+
+
           </div>
           <div>
             <h3 className="text-lg font-bold text-foreground">نظام الأصوات الخارجية</h3>
