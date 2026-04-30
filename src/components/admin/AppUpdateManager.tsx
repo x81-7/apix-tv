@@ -262,9 +262,20 @@ const AppUpdateManager: React.FC = () => {
             {saving ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Rocket className="w-4 h-4 ml-2" />}
             إطلاق التحديث
           </Button>
-          <Button type="button" variant="outline" onClick={handleDisableUpdate} className="w-full">
-            إلغاء التحديث الإجباري وإخفاء الرسالة
-          </Button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-border">
+            <Button type="button" variant="destructive" onClick={handleDisableUpdate} className="w-full">
+              <ShieldOff className="w-4 h-4 ml-2" /> إيقاف التحديث الإجباري
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDeleteUploadedApk}
+              disabled={!storagePath && !currentUpdate?.storagePath}
+              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4 ml-2" /> حذف ملف APK من الكلاود
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
