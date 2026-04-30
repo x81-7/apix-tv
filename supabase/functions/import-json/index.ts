@@ -125,6 +125,7 @@ Deno.serve(async (req) => {
           legacy_id: str(m.legacy_id ?? m.id ?? m.key) ?? `menu_${i}`,
           name: str(m.name) ?? 'بدون اسم',
           sort_order: num(m.sort_order ?? m.order, i),
+          pin_code: str(m.pin_code ?? m.pinCode),
         };
         return row;
       });
@@ -172,6 +173,12 @@ Deno.serve(async (req) => {
             web_stream: s.web_stream ?? null,
             android_stream: s.android_stream ?? null,
             android_action_type: str(s.android_action_type),
+            ios_stream: s.ios_stream ?? null,
+            ios_action_type: str(s.ios_action_type),
+            windows_stream: s.windows_stream ?? null,
+            windows_action_type: str(s.windows_action_type),
+            offline_cache_enabled: bool(s.offline_cache_enabled),
+            pin_code: str(s.pin_code ?? s.pinCode),
           };
         })
         .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -202,8 +209,14 @@ Deno.serve(async (req) => {
         android_action_type: str(c.android_action_type),
         android_stream: c.android_stream ?? null,
         web_stream: c.web_stream ?? null,
+        ios_stream: c.ios_stream ?? null,
+        ios_action_type: str(c.ios_action_type),
+        windows_stream: c.windows_stream ?? null,
+        windows_action_type: str(c.windows_action_type),
         external_url: str(c.external_url),
         preferred_player: str(c.preferred_player),
+        offline_cache_enabled: bool(c.offline_cache_enabled),
+        pin_code: str(c.pin_code ?? c.pinCode),
       }));
       const chunk = 200;
       for (let i = 0; i < rows.length; i += chunk) {
