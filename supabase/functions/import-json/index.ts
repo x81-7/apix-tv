@@ -7,13 +7,14 @@ const corsHeaders = {
 };
 
 /**
- * Replace-mode import.
+ * Replace-mode channel import.
  * Accepts:
  *  - BackupButton export shape (v2) with nested `categories[].channels[]`
  *    and `sideMenus[].sub_channels[]`, plus optional `raw` flat arrays.
  *  - Legacy flat shape: { categories, sideMenus, subChannels, channels, ... }
  *  - Raw wrappers or unwrapped objects.
- *  - `systemSettings` as array (rows) or object (key/value map).
+ * System settings, update config and encryption keys are intentionally ignored
+ * so a remixed project never keeps pointing to an old Cloud/backend setup.
  */
 
 type AnyObj = Record<string, any>;
@@ -89,7 +90,9 @@ Deno.serve(async (req) => {
     await supabase.from('side_menus').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-    // 2) Categories — keep original UUIDs when provided so nested refs still match
+    // 2) Categories — always generate fresh UUIDs for this Cloud project.
+    // Old ids are stored only as legacy_id so imported channels map correctly
+    // without making the new app behave like the previous project.
     const catIdMap = new Map<string, string>(); // old-id/legacy -> new uuid
     if (cats.length) {
       const rows = cats.map((c, i) => {
@@ -99,7 +102,6 @@ Deno.serve(async (req) => {
           sort_order: num(c.sort_order ?? c.order, i),
           hidden: bool(c.hidden),
         };
-        if (c.id && typeof c.id === 'string' && c.id.length === 36) row.id = c.id;
         return row;
       });
       const { data, error } = await supabase
@@ -115,7 +117,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3) Side menus
+    // 3) Side menus — same fresh-id rule as categories.
     const menuIdMap = new Map<string, string>();
     if (menus.length) {
       const rows = menus.map((m, i) => {
@@ -124,7 +126,6 @@ Deno.serve(async (req) => {
           name: str(m.name) ?? 'بدون اسم',
           sort_order: num(m.sort_order ?? m.order, i),
         };
-        if (m.id && typeof m.id === 'string' && m.id.length === 36) row.id = m.id;
         return row;
       });
       const { data, error } = await supabase
@@ -213,43 +214,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6) system_settings: array of {key,value} OR object map OR individual keys
-    const ssUpserts: { key: string; value: any }[] = [];
+    // 6) Never import system_settings/encryption_keys from older projects.
+    // Clear old forced-update state in the CURRENT project after an import so
+    // existing Android installs stop seeing stale update screens immediately.
+    await supabase
+      .from('system_settings')
+      .upsert({
+        key: 'appUpdate',
+        value: { isActive: false, forceUpdate: false, downloadUrl: '', message: '', versionName: '' },
+        description: 'App Update Config',
+      }, { onConflict: 'key' });
 
-    if (Array.isArray(root.systemSettings)) {
-      for (const r of root.systemSettings) {
-        if (r && typeof r === 'object' && r.key) {
-          ssUpserts.push({ key: String(r.key), value: r.value ?? null });
-        }
-      }
-    } else if (root.systemSettings && typeof root.systemSettings === 'object') {
-      for (const [k, v] of Object.entries(root.systemSettings)) {
-        ssUpserts.push({ key: k, value: v });
-      }
-    }
-
-    // Also accept well-known top-level keys (legacy)
-    const settingsKeys = [
-      'appSettings',
-      'androidConfig',
-      'webConfig',
-      'playerConfig',
-      'securityConfig',
-      'adConfig',
-      'appUpdate',
-      'notifications',
-      'sideMenuItems',
-    ];
-    for (const k of settingsKeys) {
-      if (root[k] !== undefined) ssUpserts.push({ key: k, value: root[k] });
-    }
-
-    for (const row of ssUpserts) {
-      const { error } = await supabase
-        .from('system_settings')
-        .upsert(row, { onConflict: 'key' });
-      if (error) console.warn('system_settings upsert failed for', row.key, error.message);
-    }
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/cached-data/invalidate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+    } catch (_) { /* best effort */ }
 
     return new Response(
       JSON.stringify({
@@ -259,7 +241,7 @@ Deno.serve(async (req) => {
           sideMenus: menus.length,
           subChannels: subsInserted,
           channels: chansInserted,
-          systemSettings: ssUpserts.length,
+          systemSettings: 0,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
