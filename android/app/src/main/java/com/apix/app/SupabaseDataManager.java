@@ -57,6 +57,8 @@ public class SupabaseDataManager {
     /** Load cached data synchronously (for instant UI). Returns null if no cache. */
     public static DataBundle loadCached(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+        if (cachedCloud != null && !cachedCloud.equals(SUPABASE_URL)) return null;
         String catsJson = sp.getString(KEY_CATEGORIES, null);
         if (catsJson == null) return null;
         try {
