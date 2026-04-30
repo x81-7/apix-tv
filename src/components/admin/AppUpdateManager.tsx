@@ -149,7 +149,29 @@ const AppUpdateManager: React.FC = () => {
     }
   };
 
-  return (
+  const handleDeleteUploadedApk = async () => {
+    if (!storagePath && !currentUpdate?.storagePath) {
+      toast.error('لا يوجد ملف APK مرفوع على الكلاود');
+      return;
+    }
+    if (!confirm('سيتم حذف ملف APK المرفوع على الكلاود نهائياً لتوفير المساحة. هل أنت متأكد؟')) return;
+    const path = storagePath || currentUpdate?.storagePath!;
+    try {
+      const { error } = await supabase.storage.from('app-builds').remove([path]);
+      if (error) throw error;
+      // Clear storagePath from settings so we don't reference a deleted file
+      const updated: UpdateConfig = {
+        ...(currentUpdate ?? { downloadUrl, message, versionName, installMode, isActive: false }),
+        storagePath: undefined,
+      };
+      await adminDb.upsert('system_settings', { key: 'appUpdate', value: updated, description: 'App Update Config' });
+      setCurrentUpdate(updated);
+      setStoragePath(undefined);
+      toast.success('تم حذف ملف APK من الكلاود');
+    } catch (e: any) {
+      toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
+    }
+  };
     <div className="space-y-6">
       <Card className="border-border bg-card">
         <CardHeader>
