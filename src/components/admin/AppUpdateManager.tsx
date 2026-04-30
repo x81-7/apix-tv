@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Download, Rocket, CheckCircle, Clock, Upload, Loader2, Package } from 'lucide-react';
+import { Download, Rocket, CheckCircle, Clock, Upload, Loader2, Package, Trash2, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UpdateConfig {
@@ -149,6 +149,30 @@ const AppUpdateManager: React.FC = () => {
     }
   };
 
+  const handleDeleteUploadedApk = async () => {
+    if (!storagePath && !currentUpdate?.storagePath) {
+      toast.error('لا يوجد ملف APK مرفوع على الكلاود');
+      return;
+    }
+    if (!confirm('سيتم حذف ملف APK المرفوع على الكلاود نهائياً لتوفير المساحة. هل أنت متأكد؟')) return;
+    const path = storagePath || currentUpdate?.storagePath!;
+    try {
+      const { error } = await supabase.storage.from('app-builds').remove([path]);
+      if (error) throw error;
+      // Clear storagePath from settings so we don't reference a deleted file
+      const updated: UpdateConfig = {
+        ...(currentUpdate ?? { downloadUrl, message, versionName, installMode, isActive: false }),
+        storagePath: undefined,
+      };
+      await adminDb.upsert('system_settings', { key: 'appUpdate', value: updated, description: 'App Update Config' });
+      setCurrentUpdate(updated);
+      setStoragePath(undefined);
+      toast.success('تم حذف ملف APK من الكلاود');
+    } catch (e: any) {
+      toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="border-border bg-card">
@@ -238,9 +262,20 @@ const AppUpdateManager: React.FC = () => {
             {saving ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Rocket className="w-4 h-4 ml-2" />}
             إطلاق التحديث
           </Button>
-          <Button type="button" variant="outline" onClick={handleDisableUpdate} className="w-full">
-            إلغاء التحديث الإجباري وإخفاء الرسالة
-          </Button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-border">
+            <Button type="button" variant="destructive" onClick={handleDisableUpdate} className="w-full">
+              <ShieldOff className="w-4 h-4 ml-2" /> إيقاف التحديث الإجباري
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDeleteUploadedApk}
+              disabled={!storagePath && !currentUpdate?.storagePath}
+              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4 ml-2" /> حذف ملف APK من الكلاود
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

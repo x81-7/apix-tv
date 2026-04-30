@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -150,6 +150,41 @@ const SystemSettingsManager: React.FC = () => {
     }
   };
 
+  const handleResetCache = async () => {
+    if (!confirm('سيتم مسح كاش القنوات القديم وإجبار جميع الأجهزة على إعادة الجلب من الكلاود الحالي. هل أنت متأكد؟')) return;
+    try {
+      // 1. Clear stale cloud config keys saved from old projects
+      await adminDb.delete('system_settings', { key: 'legacy_cloud_url' }).catch(() => null);
+      await adminDb.delete('system_settings', { key: 'old_cloud_config' }).catch(() => null);
+
+      // 2. Bump cache_version on every channel/sub_channel so clients invalidate local cache
+      const [chRes, subRes] = await Promise.all([
+        supabase.from('channels').select('id,cache_version'),
+        supabase.from('sub_channels').select('id,cache_version'),
+      ]);
+      for (const c of chRes.data ?? []) {
+        await adminDb.update('channels', { id: c.id }, { cache_version: (c.cache_version ?? 1) + 1 }, true);
+      }
+      for (const s of subRes.data ?? []) {
+        await adminDb.update('sub_channels', { id: s.id }, { cache_version: (s.cache_version ?? 1) + 1 }, true);
+      }
+
+      // 3. Mark a global cache reset timestamp the apps read on launch
+      await adminDb.upsert('system_settings', {
+        key: 'cache_reset',
+        value: { resetAt: Date.now() },
+        description: 'Force clients to flush local cache and refetch from current cloud',
+      }, true);
+
+      // 4. Re-encrypt + push so the new payload reaches GitHub immediately
+      await adminDb.forceReencrypt().catch(() => null);
+
+      toast.success('تم إعادة ضبط الكاش — ستجلب الأجهزة البيانات من الكلاود الحالي');
+    } catch (e: any) {
+      toast.error(`فشل إعادة الضبط: ${e?.message ?? 'خطأ'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-card rounded-2xl p-8 border border-border flex items-center justify-center">
@@ -233,6 +268,24 @@ const SystemSettingsManager: React.FC = () => {
             )}
           </Button>
         </div>
+      </div>
+
+      {/* Reset cache */}
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+            <RefreshCw className="w-5 h-5 text-destructive" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">إعادة ضبط الكاش</h3>
+            <p className="text-sm text-muted-foreground">
+              يمسح بيانات القنوات و Cloud URL القديمة المخزنة في الأجهزة، ويجبر التطبيقات على إعادة الجلب من الكلاود الحالي.
+            </p>
+          </div>
+        </div>
+        <Button onClick={handleResetCache} variant="destructive" className="w-full">
+          <RefreshCw className="w-4 h-4 ml-2" /> إعادة ضبط الكاش الآن
+        </Button>
       </div>
 
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
