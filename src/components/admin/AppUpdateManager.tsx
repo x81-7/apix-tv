@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Download, Rocket, CheckCircle, Clock, Upload, Loader2, Package } from 'lucide-react';
+import { Download, Rocket, CheckCircle, Clock, Upload, Loader2, Package, Trash2, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UpdateConfig {
