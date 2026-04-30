@@ -71,9 +71,7 @@ import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.FilteringMediaSource
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -376,6 +374,7 @@ fun PlayerScreen(
             .setTrackSelector(trackSelector)
             .build()
     }
+    val externalAudioPlayer = remember { ExoPlayer.Builder(context).build() }
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
@@ -444,6 +443,7 @@ fun PlayerScreen(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            externalAudioPlayer.release()
             player.stop()
             player.clearMediaItems()
             player.release()
@@ -647,23 +647,13 @@ fun PlayerScreen(
                         val audioUrl = source.url ?: return@AudioSourceDialog
                         kotlinx.coroutines.MainScope().launch {
                             try {
-                                val currentPos = player.currentPosition
-                                val wasPlaying = player.isPlaying
-                                player.stop()
-                                player.clearMediaItems()
-                                
-                                val videoSource = buildMediaSourceWithDrm(context, resolvedConfig, resolvedConfig.url)
-                                val videoOnly = FilteringMediaSource(videoSource, com.google.common.collect.ImmutableSet.of(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_TEXT))
-                                
-                                val audioConfig = resolvedConfig.copy(url = audioUrl, drm = null)
-                                val audioMediaSource = buildMediaSourceWithDrm(context, audioConfig, audioUrl)
-                                val audioOnly = FilteringMediaSource(audioMediaSource, com.google.common.collect.ImmutableSet.of(C.TRACK_TYPE_AUDIO))
-                                
-                                val merged = MergingMediaSource(videoOnly, audioOnly)
-                                player.setMediaSource(merged)
-                                player.prepare()
-                                player.seekTo(currentPos)
-                                player.playWhenReady = wasPlaying
+                                player.volume = 0f
+                                externalAudioPlayer.stop()
+                                externalAudioPlayer.clearMediaItems()
+                                val audioConfig = resolvedConfig.copy(url = audioUrl, drm = null, subtitleUrl = null)
+                                externalAudioPlayer.setMediaSource(buildMediaSourceWithDrm(context, audioConfig, audioUrl))
+                                externalAudioPlayer.prepare()
+                                externalAudioPlayer.playWhenReady = player.playWhenReady
                             } catch (e: Exception) { Log.e("PlayerScreen", "External audio failed", e) }
                         }
                     },
