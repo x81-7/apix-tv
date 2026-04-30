@@ -374,7 +374,17 @@ fun PlayerScreen(
             .setTrackSelector(trackSelector)
             .build()
     }
-    val externalAudioPlayer = remember { ExoPlayer.Builder(context).build() }
+    val externalAudioPlayer = remember {
+        val audioTrackSelector = DefaultTrackSelector(context).apply {
+            setParameters(
+                buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+            )
+        }
+        ExoPlayer.Builder(context).setTrackSelector(audioTrackSelector).build()
+    }
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
@@ -427,7 +437,10 @@ fun PlayerScreen(
                     )
                 }
             }
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (externalAudioPlayer.mediaItemCount > 0) externalAudioPlayer.playWhenReady = playing
+            }
             override fun onPlayerError(error: PlaybackException) {
                 val backup = resolvedConfig.backupUrl
                 if (!backup.isNullOrEmpty() && currentServerUrl != backup) {
