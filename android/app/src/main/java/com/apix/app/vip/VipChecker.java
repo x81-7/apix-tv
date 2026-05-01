@@ -100,10 +100,9 @@ public final class VipChecker {
                 String line; while ((line = r.readLine()) != null) sb.append(line);
             }
             // Encrypted envelope: { iv, data }
-            JSONObject env = new JSONObject(sb.toString());
             String plain;
-            if (env.has("iv") && env.has("data")) {
-                plain = PayloadCipher.decryptEnvelope(ctx, env);
+            if (sb.indexOf("\"iv\"") >= 0 && sb.indexOf("\"data\"") >= 0) {
+                plain = PayloadCipher.decryptEnvelope(sb.toString());
             } else {
                 plain = sb.toString();
             }
