@@ -91,18 +91,20 @@ public class PlayerEngine {
             DynamicStreamResolver.Resolved r = DynamicStreamResolver.resolve(rawUrl);
             // Merge resolver-provided headers / UA / Referer with config headers.
             Map<String, String> merged = buildHeaderMap(config, r);
+            String ua = pickUserAgent(config, r);
 
-            // Rebuild factory with merged headers (replaces boot).
-            DataSource.Factory finalFactory = baseDataSourceFactory(merged,
-                    pickUserAgent(config, r));
-            DefaultMediaSourceFactory rebuilt = new DefaultMediaSourceFactory(finalFactory)
-                    .setLoadErrorHandlingPolicy(errorPolicy);
+            // Build ONE shared HTTP factory that carries Referer/UA on every
+            // request (manifest + chunks). Critical for DASH .mpd which fires
+            // many sub-requests that must all carry Referer.
+            DataSource.Factory sharedFactory = baseDataSourceFactory(merged, ua);
+
+            MediaItem mediaItem = MediaSourceBuilder.build(config, r.url, r.forceHls);
+            MediaSource source = buildMediaSource(mediaItem, r.url, r.forceHls, sharedFactory, errorPolicy);
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    if (player == null) return;
-                    player.setMediaSource(rebuilt.createMediaSource(
-                            MediaSourceBuilder.build(config, r.url, r.forceHls)));
+                    if (player == null || source == null) return;
+                    player.setMediaSource(source);
                     player.prepare();
                     player.play();
                 } catch (Exception e) {
@@ -112,6 +114,40 @@ public class PlayerEngine {
         });
 
         return player;
+    }
+
+    /**
+     * Build a typed MediaSource bound to the supplied DataSource.Factory.
+     * For DASH this guarantees both the manifest loader AND chunk loader
+     * share the same factory (so Referer/UA stick to every request).
+     */
+    private MediaSource buildMediaSource(
+            MediaItem mediaItem,
+            String resolvedUrl,
+            boolean forceHls,
+            DataSource.Factory factory,
+            DefaultLoadErrorHandlingPolicy errorPolicy) {
+        if (mediaItem == null) return null;
+        String lower = resolvedUrl != null ? resolvedUrl.toLowerCase() : "";
+        boolean isDash = lower.contains(".mpd");
+        boolean isHls = forceHls || lower.contains(".m3u8") || lower.contains("#hls");
+
+        if (isDash) {
+            DashChunkSource.Factory chunkFactory = new DefaultDashChunkSource.Factory(factory);
+            return new DashMediaSource.Factory(chunkFactory, /* manifestDataSourceFactory= */ factory)
+                    .setLoadErrorHandlingPolicy(errorPolicy)
+                    .createMediaSource(mediaItem);
+        }
+        if (isHls) {
+            return new HlsMediaSource.Factory(factory)
+                    .setAllowChunklessPreparation(true)
+                    .setLoadErrorHandlingPolicy(errorPolicy)
+                    .createMediaSource(mediaItem);
+        }
+        // Fallback: progressive / generic — DefaultMediaSourceFactory route.
+        DefaultMediaSourceFactory generic = new DefaultMediaSourceFactory(factory)
+                .setLoadErrorHandlingPolicy(errorPolicy);
+        return generic.createMediaSource(mediaItem);
     }
 
     public ExoPlayer getPlayer() { return player; }
