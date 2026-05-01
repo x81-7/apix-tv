@@ -237,8 +237,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else if (channel.stream?.url != null) {
             config.url = channel.stream!!.url!!
             
-            // تعديل جراحي هنا أيضاً
-            val ref = channel.stream!!.referrer ?: channel.stream!!.referer
+            // نكتفي بـ referrer فقط لأن كلاس Stream لا يحتوي على referer
+            val ref = channel.stream!!.referrer
             
             if (channel.stream!!.userAgent != null || ref != null) {
                 config.headers = PlayerHeaders(
