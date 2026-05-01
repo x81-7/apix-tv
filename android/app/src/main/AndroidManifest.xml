@@ -148,6 +148,17 @@
         <!-- (Removed) NotificationListenerService + BootReceiver — no more "جاهز لاستقبال" persistent notification.
              Realtime listener now runs in-process from ApixApplication.onCreate(). -->
 
+        <activity
+            android:name=".WebAdActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+        <activity
+            android:name=".ActivationActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
     </application>
 
 </manifest>
