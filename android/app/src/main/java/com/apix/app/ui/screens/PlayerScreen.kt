@@ -391,6 +391,72 @@ fun PlayerScreen(
     suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
         try {
             latestPlaybackError = null
+
+            if (streamUrl.lowercase().contains(".json")) {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    var success = false
+                    var attempts = 0
+                    var realUrl = ""
+                    val dynamicHeaders = mutableMapOf<String, String>()
+
+                    while (attempts < 3 && !success) {
+                        try {
+                            val connection = java.net.URL(streamUrl).openConnection() as java.net.HttpURLConnection
+                            connection.requestMethod = "GET"
+                            connection.connectTimeout = 10000
+                            connection.readTimeout = 10000
+
+                            cfg.headers?.referer?.let { connection.setRequestProperty("Referer", it) }
+                            cfg.customHeaders?.forEach { (k, v) -> connection.setRequestProperty(k, v) }
+
+                            val response = connection.inputStream.bufferedReader().use { it.readText() }
+                            val jsonElement = com.google.gson.JsonParser.parseString(response)
+                            val jsonObject = if (jsonElement.isJsonArray) {
+                                jsonElement.asJsonArray.get(0).asJsonObject
+                            } else {
+                                jsonElement.asJsonObject
+                            }
+
+                            realUrl = jsonObject.get("url")?.asString ?: ""
+
+                            if (jsonObject.has("Referer")) dynamicHeaders["Referer"] = jsonObject.get("Referer").asString
+                            if (jsonObject.has("userAgent")) dynamicHeaders["User-Agent"] = jsonObject.get("userAgent").asString
+
+                            if (jsonObject.has("otherHeaders")) {
+                                val others = jsonObject.get("otherHeaders").asString
+                                others.split("|").forEach { part ->
+                                    val pair = part.split(":", limit = 2)
+                                    if (pair.size == 2) dynamicHeaders[pair[0].trim()] = pair[1].trim()
+                                }
+                            }
+
+                            if (realUrl.isNotEmpty()) success = true
+                        } catch (e: Exception) {
+                            attempts++
+                            kotlinx.coroutines.delay(1000)
+                        }
+                    }
+
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (success) {
+                            val updatedHeaders = (cfg.customHeaders ?: emptyMap()).toMutableMap()
+                            updatedHeaders.putAll(dynamicHeaders)
+                            val newCfg = cfg.copy(url = realUrl, customHeaders = updatedHeaders)
+                            
+                            loadStream(realUrl, newCfg)
+                        } else {
+                            val backup = cfg.backupUrl
+                            if (!backup.isNullOrEmpty() && streamUrl != backup) {
+                                loadStream(backup, cfg)
+                            } else {
+                                errorMessage = "فشل تحليل رابط الـ JSON للحصول على البث."
+                            }
+                        }
+                    }
+                }
+                return
+            }
+
             player.stop()
             player.clearMediaItems()
             val effectiveConfig = cfg.copy(url = streamUrl)
@@ -907,6 +973,7 @@ private fun buildDataSourceFactory(config: PlayerConfig): DefaultHttpDataSource.
     factory.setAllowCrossProtocolRedirects(true)
 
     val headers = mutableMapOf<String, String>()
+    
     config.headers?.let { h ->
         h.userAgent?.let { factory.setUserAgent(it) } ?: factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         h.referer?.let { headers["Referer"] = it }
@@ -914,7 +981,16 @@ private fun buildDataSourceFactory(config: PlayerConfig): DefaultHttpDataSource.
         h.origin?.let { headers["Origin"] = it }
     } ?: factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    config.customHeaders?.forEach { (k, v) -> headers[k] = v }
+    config.customHeaders?.forEach { (k, v) -> 
+        if (k.equals("referer", ignoreCase = true)) {
+            headers["Referer"] = v
+        } else if (k.equals("user-agent", ignoreCase = true)) {
+            factory.setUserAgent(v)
+        } else {
+            headers[k] = v 
+        }
+    }
+    
     if (headers.isNotEmpty()) factory.setDefaultRequestProperties(headers)
     return factory
 }
@@ -969,14 +1045,12 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
 
 private fun detectStreamFormat(url: String): String {
     val lower = url.lowercase()
-    val path = lower.substringBefore("?").substringBefore("#")
+    val pathWithoutQuery = lower.substringBefore("?")
+    
     return when {
-        path.endsWith(".m3u8") -> "hls"
-        path.endsWith(".mpd") -> "dash"
-        lower.contains(".m3u8") -> "hls"
-        lower.contains(".mpd") -> "dash"
-        lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
-        lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") -> "dash"
+        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") -> "hls"
+        pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
+        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") -> "dash"
         else -> "progressive"
     }
 }
