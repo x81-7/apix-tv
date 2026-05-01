@@ -75,7 +75,7 @@ const AdConfigManager: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const [configRes, countRes, adsRes, appIdRes, localRes, chanRes, secRes] = await Promise.all([
+      const [configRes, countRes, adsRes, appIdRes, localRes, chanRes, secRes, webRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'adConfig').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'forced_custom_ads_count').maybeSingle(),
         supabase.from('custom_ads').select('*').order('sort_order').order('created_at'),
@@ -83,6 +83,7 @@ const AdConfigManager: React.FC = () => {
         supabase.from('system_settings').select('value').eq('key', 'local_ads_config').maybeSingle(),
         supabase.from('channels').select('id,name').order('sort_order'),
         supabase.from('system_settings').select('value').eq('key', 'security_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'web_ads_config').maybeSingle(),
       ]);
       if (configRes.data?.value) setAdConfig(configRes.data.value as AdConfig);
       if (countRes.data?.value != null) setForcedAdsCount(String(countRes.data.value));
@@ -92,6 +93,7 @@ const AdConfigManager: React.FC = () => {
       const sec = (secRes.data?.value as any) ?? {};
       setGhToken(String(sec.githubToken ?? ''));
       setGhRepo(String(sec.githubRepo ?? ''));
+      if (webRes.data?.value) setWebAds({ ...webAds, ...(webRes.data.value as WebAdsConfig) });
       setCustomAds(adsRes.data ?? []);
       setLoadingAds(false);
     })();
