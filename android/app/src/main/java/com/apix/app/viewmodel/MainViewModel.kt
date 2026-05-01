@@ -170,11 +170,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             channel.androidStream!!.headers?.let { h ->
+                // تعديل جراحي هنا: التقاط الريفيرر بجميع التسميات الممكنة
+                val ref = h["referer"] ?: h["referrer"] ?: h["Referer"] ?: h["Referrer"]
+                val ua = h["userAgent"] ?: h["useragent"] ?: h["User-Agent"]
+                
                 config.headers = PlayerHeaders(
-                    userAgent = h["userAgent"],
-                    referer = h["referrer"],
-                    cookie = h["cookie"],
-                    origin = h["origin"]
+                    userAgent = ua,
+                    referer = ref,
+                    cookie = h["cookie"] ?: h["Cookie"],
+                    origin = h["origin"] ?: h["Origin"]
                 )
             }
 
@@ -232,10 +236,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             config.logoOverlay = channel.androidStream!!.logoOverlay
         } else if (channel.stream?.url != null) {
             config.url = channel.stream!!.url!!
-            if (channel.stream!!.userAgent != null || channel.stream!!.referrer != null) {
+            
+            // تعديل جراحي هنا أيضاً
+            val ref = channel.stream!!.referrer ?: channel.stream!!.referer
+            
+            if (channel.stream!!.userAgent != null || ref != null) {
                 config.headers = PlayerHeaders(
                     userAgent = channel.stream!!.userAgent,
-                    referer = channel.stream!!.referrer,
+                    referer = ref,
                     cookie = channel.stream!!.cookies
                 )
             }
