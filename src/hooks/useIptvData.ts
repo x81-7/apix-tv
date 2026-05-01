@@ -71,6 +71,43 @@ export const useIptvData = (): IptvDataState => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const reload = useCallback(async () => {
+    const [catsRes, chansRes, menusRes, subsRes] = await Promise.all([
+      supabase.from('categories').select('*').order('sort_order'),
+      supabase.from('channels').select('*').order('sort_order'),
+      supabase.from('side_menus').select('*').order('sort_order'),
+      supabase.from('sub_channels').select('*').order('sort_order'),
+    ]);
+    if (catsRes.error || chansRes.error || menusRes.error || subsRes.error) return;
+
+    const catMap: Record<string, Category> = {};
+    for (const cat of catsRes.data ?? []) {
+      catMap[cat.id] = {
+        id: cat.id, name: cat.name,
+        sortOrder: cat.sort_order ?? 0,
+        hidden: cat.hidden ?? false,
+        channels: {},
+      };
+    }
+    for (const ch of chansRes.data ?? []) {
+      if (ch.category_id && catMap[ch.category_id]) {
+        catMap[ch.category_id].channels[ch.id] = mapChannel(ch);
+      }
+    }
+    setCategories(catMap);
+
+    const menuMap: Record<string, SideMenu> = {};
+    for (const m of menusRes.data ?? []) {
+      menuMap[m.id] = { id: m.id, name: m.name, sortOrder: m.sort_order ?? 0, channels: {} };
+    }
+    for (const sc of subsRes.data ?? []) {
+      if (sc.side_menu_id && menuMap[sc.side_menu_id]) {
+        menuMap[sc.side_menu_id].channels[sc.id] = mapSubChannel(sc);
+      }
+    }
+    setSideMenus(menuMap);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -124,6 +161,18 @@ export const useIptvData = (): IptvDataState => {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Live sync: any change in channels/categories/menus/sub_channels triggers reload.
+  useEffect(() => {
+    const ch = supabase
+      .channel('iptv-data-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'side_menus' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sub_channels' }, () => reload())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [reload]);
 
   return { categories, sideMenus, loading, error };
 };

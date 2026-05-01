@@ -23,60 +23,59 @@
 -keep class androidx.media3.** { *; }
 -keep interface androidx.media3.** { *; }
 
-# Keep Gson classes
+# Keep Gson runtime
 -keep class com.google.gson.** { *; }
 -keepattributes Signature
 -keepattributes *Annotation*
+-keepattributes EnclosingMethod,InnerClasses
 
 # Keep Google Play Services (AdMob)
 -keep class com.google.android.gms.** { *; }
 
-# Keep our model classes (needed for Gson deserialization)
--keep class com.apix.app.StreamConfig { *; }
--keep class com.apix.app.StreamConfig$* { *; }
--keep class com.apix.app.RemoteModels { *; }
--keep class com.apix.app.RemoteModels$* { *; }
--keep class com.apix.app.data.** { *; }
+# ===== DATA MODELS =====
+# Gson reflects on field NAMES (we don't use @SerializedName everywhere).
+# So: allow class renaming, but keep FIELD names intact for json mapping.
+-keepclassmembers class com.apix.app.StreamConfig { <fields>; }
+-keepclassmembers class com.apix.app.StreamConfig$* { <fields>; }
+-keepclassmembers class com.apix.app.RemoteModels { <fields>; }
+-keepclassmembers class com.apix.app.RemoteModels$* { <fields>; }
+-keepclassmembers class com.apix.app.data.** { <fields>; }
 
-# Keep verifier - obfuscate internals but keep public API
--keep class com.apix.app.AppVerifier {
-    public static ** getInstance(android.content.Context);
-    public void startMonitor();
-    public void stopMonitor();
-    public java.lang.String runCheck();
-    public void runCheckAsync(**);
-    public java.lang.String getCurrentAppHash();
-}
+# ===== SECURITY CLASSES — AGGRESSIVE OBFUSCATION =====
+# Previously we kept full APIs; now we let R8 rename internals freely.
+# We only keep what is reflectively referenced from outside.
 
-# Heavily obfuscate verifier internals
--keepclassmembers class com.apix.app.AppVerifier {
-    private <methods>;
-}
+# AppVerifier is invoked from Activities by direct call → no reflection,
+# R8 can fully rename. (Removed prior keep block.)
 
-# Aggressively obfuscate security guards (signature/dex/anti-hook)
--keep class com.apix.app.security.GuardRunner {
+# GuardRunner is the only entry point used by other security helpers.
+# Allow R8 to obfuscate the class itself; keep just the method signature.
+-keepclassmembers class com.apix.app.security.GuardRunner {
     public static java.lang.String runAll(android.content.Context);
 }
--keep class com.apix.app.security.HandshakeClient$Verdict { *; }
--keep class com.apix.app.security.HandshakeClient {
+
+# HandshakeClient → public verdict is reflected by JSON serialization,
+# so keep its fields but allow class-name obfuscation.
+-keepclassmembers class com.apix.app.security.HandshakeClient$Verdict { <fields>; }
+-keepclassmembers class com.apix.app.security.HandshakeClient {
     public static com.apix.app.security.HandshakeClient$Verdict handshake(android.content.Context, java.lang.String, java.lang.String, java.lang.String);
 }
--keep class com.apix.app.security.DeviceIntegrity {
-    public static java.lang.String deviceId(android.content.Context);
-    public static java.lang.String signatureHash(android.content.Context);
-    public static java.lang.String dexChecksum(android.content.Context);
-    public static java.lang.String environmentDanger(android.content.Context);
-    public static boolean consumeFreshInstall(android.content.Context);
-}
--keepclassmembers class com.apix.app.security.** {
-    private <methods>;
-    private <fields>;
-}
-# Keep SecureCacheManager public API (encrypted prefs need stable class)
--keep class com.apix.app.SecureCacheManager {
+
+# DeviceIntegrity has static utilities used by handshake — keep public methods only.
+-keepclassmembers class com.apix.app.security.DeviceIntegrity {
     public static *;
 }
+
+# String deobfuscator — keep so XOR encoded literals can decode.
+-keepclassmembers class com.apix.app.security.Obf {
+    public static java.lang.String d(java.lang.String);
+}
+
+# SecureCacheManager — used by EncryptedSharedPreferences which IS reflective.
 -keep class androidx.security.crypto.** { *; }
+-keepclassmembers class com.apix.app.SecureCacheManager {
+    public static *;
+}
 
 # Keep activities
 -keep class com.apix.app.SplashActivity { *; }
