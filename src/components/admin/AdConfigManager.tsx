@@ -27,6 +27,17 @@ interface LocalAdsConfig {
   forceExternal?: boolean;
 }
 
+interface WebAdsConfig {
+  enabled?: boolean;
+  url?: string;
+  /** apply only on external link redirects */
+  externalOnly?: boolean;
+  /** seconds until skip becomes available */
+  skipAfter?: number;
+  /** Telegram / contact URL for VIP activation */
+  sellerContactUrl?: string;
+}
+
 interface CustomAdRow {
   id: string;
   name: string;
