@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, Plus, Gift, Video, KeyRound } from 'lucide-react';
+import { Trash2, Plus, Gift, Video, KeyRound, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AdConfig {
@@ -25,6 +25,17 @@ interface LocalAdsConfig {
   trigger?: 'off' | 'app_open' | 'on_channel' | 'both';
   channelIds?: string[];
   forceExternal?: boolean;
+}
+
+interface WebAdsConfig {
+  enabled?: boolean;
+  url?: string;
+  /** apply only on external link redirects */
+  externalOnly?: boolean;
+  /** seconds until skip becomes available */
+  skipAfter?: number;
+  /** Telegram / contact URL for VIP activation */
+  sellerContactUrl?: string;
 }
 
 interface CustomAdRow {
@@ -59,10 +70,12 @@ const AdConfigManager: React.FC = () => {
   const [allChannels, setAllChannels] = useState<{ id: string; name: string }[]>([]);
   const [ghToken, setGhToken] = useState('');
   const [ghRepo, setGhRepo] = useState('');
+  const [webAds, setWebAds] = useState<WebAdsConfig>({ enabled: false, externalOnly: true, skipAfter: 5, url: '', sellerContactUrl: '' });
+  const [savingWebAds, setSavingWebAds] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [configRes, countRes, adsRes, appIdRes, localRes, chanRes, secRes] = await Promise.all([
+      const [configRes, countRes, adsRes, appIdRes, localRes, chanRes, secRes, webRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'adConfig').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'forced_custom_ads_count').maybeSingle(),
         supabase.from('custom_ads').select('*').order('sort_order').order('created_at'),
@@ -70,6 +83,7 @@ const AdConfigManager: React.FC = () => {
         supabase.from('system_settings').select('value').eq('key', 'local_ads_config').maybeSingle(),
         supabase.from('channels').select('id,name').order('sort_order'),
         supabase.from('system_settings').select('value').eq('key', 'security_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'web_ads_config').maybeSingle(),
       ]);
       if (configRes.data?.value) setAdConfig(configRes.data.value as AdConfig);
       if (countRes.data?.value != null) setForcedAdsCount(String(countRes.data.value));
@@ -79,6 +93,7 @@ const AdConfigManager: React.FC = () => {
       const sec = (secRes.data?.value as any) ?? {};
       setGhToken(String(sec.githubToken ?? ''));
       setGhRepo(String(sec.githubRepo ?? ''));
+      if (webRes.data?.value) setWebAds({ ...webAds, ...(webRes.data.value as WebAdsConfig) });
       setCustomAds(adsRes.data ?? []);
       setLoadingAds(false);
     })();
@@ -202,8 +217,64 @@ const AdConfigManager: React.FC = () => {
     } finally { setSavingForced(false); }
   };
 
+  const saveWebAds = async () => {
+    setSavingWebAds(true);
+    try {
+      await adminDb.upsert('system_settings', {
+        key: 'web_ads_config',
+        value: webAds,
+        description: 'Web ads (WebView CPM) config',
+      }, true);
+      toast.success('تم حفظ إعدادات إعلانات الويب');
+    } catch (e: any) {
+      toast.error(`فشل: ${e?.message ?? 'خطأ'}`);
+    } finally { setSavingWebAds(false); }
+  };
+
   return (
     <div className="space-y-6">
+      {/* CARD 0: Web Ads (WebView CPM) */}
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Globe className="w-5 h-5 text-primary" />نظام إعلانات الويب (CPM)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            يفتح صفحة WebView لرابط إعلاني مع زر تخطّي بعد عدّ تنازلي وزرّ لتفعيل الاشتراك (VIP).
+            المشتركون في VIP لا يرون أي إعلان (ويب أو محلي).
+          </p>
+          <div className="flex items-center justify-between">
+            <Label>تفعيل إعلانات الويب</Label>
+            <Switch checked={webAds.enabled || false} onCheckedChange={(v) => setWebAds({ ...webAds, enabled: v })} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border p-3">
+            <div>
+              <Label className="cursor-pointer">تطبيق فقط على الروابط الخارجية</Label>
+              <p className="text-xs text-muted-foreground mt-1">يُعرض الإعلان فقط عند الضغط على رابط/توجيه خارجي.</p>
+            </div>
+            <Switch checked={webAds.externalOnly !== false} onCheckedChange={(v) => setWebAds({ ...webAds, externalOnly: v })} />
+          </div>
+          <div className="space-y-2">
+            <Label>رابط إعلان الويب</Label>
+            <Input value={webAds.url || ''} onChange={(e) => setWebAds({ ...webAds, url: e.target.value })} placeholder="https://..." className="bg-secondary border-border" dir="ltr" />
+          </div>
+          <div className="space-y-2">
+            <Label>عدّ التخطّي (ثوانٍ)</Label>
+            <Input type="number" min={1} max={60} value={webAds.skipAfter ?? 5} onChange={(e) => setWebAds({ ...webAds, skipAfter: Number(e.target.value) })} className="bg-secondary border-border max-w-[140px]" />
+          </div>
+          <div className="space-y-2">
+            <Label>رابط التواصل مع البائع (Telegram)</Label>
+            <Input value={webAds.sellerContactUrl || ''} onChange={(e) => setWebAds({ ...webAds, sellerContactUrl: e.target.value })} placeholder="https://t.me/your_seller" className="bg-secondary border-border" dir="ltr" />
+            <p className="text-xs text-muted-foreground">يُستخدم في زر «تواصل مع البائع» في صفحة تفعيل الاشتراك.</p>
+          </div>
+          <Button onClick={saveWebAds} disabled={savingWebAds} className="w-full bg-primary text-primary-foreground">
+            {savingWebAds ? 'جارٍ الحفظ...' : 'حفظ إعدادات إعلانات الويب'}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* CARD 1: Ad Network (Rewarded only) - independent from custom ads */}
       <Card className="border-border bg-card">
         <CardHeader>

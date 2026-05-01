@@ -517,6 +517,42 @@ export type Database = {
         }
         Relationships: []
       }
+      vip_subscriptions: {
+        Row: {
+          active: boolean
+          created_at: string
+          device_ids: string[]
+          expires_at: string
+          id: string
+          notes: string | null
+          starts_at: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          device_ids?: string[]
+          expires_at: string
+          id?: string
+          notes?: string | null
+          starts_at?: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          device_ids?: string[]
+          expires_at?: string
+          id?: string
+          notes?: string | null
+          starts_at?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

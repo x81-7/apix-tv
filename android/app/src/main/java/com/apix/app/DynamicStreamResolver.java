@@ -17,58 +17,77 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Smart Stream Resolver.
+ * Smart Stream Resolver — Aggressive Edition.
  *
- * Some "stream URLs" are actually JSON endpoints that wrap the real m3u8 link
- * along with custom headers. Before handing the URL to ExoPlayer, we probe it
- * once: if the response is JSON, we extract the real `url`, `userAgent`,
- * `Referer`, and `otherHeaders` (pipe/colon-encoded). Otherwise we pass the
- * URL through untouched.
- *
- * This must be called from a background thread (it does network I/O).
+ * - Retries up to 4 times with exponential backoff before giving up.
+ * - Performs deep recursive JSON parsing to find the playable URL anywhere
+ *   inside the response (any nested object/array).
+ * - Extracts headers (Referer, User-Agent, Cookie, Origin) from any depth.
+ * - Only after all retries fail does the caller fall back to backupUrl.
  */
 public final class DynamicStreamResolver {
 
     private static final String TAG = "DynRes";
-    private static final int TIMEOUT_MS = 6000;
+    private static final int TIMEOUT_MS = 7000;
+    private static final int MAX_ATTEMPTS = 4;
+    private static final long[] BACKOFF_MS = { 0L, 400L, 900L, 1700L };
     private static final String DEFAULT_UA =
             "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile";
+
+    private static final String[] URL_KEYS = {
+            "url", "stream", "stream_url", "streamUrl", "src", "source",
+            "playUrl", "play_url", "link", "manifest", "manifestUrl",
+            "hls", "dash", "file", "video", "videoUrl", "media", "mediaUrl"
+    };
+    private static final String[] UA_KEYS = { "userAgent", "user_agent", "User-Agent", "ua" };
+    private static final String[] REF_KEYS = { "Referer", "referer", "referrer", "Referrer" };
+    private static final String[] HDR_KEYS = { "otherHeaders", "headers", "extraHeaders", "requestHeaders" };
 
     public static class Resolved {
         public String url;
         public String userAgent;
         public String referer;
         public Map<String, String> headers = new HashMap<>();
-        /** True if the source URL ended with .m3u8/.png#hls/.json or response indicated HLS. */
         public boolean forceHls;
+        /** True if probing/JSON parsing actually succeeded. False = unchanged passthrough. */
+        public boolean resolved;
     }
 
     private DynamicStreamResolver() {}
 
-    /**
-     * Resolves a stream URL. Always returns a non-null Resolved with at least .url set.
-     */
     public static Resolved resolve(String rawUrl) {
         Resolved out = new Resolved();
         if (rawUrl == null || rawUrl.isEmpty()) {
             out.url = "";
             return out;
         }
-        // Strip the "url|header=value&..." legacy pipe form first.
         String workingUrl = rawUrl.contains("|") ? rawUrl.split("\\|", 2)[0] : rawUrl;
         out.url = workingUrl;
-        // Pre-flag obvious HLS hints.
         if (looksLikeHls(workingUrl)) out.forceHls = true;
 
-        // Heuristic: only probe when the URL likely points at a JSON endpoint.
-        // Probing every m3u8 wastes time and risks 403s.
-        if (!shouldProbe(workingUrl)) {
-            return out;
-        }
+        if (!shouldProbe(workingUrl)) return out;
 
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            if (attempt > 0) {
+                try { Thread.sleep(BACKOFF_MS[attempt]); } catch (InterruptedException ignore) {}
+            }
+            try {
+                if (probeOnce(workingUrl, out)) {
+                    out.resolved = true;
+                    return out;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "attempt " + (attempt + 1) + " failed: " + e.getMessage());
+            }
+        }
+        Log.w(TAG, "all " + MAX_ATTEMPTS + " resolver attempts failed for: " + workingUrl);
+        return out;
+    }
+
+    private static boolean probeOnce(String url, Resolved out) throws Exception {
         HttpURLConnection conn = null;
         try {
-            URL u = new URL(workingUrl);
+            URL u = new URL(url);
             conn = (HttpURLConnection) u.openConnection();
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
@@ -77,79 +96,91 @@ public final class DynamicStreamResolver {
             conn.setRequestProperty("Accept", "application/json,text/plain,*/*");
 
             int code = conn.getResponseCode();
-            if (code < 200 || code >= 400) return out;
+            if (code < 200 || code >= 400) return false;
 
             String contentType = conn.getContentType();
             boolean jsonHinted = contentType != null && contentType.toLowerCase().contains("json");
 
-            // Read up to ~64KB — JSON responses are tiny; m3u8 starts with "#EXTM3U".
-            String body = readBoundedBody(conn.getInputStream(), 64 * 1024);
-            if (body == null || body.isEmpty()) return out;
+            String body = readBoundedBody(conn.getInputStream(), 128 * 1024);
+            if (body == null || body.isEmpty()) return false;
 
             String trimmed = body.trim();
             if (trimmed.startsWith("#EXTM3U")) {
-                // It's an HLS playlist, not JSON.
                 out.forceHls = true;
-                return out;
+                return true;
             }
-
             if (!jsonHinted && !(trimmed.startsWith("{") || trimmed.startsWith("["))) {
-                // Looks like binary/segmented stream — leave URL untouched.
-                return out;
+                return false;
             }
 
             JsonElement el = JsonParser.parseString(trimmed);
-            JsonObject obj = null;
-            if (el.isJsonArray()) {
-                JsonArray arr = el.getAsJsonArray();
-                if (arr.size() > 0 && arr.get(0).isJsonObject()) obj = arr.get(0).getAsJsonObject();
-            } else if (el.isJsonObject()) {
-                obj = el.getAsJsonObject();
-            }
-            if (obj == null) return out;
-
-            String resolvedUrl = firstNonEmpty(obj,
-                    "url", "stream", "stream_url", "src", "playUrl", "link", "manifest");
-            if (resolvedUrl != null && !resolvedUrl.isEmpty()) {
-                out.url = resolvedUrl;
-                if (looksLikeHls(resolvedUrl)) out.forceHls = true;
-            }
-
-            String ua = firstNonEmpty(obj, "userAgent", "user_agent", "User-Agent");
-            if (ua != null) out.userAgent = ua;
-
-            String ref = firstNonEmpty(obj, "Referer", "referer", "referrer");
-            if (ref != null) out.referer = ref;
-
-            // otherHeaders may be a pipe/colon-encoded string or a plain object.
-            JsonElement hdrsEl = pickElement(obj, "otherHeaders", "headers", "extraHeaders");
-            if (hdrsEl != null) {
-                if (hdrsEl.isJsonPrimitive()) {
-                    parseEncodedHeaders(hdrsEl.getAsString(), out.headers);
-                } else if (hdrsEl.isJsonObject()) {
-                    for (Map.Entry<String, JsonElement> e : hdrsEl.getAsJsonObject().entrySet()) {
-                        if (e.getValue().isJsonPrimitive()) {
-                            out.headers.put(e.getKey(), e.getValue().getAsString());
-                        }
-                    }
-                }
-            }
-
-            // Some endpoints embed a DRM key as `keyId:key` pair — we don't touch it
-            // here; the engine layer handles DRM.
-        } catch (Exception e) {
-            Log.w(TAG, "probe failed: " + e.getMessage());
+            // Deep-walk to find URL + headers anywhere in the tree.
+            boolean foundUrl = walkAndExtract(el, out, 0);
+            return foundUrl;
         } finally {
             if (conn != null) conn.disconnect();
         }
-        return out;
     }
 
-    // ---- helpers ----------------------------------------------------------
+    /** Recursive deep walk — returns true once a URL is found. */
+    private static boolean walkAndExtract(JsonElement el, Resolved out, int depth) {
+        if (el == null || depth > 8) return false;
+        boolean found = false;
+
+        if (el.isJsonObject()) {
+            JsonObject obj = el.getAsJsonObject();
+            // Try direct URL keys first.
+            String candidate = firstNonEmpty(obj, URL_KEYS);
+            if (candidate != null && looksLikeStreamUrl(candidate)) {
+                out.url = candidate;
+                if (looksLikeHls(candidate)) out.forceHls = true;
+                found = true;
+            }
+            // Headers / UA / Referer at this level.
+            String ua = firstNonEmpty(obj, UA_KEYS);
+            if (ua != null && out.userAgent == null) out.userAgent = ua;
+            String ref = firstNonEmpty(obj, REF_KEYS);
+            if (ref != null && out.referer == null) out.referer = ref;
+            JsonElement hdrsEl = pickElement(obj, HDR_KEYS);
+            if (hdrsEl != null) extractHeaders(hdrsEl, out.headers);
+
+            // Recurse into all children regardless.
+            for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
+                if (walkAndExtract(e.getValue(), out, depth + 1)) found = true;
+            }
+        } else if (el.isJsonArray()) {
+            JsonArray arr = el.getAsJsonArray();
+            for (JsonElement child : arr) {
+                if (walkAndExtract(child, out, depth + 1)) found = true;
+            }
+        }
+        return found;
+    }
+
+    private static void extractHeaders(JsonElement hdrsEl, Map<String, String> headers) {
+        if (hdrsEl.isJsonPrimitive()) {
+            parseEncodedHeaders(hdrsEl.getAsString(), headers);
+        } else if (hdrsEl.isJsonObject()) {
+            for (Map.Entry<String, JsonElement> e : hdrsEl.getAsJsonObject().entrySet()) {
+                if (e.getValue().isJsonPrimitive()) {
+                    headers.put(e.getKey(), e.getValue().getAsString());
+                }
+            }
+        } else if (hdrsEl.isJsonArray()) {
+            for (JsonElement child : hdrsEl.getAsJsonArray()) {
+                if (child.isJsonObject()) extractHeaders(child, headers);
+            }
+        }
+    }
+
+    private static boolean looksLikeStreamUrl(String s) {
+        if (s == null || s.length() < 8) return false;
+        String l = s.toLowerCase();
+        return l.startsWith("http://") || l.startsWith("https://");
+    }
 
     private static boolean shouldProbe(String url) {
         String lower = url.toLowerCase();
-        // Avoid probing obvious media (m3u8/mpd/ts/mp4). Probe png, json, channel-id endpoints.
         if (lower.contains(".m3u8") && !lower.contains("#hls")) return false;
         if (lower.contains(".mpd")) return false;
         if (lower.endsWith(".ts") || lower.endsWith(".mp4")) return false;
@@ -194,9 +225,6 @@ public final class DynamicStreamResolver {
         return null;
     }
 
-    /**
-     * Parses the legacy "key1:val1|key2:val2" / "key1=val1&key2=val2" headers blob.
-     */
     static void parseEncodedHeaders(String raw, Map<String, String> out) {
         if (raw == null || raw.isEmpty()) return;
         String[] pairs = raw.contains("|") ? raw.split("\\|") : raw.split("&");
