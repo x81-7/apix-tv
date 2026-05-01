@@ -127,6 +127,9 @@ const AdminDashboard: React.FC = () => {
             <TabsTrigger value="appinfo" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Smartphone className="w-4 h-4 mr-2" />معلومات التطبيق
             </TabsTrigger>
+            <TabsTrigger value="vip" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Crown className="w-4 h-4 mr-2" />اشتراكات VIP
+            </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Settings className="w-4 h-4 mr-2" />الإعدادات
             </TabsTrigger>
