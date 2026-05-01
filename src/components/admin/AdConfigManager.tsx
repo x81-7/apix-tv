@@ -70,6 +70,8 @@ const AdConfigManager: React.FC = () => {
   const [allChannels, setAllChannels] = useState<{ id: string; name: string }[]>([]);
   const [ghToken, setGhToken] = useState('');
   const [ghRepo, setGhRepo] = useState('');
+  const [webAds, setWebAds] = useState<WebAdsConfig>({ enabled: false, externalOnly: true, skipAfter: 5, url: '', sellerContactUrl: '' });
+  const [savingWebAds, setSavingWebAds] = useState(false);
 
   useEffect(() => {
     (async () => {
