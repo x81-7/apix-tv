@@ -162,5 +162,17 @@ export const useIptvData = (): IptvDataState => {
     return () => { cancelled = true; };
   }, []);
 
+  // Live sync: any change in channels/categories/menus/sub_channels triggers reload.
+  useEffect(() => {
+    const ch = supabase
+      .channel('iptv-data-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'side_menus' }, () => reload())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sub_channels' }, () => reload())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [reload]);
+
   return { categories, sideMenus, loading, error };
 };
