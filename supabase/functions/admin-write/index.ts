@@ -24,6 +24,7 @@ const ALLOWED_TABLES = new Set([
   'sub_channels',
   'system_settings',
   'custom_ads',
+  'vip_subscriptions',
 ]);
 
 /** Encrypt and upload a secret to GitHub repository */
