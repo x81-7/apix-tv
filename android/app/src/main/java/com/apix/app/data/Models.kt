@@ -76,6 +76,7 @@ data class AndroidStreamConfig(
     var drmClearKeyMode: String? = null,
     var drmLicenseHeaders: List<CustomHeader>? = null,
     var servers: List<Server>? = null,
+    var fallbackServers: List<FallbackServer>? = null,
     var backupUrl: String? = null,
     var audioSources: List<AudioSource>? = null,
     var subtitleUrl: String? = null,
