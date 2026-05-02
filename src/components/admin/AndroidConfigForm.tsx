@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Smartphone, Globe, Play, ExternalLink, FileCode, Key, Link, Plus, Trash2, Image, Monitor, Volume2, Subtitles, Server, Shield } from 'lucide-react';
 import type { AndroidStreamConfig, AndroidActionType, DrmScheme, ClearKeyMode, CustomHeader, AudioSource, LogoOverlay, DynamicApiConfig, AspectRatioMode, WebViewOrientationMode } from '@/types/admin';
+import FallbackServersEditor from './FallbackServersEditor';
 
 interface AndroidConfigFormProps {
   config: Partial<AndroidStreamConfig>;
