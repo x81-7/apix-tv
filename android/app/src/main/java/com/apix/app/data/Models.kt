@@ -161,6 +161,7 @@ data class PlayerConfig(
     var drm: PlayerDrm? = null,
     var drmLicenseHeaders: Map<String, String>? = null,
     var servers: List<Server>? = null,
+    var fallbackServers: List<FallbackServer>? = null,
     var backupUrl: String? = null,
     var audioSources: List<AudioSource>? = null,
     var subtitleUrl: String? = null,
