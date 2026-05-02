@@ -99,6 +99,28 @@ data class Server(
     var url: String? = null
 )
 
+/**
+ * Full-power fallback server — same fields as the primary stream so the
+ * player can switch to it seamlessly on error/stop without losing headers/DRM.
+ */
+data class FallbackServer(
+    var id: String? = null,
+    var name: String? = null,
+    var url: String? = null,
+    var userAgent: String? = null,
+    var referer: String? = null,
+    var origin: String? = null,
+    var cookie: String? = null,
+    var customHeaders: List<CustomHeader>? = null,
+    var drmScheme: String? = null,
+    var drmLicenseUrl: String? = null,
+    var drmKeyId: String? = null,
+    var drmKey: String? = null,
+    var drmClearKeyCombined: String? = null,
+    var drmClearKeyMode: String? = null,
+    var drmLicenseHeaders: List<CustomHeader>? = null
+)
+
 data class SideMenu(
     var id: String = "",
     var name: String = "",
