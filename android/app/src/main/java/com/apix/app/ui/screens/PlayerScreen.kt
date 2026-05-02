@@ -508,6 +508,49 @@ fun PlayerScreen(
                 if (externalAudioPlayer.mediaItemCount > 0) externalAudioPlayer.playWhenReady = playing
             }
             override fun onPlayerError(error: PlaybackException) {
+                // 1) Try advanced fallback servers (full-power: own headers + DRM).
+                val fbList = resolvedConfig.fallbackServers ?: emptyList()
+                val currentIdx = fbList.indexOfFirst { it.url == currentServerUrl }
+                val nextFb = fbList.getOrNull(currentIdx + 1)
+                    ?: if (currentIdx == -1) fbList.firstOrNull() else null
+                if (nextFb != null && !nextFb.url.isNullOrEmpty()) {
+                    val merged = resolvedConfig.copy(
+                        url = nextFb.url!!,
+                        headers = PlayerHeaders(
+                            userAgent = nextFb.userAgent ?: resolvedConfig.headers?.userAgent,
+                            referer = nextFb.referer ?: resolvedConfig.headers?.referer,
+                            cookie = nextFb.cookie ?: resolvedConfig.headers?.cookie,
+                            origin = nextFb.origin ?: resolvedConfig.headers?.origin
+                        ),
+                        customHeaders = nextFb.customHeaders?.mapNotNull {
+                            val k = it.key; val v = it.value
+                            if (k != null && v != null) k to v else null
+                        }?.toMap() ?: resolvedConfig.customHeaders,
+                        drm = run {
+                            val scheme = nextFb.drmScheme
+                            if (scheme.isNullOrEmpty()) resolvedConfig.drm
+                            else {
+                                var kid = nextFb.drmKeyId
+                                var key = nextFb.drmKey
+                                if (nextFb.drmClearKeyMode == "combined" && !nextFb.drmClearKeyCombined.isNullOrEmpty()) {
+                                    val parts = nextFb.drmClearKeyCombined!!.split(":")
+                                    if (parts.size == 2) { kid = parts[0]; key = parts[1] }
+                                }
+                                PlayerDrm(
+                                    licenseUrl = nextFb.drmLicenseUrl,
+                                    scheme = scheme,
+                                    keyId = kid,
+                                    key = key
+                                )
+                            }
+                        }
+                    )
+                    resolvedConfig = merged
+                    currentServerUrl = nextFb.url!!
+                    kotlinx.coroutines.MainScope().launch { loadStream(nextFb.url!!, merged) }
+                    return
+                }
+                // 2) Legacy single backup URL.
                 val backup = resolvedConfig.backupUrl
                 if (!backup.isNullOrEmpty() && currentServerUrl != backup) {
                     currentServerUrl = backup
