@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Smartphone, Globe, Play, ExternalLink, FileCode, Key, Link, Plus, Trash2, Image, Monitor, Volume2, Subtitles, Server, Shield } from 'lucide-react';
 import type { AndroidStreamConfig, AndroidActionType, DrmScheme, ClearKeyMode, CustomHeader, AudioSource, LogoOverlay, DynamicApiConfig, AspectRatioMode, WebViewOrientationMode } from '@/types/admin';
+import FallbackServersEditor from './FallbackServersEditor';
 
 interface AndroidConfigFormProps {
   config: Partial<AndroidStreamConfig>;
@@ -268,12 +269,18 @@ const AndroidConfigForm: React.FC<AndroidConfigFormProps> = ({
             2️⃣ الخوادم البديلة، الصوت، والترجمة
           </Label>
 
-          {/* Backup Server URL */}
+          {/* Backup Server URL (legacy single fallback) */}
           <div className="space-y-1">
-            <Label className="text-xs">رابط السيرفر البديل (Backup)</Label>
+            <Label className="text-xs">رابط السيرفر البديل (Backup — بسيط)</Label>
             <Input value={config.backupUrl || ''} onChange={(e) => updateConfig({ backupUrl: e.target.value })} placeholder="https://backup.example.com/live.m3u8" className="bg-secondary border-border font-mono text-xs" dir="ltr" />
-            <p className="text-xs text-muted-foreground">ينتقل تلقائياً عند فشل الرابط الأساسي (404/500/Timeout)</p>
+            <p className="text-xs text-muted-foreground">رابط واحد بسيط — للحالات البسيطة. للسيرفرات المتعددة بقوة كاملة استخدم القائمة أدناه.</p>
           </div>
+
+          {/* Advanced fallback servers (array with full power) */}
+          <FallbackServersEditor
+            servers={(config.fallbackServers as any) || []}
+            onChange={(srv) => updateConfig({ fallbackServers: srv as any })}
+          />
 
           {/* Multi-Source Audio */}
           <div className="space-y-2 p-3 rounded-lg bg-secondary/50 border border-border">

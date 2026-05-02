@@ -113,6 +113,28 @@ export interface AndroidStreamConfig {
   drmClearKeyMode?: ClearKeyMode;
   drmLicenseHeaders?: CustomHeader[];
   servers?: Array<{ name: string; url: string }>;
+  /**
+   * Advanced fallback servers — full-power alternates with their own
+   * URL, headers, customHeaders and DRM. Player chains through them
+   * sequentially when the previous one fails or stops mid-playback.
+   */
+  fallbackServers?: Array<{
+    id: string;
+    name: string;
+    url: string;
+    userAgent?: string;
+    referer?: string;
+    origin?: string;
+    cookie?: string;
+    customHeaders?: CustomHeader[];
+    drmScheme?: DrmScheme | '';
+    drmLicenseUrl?: string;
+    drmKeyId?: string;
+    drmKey?: string;
+    drmClearKeyCombined?: string;
+    drmClearKeyMode?: ClearKeyMode;
+    drmLicenseHeaders?: CustomHeader[];
+  }>;
   backupUrl?: string;
   audioSources?: AudioSource[];
   subtitleUrl?: string;

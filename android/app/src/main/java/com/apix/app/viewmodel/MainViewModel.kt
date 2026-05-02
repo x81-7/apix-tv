@@ -228,6 +228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (map.isNotEmpty()) config.drmLicenseHeaders = map
             }
             config.backupUrl = channel.androidStream!!.backupUrl
+            config.fallbackServers = channel.androidStream!!.fallbackServers
             config.audioSources = channel.androidStream!!.audioSources
             config.subtitleUrl = channel.androidStream!!.subtitleUrl
             config.dynamicApi = channel.androidStream!!.dynamicApi
