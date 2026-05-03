@@ -73,6 +73,7 @@ public class RemoteModels {
         public String drmClearKeyMode;
         public List<CustomHeader> drmLicenseHeaders;
         public List<Server> servers;
+        public List<FallbackServer> fallbackServers;
         public String backupUrl;
         public List<AudioSource> audioSources;
         public String subtitleUrl;
