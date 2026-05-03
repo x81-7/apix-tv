@@ -165,7 +165,7 @@ public class RealtimeNotificationManager {
                     if (appContext != null) {
                         NotificationService.show(appContext, id, title, body, action, createdAt);
                     }
-                } else if ("sub_channels".equals(table) || "side_menus".equals(table)) {
+                } else if ("sub_channels".equals(table) || "side_menus".equals(table) || "channels".equals(table)) {
                     String type = data.optString("type", "");
                     if (appContext != null) {
                         patchCache(table, record, type);
