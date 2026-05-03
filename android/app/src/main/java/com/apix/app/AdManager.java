@@ -190,6 +190,7 @@ public final class AdManager {
      * between them based on a counter so the user sees variety.
      */
     public static void maybeRunExternalGate(Activity activity, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
         final JSONObject fConfig = config;
