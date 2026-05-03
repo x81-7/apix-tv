@@ -41,6 +41,15 @@ public final class AdManager {
 
     private AdManager() {}
 
+    /** VIP users skip every ad gate (open / unlock / external + local sequential). */
+    private static boolean isVip(Context ctx) {
+        try {
+            return new com.apix.app.vip.VipChecker(
+                    ctx, BuildConfig.CLOUD_URL, BuildConfig.CLOUD_ANON_KEY
+            ).isActiveLocally();
+        } catch (Throwable t) { return false; }
+    }
+
     public static void refreshCacheAsync(Context context) {
         new Thread(() -> {
             try {
