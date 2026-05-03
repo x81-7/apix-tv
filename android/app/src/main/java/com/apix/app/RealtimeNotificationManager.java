@@ -100,6 +100,14 @@ public class RealtimeNotificationManager {
                         "side_menus"
                 ).toString());
 
+                // Subscribe to channels updates (live URL/header sync — no app restart).
+                ws.send(buildJoin(
+                        "realtime:public:channels",
+                        "4",
+                        "*",
+                        "channels"
+                ).toString());
+
                 // Heartbeat every 25s
                 MAIN.postDelayed(new Runnable() {
                     @Override
