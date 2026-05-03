@@ -184,7 +184,10 @@ public class RealtimeNotificationManager {
         private void patchCache(String table, JSONObject record, String type) {
             try {
                 SharedPreferences sp = appContext.getSharedPreferences("supabase_cache", Context.MODE_PRIVATE);
-                String prefKey = "sub_channels".equals(table) ? "sub_channels_json" : "side_menus_json";
+                String prefKey;
+                if ("sub_channels".equals(table)) prefKey = "sub_channels_json";
+                else if ("side_menus".equals(table)) prefKey = "side_menus_json";
+                else prefKey = "channels_json";
                 String raw = sp.getString(prefKey, "[]");
                 JSONArray arr = new JSONArray(raw);
                 String rid = record.optString("id", "");
