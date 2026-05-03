@@ -722,7 +722,56 @@ public class SupabaseDataManager {
             }
         }
 
-        // audioSources
+        // fallbackServers — full-power alternates with their own headers + DRM
+        if (!as.isNull("fallbackServers")) {
+            JSONArray arr = as.optJSONArray("fallbackServers");
+            if (arr != null) {
+                cfg.fallbackServers = new ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject f = arr.optJSONObject(i);
+                    if (f == null) continue;
+                    RemoteModels.FallbackServer fs = new RemoteModels.FallbackServer();
+                    fs.id = f.optString("id", null);
+                    fs.name = f.optString("name", null);
+                    fs.url = f.optString("url", null);
+                    fs.userAgent = f.optString("userAgent", null);
+                    fs.referer = f.optString("referer", null);
+                    fs.origin = f.optString("origin", null);
+                    fs.cookie = f.optString("cookie", null);
+                    fs.drmScheme = f.optString("drmScheme", null);
+                    fs.drmLicenseUrl = f.optString("drmLicenseUrl", null);
+                    fs.drmKeyId = f.optString("drmKeyId", null);
+                    fs.drmKey = f.optString("drmKey", null);
+                    fs.drmClearKeyCombined = f.optString("drmClearKeyCombined", null);
+                    fs.drmClearKeyMode = f.optString("drmClearKeyMode", null);
+                    JSONArray ch = f.optJSONArray("customHeaders");
+                    if (ch != null) {
+                        fs.customHeaders = new ArrayList<>();
+                        for (int j = 0; j < ch.length(); j++) {
+                            JSONObject h = ch.optJSONObject(j);
+                            if (h == null) continue;
+                            RemoteModels.CustomHeader cm = new RemoteModels.CustomHeader();
+                            cm.key = h.optString("key", "");
+                            cm.value = h.optString("value", "");
+                            fs.customHeaders.add(cm);
+                        }
+                    }
+                    JSONArray lh = f.optJSONArray("drmLicenseHeaders");
+                    if (lh != null) {
+                        fs.drmLicenseHeaders = new ArrayList<>();
+                        for (int j = 0; j < lh.length(); j++) {
+                            JSONObject h = lh.optJSONObject(j);
+                            if (h == null) continue;
+                            RemoteModels.CustomHeader cm = new RemoteModels.CustomHeader();
+                            cm.key = h.optString("key", "");
+                            cm.value = h.optString("value", "");
+                            fs.drmLicenseHeaders.add(cm);
+                        }
+                    }
+                    cfg.fallbackServers.add(fs);
+                }
+            }
+        }
         if (!as.isNull("audioSources")) {
             JSONArray arr = as.optJSONArray("audioSources");
             if (arr != null) {

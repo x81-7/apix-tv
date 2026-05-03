@@ -100,6 +100,14 @@ public class RealtimeNotificationManager {
                         "side_menus"
                 ).toString());
 
+                // Subscribe to channels updates (live URL/header sync — no app restart).
+                ws.send(buildJoin(
+                        "realtime:public:channels",
+                        "4",
+                        "*",
+                        "channels"
+                ).toString());
+
                 // Heartbeat every 25s
                 MAIN.postDelayed(new Runnable() {
                     @Override
@@ -157,7 +165,7 @@ public class RealtimeNotificationManager {
                     if (appContext != null) {
                         NotificationService.show(appContext, id, title, body, action, createdAt);
                     }
-                } else if ("sub_channels".equals(table) || "side_menus".equals(table)) {
+                } else if ("sub_channels".equals(table) || "side_menus".equals(table) || "channels".equals(table)) {
                     String type = data.optString("type", "");
                     if (appContext != null) {
                         patchCache(table, record, type);
@@ -176,7 +184,10 @@ public class RealtimeNotificationManager {
         private void patchCache(String table, JSONObject record, String type) {
             try {
                 SharedPreferences sp = appContext.getSharedPreferences("supabase_cache", Context.MODE_PRIVATE);
-                String prefKey = "sub_channels".equals(table) ? "sub_channels_json" : "side_menus_json";
+                String prefKey;
+                if ("sub_channels".equals(table)) prefKey = "sub_channels_json";
+                else if ("side_menus".equals(table)) prefKey = "side_menus_json";
+                else prefKey = "channels_json";
                 String raw = sp.getString(prefKey, "[]");
                 JSONArray arr = new JSONArray(raw);
                 String rid = record.optString("id", "");

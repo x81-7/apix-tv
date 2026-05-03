@@ -41,6 +41,15 @@ public final class AdManager {
 
     private AdManager() {}
 
+    /** VIP users skip every ad gate (open / unlock / external + local sequential). */
+    private static boolean isVip(Context ctx) {
+        try {
+            return new com.apix.app.vip.VipChecker(
+                    ctx, BuildConfig.CLOUD_URL, BuildConfig.CLOUD_ANON_KEY
+            ).isActiveLocally();
+        } catch (Throwable t) { return false; }
+    }
+
     public static void refreshCacheAsync(Context context) {
         new Thread(() -> {
             try {
@@ -75,6 +84,7 @@ public final class AdManager {
     }
 
     public static void maybeRunAppOpenGate(Activity activity, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         // Use the freshly-cached config from refreshCacheAsync (also fetches fresh)
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
@@ -146,6 +156,7 @@ public final class AdManager {
     }
 
     public static void maybeRunUnlockGate(Activity activity, String channelId, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
         final JSONObject fConfig = config;
@@ -179,6 +190,7 @@ public final class AdManager {
      * between them based on a counter so the user sees variety.
      */
     public static void maybeRunExternalGate(Activity activity, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
         final JSONObject fConfig = config;
