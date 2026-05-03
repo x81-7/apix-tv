@@ -112,6 +112,25 @@ public class RemoteModels {
         public String url;
     }
 
+    /** Full-power fallback server: own headers + DRM. */
+    public static class FallbackServer {
+        public String id;
+        public String name;
+        public String url;
+        public String userAgent;
+        public String referer;
+        public String origin;
+        public String cookie;
+        public List<CustomHeader> customHeaders;
+        public String drmScheme;
+        public String drmLicenseUrl;
+        public String drmKeyId;
+        public String drmKey;
+        public String drmClearKeyCombined;
+        public String drmClearKeyMode;
+        public List<CustomHeader> drmLicenseHeaders;
+    }
+
     public static class CustomHeader {
         public String key;
         public String value;
