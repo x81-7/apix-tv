@@ -109,6 +109,19 @@ object SupabaseRepository {
             customHeaders = r.customHeaders?.map { CustomHeader(it.key, it.value) },
             drmLicenseHeaders = r.drmLicenseHeaders?.map { CustomHeader(it.key, it.value) },
             servers = r.servers?.map { Server(it.name, it.url) },
+            fallbackServers = r.fallbackServers?.map { fs ->
+                FallbackServer(
+                    id = fs.id, name = fs.name, url = fs.url,
+                    userAgent = fs.userAgent, referer = fs.referer,
+                    origin = fs.origin, cookie = fs.cookie,
+                    drmScheme = fs.drmScheme, drmLicenseUrl = fs.drmLicenseUrl,
+                    drmKeyId = fs.drmKeyId, drmKey = fs.drmKey,
+                    drmClearKeyCombined = fs.drmClearKeyCombined,
+                    drmClearKeyMode = fs.drmClearKeyMode,
+                    customHeaders = fs.customHeaders?.map { CustomHeader(it.key, it.value) },
+                    drmLicenseHeaders = fs.drmLicenseHeaders?.map { CustomHeader(it.key, it.value) }
+                )
+            },
              audioSources = r.audioSources?.map { AudioSource(it.name, it.url) },
              forcedAspectRatio = r.forcedAspectRatio,
              lockAspectRatio = r.lockAspectRatio,
