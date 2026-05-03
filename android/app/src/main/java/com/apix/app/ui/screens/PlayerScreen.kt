@@ -759,6 +759,7 @@ fun PlayerScreen(
                     onSelect = { server ->
                         showServerDialog = false
                         currentServerUrl = server.url ?: return@ServerSelectionDialog
+                        currentFallbackIndex = -1 // user pick resets fallback chain
                         kotlinx.coroutines.MainScope().launch { loadStream(server.url!!, resolvedConfig) }
                     },
                     onDismiss = { showServerDialog = false }
