@@ -84,6 +84,7 @@ public final class AdManager {
     }
 
     public static void maybeRunAppOpenGate(Activity activity, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         // Use the freshly-cached config from refreshCacheAsync (also fetches fresh)
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
