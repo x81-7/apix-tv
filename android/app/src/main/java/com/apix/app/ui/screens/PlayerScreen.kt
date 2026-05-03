@@ -340,6 +340,8 @@ fun PlayerScreen(
     var currentServerUrl by remember { mutableStateOf(config.url) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
     var latestPlaybackError by remember { mutableStateOf<String?>(null) }
+    // Tracks how far we've walked through fallbackServers list. -1 = primary.
+    var currentFallbackIndex by remember { mutableIntStateOf(-1) }
 
     var controlsResetKey by remember { mutableLongStateOf(0L) }
     val pipFocusRequester = remember { FocusRequester() }
