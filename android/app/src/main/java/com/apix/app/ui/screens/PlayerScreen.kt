@@ -510,12 +510,13 @@ fun PlayerScreen(
                 if (externalAudioPlayer.mediaItemCount > 0) externalAudioPlayer.playWhenReady = playing
             }
             override fun onPlayerError(error: PlaybackException) {
-                // 1) Try advanced fallback servers (full-power: own headers + DRM).
+                Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex msg=${error.message}")
+                // 1) Walk through fallbackServers sequentially using an explicit index.
                 val fbList = resolvedConfig.fallbackServers ?: emptyList()
-                val currentIdx = fbList.indexOfFirst { it.url == currentServerUrl }
-                val nextFb = fbList.getOrNull(currentIdx + 1)
-                    ?: if (currentIdx == -1) fbList.firstOrNull() else null
+                val nextIdx = currentFallbackIndex + 1
+                val nextFb = fbList.getOrNull(nextIdx)
                 if (nextFb != null && !nextFb.url.isNullOrEmpty()) {
+                    currentFallbackIndex = nextIdx
                     val merged = resolvedConfig.copy(
                         url = nextFb.url!!,
                         headers = PlayerHeaders(
@@ -538,17 +539,17 @@ fun PlayerScreen(
                                     val parts = nextFb.drmClearKeyCombined!!.split(":")
                                     if (parts.size == 2) { kid = parts[0]; key = parts[1] }
                                 }
-                                PlayerDrm(
-                                    licenseUrl = nextFb.drmLicenseUrl,
-                                    scheme = scheme,
-                                    keyId = kid,
-                                    key = key
-                                )
+                                PlayerDrm(licenseUrl = nextFb.drmLicenseUrl, scheme = scheme, keyId = kid, key = key)
                             }
-                        }
+                        },
+                        drmLicenseHeaders = nextFb.drmLicenseHeaders?.mapNotNull {
+                            val k = it.key; val v = it.value
+                            if (k != null && v != null) k to v else null
+                        }?.toMap() ?: resolvedConfig.drmLicenseHeaders
                     )
                     resolvedConfig = merged
                     currentServerUrl = nextFb.url!!
+                    Log.d("PlayerScreen", "→ trying fallback #$nextIdx: ${nextFb.name ?: nextFb.url}")
                     kotlinx.coroutines.MainScope().launch { loadStream(nextFb.url!!, merged) }
                     return
                 }
