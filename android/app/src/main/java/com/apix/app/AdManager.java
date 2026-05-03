@@ -156,6 +156,7 @@ public final class AdManager {
     }
 
     public static void maybeRunUnlockGate(Activity activity, String channelId, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         JSONObject config = null;
         try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
         final JSONObject fConfig = config;
