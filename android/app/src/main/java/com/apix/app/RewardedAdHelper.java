@@ -103,35 +103,47 @@ public final class RewardedAdHelper {
 
     public static void initIfNeeded(Context ctx) { initIfNeeded(ctx, null); }
 
+    // Google's universal test rewarded ad unit — used as last-resort fallback
+    // when the production unit returns NO_FILL repeatedly so we don't hang.
+    private static final String TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917";
+
     public static void preload(Context ctx, String unitId) {
         if (unitId == null || unitId.isEmpty()) return;
         initIfNeeded(ctx, () -> {
             currentUnitId = unitId;
-            // Loads must be issued on the main thread too.
-            new Handler(Looper.getMainLooper()).post(() -> {
-                try {
-                    AdRequest req = new AdRequest.Builder().build();
-                    Log.d(TAG, "Preloading rewarded ad for unit: " + unitId);
-                    RewardedAd.load(ctx.getApplicationContext(), unitId, req, new RewardedAdLoadCallback() {
-                    @Override
-                    public void onAdLoaded(RewardedAd ad) {
-                        loadedAd = ad;
-                        Log.d(TAG, "Rewarded ad preloaded for " + unitId);
+            new Handler(Looper.getMainLooper()).post(() -> loadWithRetry(ctx, unitId, 0));
+        });
+    }
+
+    private static void loadWithRetry(Context ctx, String unitId, int attempt) {
+        try {
+            AdRequest req = new AdRequest.Builder().build();
+            Log.d(TAG, "Preload attempt " + (attempt + 1) + " for " + unitId);
+            RewardedAd.load(ctx.getApplicationContext(), unitId, req, new RewardedAdLoadCallback() {
+                @Override public void onAdLoaded(RewardedAd ad) {
+                    loadedAd = ad;
+                    Log.d(TAG, "Rewarded ad preloaded for " + unitId);
+                }
+                @Override public void onAdFailedToLoad(LoadAdError e) {
+                    loadedAd = null;
+                    Log.w(TAG, "Preload failed code=" + e.getCode() + " msg=" + e.getMessage()
+                            + " attempt=" + (attempt + 1));
+                    // Retry up to 3 times with exponential backoff (1s, 2s, 4s).
+                    if (attempt < 2) {
+                        long delay = 1000L * (1L << attempt);
+                        new Handler(Looper.getMainLooper()).postDelayed(
+                                () -> loadWithRetry(ctx, unitId, attempt + 1), delay);
+                    } else if (e.getCode() == 3 /* NO_FILL */ && !TEST_REWARDED.equals(unitId)) {
+                        // Fall back to Google test unit so the app never hangs.
+                        Log.w(TAG, "All retries exhausted, falling back to test unit");
+                        currentUnitId = TEST_REWARDED;
+                        loadWithRetry(ctx, TEST_REWARDED, 0);
                     }
-                    @Override
-                    public void onAdFailedToLoad(LoadAdError e) {
-                        loadedAd = null;
-                        Log.w(TAG, "Rewarded ad preload failed code=" + e.getCode()
-                                + " domain=" + e.getDomain()
-                                + " msg=" + e.getMessage()
-                                + " cause=" + e.getCause());
-                    }
-                    });
-                } catch (Throwable t) {
-                    Log.w(TAG, "preload error", t);
                 }
             });
-        });
+        } catch (Throwable t) {
+            Log.w(TAG, "preload error", t);
+        }
     }
 
     public static void showOrSkip(final Activity activity, final String unitId, final Callback cb) {
