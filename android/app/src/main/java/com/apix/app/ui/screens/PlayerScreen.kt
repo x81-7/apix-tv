@@ -345,13 +345,32 @@ fun PlayerScreen(
     var currentFallbackIndex by remember { mutableIntStateOf(-1) }
     // Retry the SAME server once before walking to the next fallback.
     var retryCountSameServer by remember { mutableIntStateOf(0) }
-    // Visibility of the new "tower" servers picker icon (admin toggle via system_settings.playerConfig.showServersButton).
+    // Visibility of the new "tower" servers picker icon (admin toggle).
     var showServersButtonEnabled by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val v = com.apix.app.SupabaseDataManager.fetchPlayerConfig()
-                showServersButtonEnabled = v?.optBoolean("showServersButton", false) == true
+                val sp = context.getSharedPreferences("apix_player_ui", android.content.Context.MODE_PRIVATE)
+                val cached = sp.getBoolean("show_servers_button", false)
+                showServersButtonEnabled = cached
+                try {
+                    val url = java.net.URL(com.apix.app.BuildConfig.CLOUD_URL +
+                        "/rest/v1/system_settings?key=eq.playerUiConfig&select=value")
+                    val c = url.openConnection() as java.net.HttpURLConnection
+                    c.setRequestProperty("apikey", com.apix.app.BuildConfig.CLOUD_ANON_KEY)
+                    c.setRequestProperty("Authorization", "Bearer " + com.apix.app.BuildConfig.CLOUD_ANON_KEY)
+                    c.connectTimeout = 5000; c.readTimeout = 5000
+                    if (c.responseCode == 200) {
+                        val body = c.inputStream.bufferedReader().use { it.readText() }
+                        val arr = com.google.gson.JsonParser.parseString(body).asJsonArray
+                        if (arr.size() > 0) {
+                            val v = arr.get(0).asJsonObject.getAsJsonObject("value")
+                            val flag = v?.get("showServersButton")?.asBoolean ?: false
+                            showServersButtonEnabled = flag
+                            sp.edit().putBoolean("show_servers_button", flag).apply()
+                        }
+                    }
+                } catch (_: Throwable) {}
             }
         } catch (_: Throwable) {}
     }
