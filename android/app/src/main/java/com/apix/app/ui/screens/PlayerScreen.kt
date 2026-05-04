@@ -542,8 +542,19 @@ fun PlayerScreen(
                 if (externalAudioPlayer.mediaItemCount > 0) externalAudioPlayer.playWhenReady = playing
             }
             override fun onPlayerError(error: PlaybackException) {
-                Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex msg=${error.message}")
-                // 1) Walk through fallbackServers sequentially using an explicit index.
+                Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex retry=$retryCountSameServer msg=${error.message}")
+                // Retry SAME server once before switching to next fallback.
+                if (retryCountSameServer < 1) {
+                    retryCountSameServer += 1
+                    Log.d("PlayerScreen", "→ retrying same server (attempt #${retryCountSameServer + 1})")
+                    kotlinx.coroutines.MainScope().launch {
+                        kotlinx.coroutines.delay(800)
+                        loadStream(currentServerUrl, resolvedConfig)
+                    }
+                    return
+                }
+                retryCountSameServer = 0
+                // Walk through fallbackServers sequentially using an explicit index.
                 val fbList = resolvedConfig.fallbackServers ?: emptyList()
                 val nextIdx = currentFallbackIndex + 1
                 val nextFb = fbList.getOrNull(nextIdx)
