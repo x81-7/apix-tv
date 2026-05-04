@@ -339,9 +339,41 @@ fun PlayerScreen(
     var showServerDialog by remember { mutableStateOf(false) }
     var currentServerUrl by remember { mutableStateOf(config.url) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
+    var showFallbackServerDialog by remember { mutableStateOf(false) }
     var latestPlaybackError by remember { mutableStateOf<String?>(null) }
     // Tracks how far we've walked through fallbackServers list. -1 = primary.
     var currentFallbackIndex by remember { mutableIntStateOf(-1) }
+    // Retry the SAME server once before walking to the next fallback.
+    var retryCountSameServer by remember { mutableIntStateOf(0) }
+    // Visibility of the new "tower" servers picker icon (admin toggle).
+    var showServersButtonEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val sp = context.getSharedPreferences("apix_player_ui", android.content.Context.MODE_PRIVATE)
+                val cached = sp.getBoolean("show_servers_button", false)
+                showServersButtonEnabled = cached
+                try {
+                    val url = java.net.URL(com.apix.app.BuildConfig.CLOUD_URL +
+                        "/rest/v1/system_settings?key=eq.playerUiConfig&select=value")
+                    val c = url.openConnection() as java.net.HttpURLConnection
+                    c.setRequestProperty("apikey", com.apix.app.BuildConfig.CLOUD_ANON_KEY)
+                    c.setRequestProperty("Authorization", "Bearer " + com.apix.app.BuildConfig.CLOUD_ANON_KEY)
+                    c.connectTimeout = 5000; c.readTimeout = 5000
+                    if (c.responseCode == 200) {
+                        val body = c.inputStream.bufferedReader().use { it.readText() }
+                        val arr = com.google.gson.JsonParser.parseString(body).asJsonArray
+                        if (arr.size() > 0) {
+                            val v = arr.get(0).asJsonObject.getAsJsonObject("value")
+                            val flag = v?.get("showServersButton")?.asBoolean ?: false
+                            showServersButtonEnabled = flag
+                            sp.edit().putBoolean("show_servers_button", flag).apply()
+                        }
+                    }
+                } catch (_: Throwable) {}
+            }
+        } catch (_: Throwable) {}
+    }
 
     var controlsResetKey by remember { mutableLongStateOf(0L) }
     val pipFocusRequester = remember { FocusRequester() }
@@ -510,8 +542,19 @@ fun PlayerScreen(
                 if (externalAudioPlayer.mediaItemCount > 0) externalAudioPlayer.playWhenReady = playing
             }
             override fun onPlayerError(error: PlaybackException) {
-                Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex msg=${error.message}")
-                // 1) Walk through fallbackServers sequentially using an explicit index.
+                Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex retry=$retryCountSameServer msg=${error.message}")
+                // Retry SAME server once before switching to next fallback.
+                if (retryCountSameServer < 1) {
+                    retryCountSameServer += 1
+                    Log.d("PlayerScreen", "→ retrying same server (attempt #${retryCountSameServer + 1})")
+                    kotlinx.coroutines.MainScope().launch {
+                        kotlinx.coroutines.delay(800)
+                        loadStream(currentServerUrl, resolvedConfig)
+                    }
+                    return
+                }
+                retryCountSameServer = 0
+                // Walk through fallbackServers sequentially using an explicit index.
                 val fbList = resolvedConfig.fallbackServers ?: emptyList()
                 val nextIdx = currentFallbackIndex + 1
                 val nextFb = fbList.getOrNull(nextIdx)
