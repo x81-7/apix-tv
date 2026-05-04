@@ -339,9 +339,22 @@ fun PlayerScreen(
     var showServerDialog by remember { mutableStateOf(false) }
     var currentServerUrl by remember { mutableStateOf(config.url) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
+    var showFallbackServerDialog by remember { mutableStateOf(false) }
     var latestPlaybackError by remember { mutableStateOf<String?>(null) }
     // Tracks how far we've walked through fallbackServers list. -1 = primary.
     var currentFallbackIndex by remember { mutableIntStateOf(-1) }
+    // Retry the SAME server once before walking to the next fallback.
+    var retryCountSameServer by remember { mutableIntStateOf(0) }
+    // Visibility of the new "tower" servers picker icon (admin toggle via system_settings.playerConfig.showServersButton).
+    var showServersButtonEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val v = com.apix.app.SupabaseDataManager.fetchPlayerConfig()
+                showServersButtonEnabled = v?.optBoolean("showServersButton", false) == true
+            }
+        } catch (_: Throwable) {}
+    }
 
     var controlsResetKey by remember { mutableLongStateOf(0L) }
     val pipFocusRequester = remember { FocusRequester() }
