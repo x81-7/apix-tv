@@ -805,6 +805,10 @@ fun PlayerScreen(
                                     PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
                                 }
 
+                                if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                    PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
+                                }
+
                                 PlayerControlButton(icon = SettingsOutlineIcon, contentDescription = "Quality", size = 32) { showTrackDialog = true }
 
                                 if (canChangeResize) {
