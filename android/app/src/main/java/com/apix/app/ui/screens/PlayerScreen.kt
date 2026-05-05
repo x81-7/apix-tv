@@ -861,6 +861,62 @@ fun PlayerScreen(
                     onDismiss = { showAudioSourceDialog = false }
                 )
             }
+            if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                FallbackServerSelectionDialog(
+                    servers = resolvedConfig.fallbackServers!!,
+                    currentUrl = currentServerUrl,
+                    primaryUrl = config.url,
+                    onSelectPrimary = {
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = -1
+                        retryCountSameServer = 0
+                        currentServerUrl = config.url
+                        // Reset to original config
+                        resolvedConfig = config
+                        kotlinx.coroutines.MainScope().launch { loadStream(config.url, config) }
+                    },
+                    onSelect = { idx, fb ->
+                        showFallbackServerDialog = false
+                        retryCountSameServer = 0
+                        currentFallbackIndex = idx
+                        val u = fb.url ?: return@FallbackServerSelectionDialog
+                        val merged = resolvedConfig.copy(
+                            url = u,
+                            headers = PlayerHeaders(
+                                userAgent = fb.userAgent ?: resolvedConfig.headers?.userAgent,
+                                referer = fb.referer ?: resolvedConfig.headers?.referer,
+                                cookie = fb.cookie ?: resolvedConfig.headers?.cookie,
+                                origin = fb.origin ?: resolvedConfig.headers?.origin
+                            ),
+                            customHeaders = fb.customHeaders?.mapNotNull {
+                                val k = it.key; val v = it.value
+                                if (k != null && v != null) k to v else null
+                            }?.toMap() ?: resolvedConfig.customHeaders,
+                            drm = run {
+                                val scheme = fb.drmScheme
+                                if (scheme.isNullOrEmpty()) resolvedConfig.drm
+                                else {
+                                    var kid = fb.drmKeyId
+                                    var key = fb.drmKey
+                                    if (fb.drmClearKeyMode == "combined" && !fb.drmClearKeyCombined.isNullOrEmpty()) {
+                                        val parts = fb.drmClearKeyCombined!!.split(":")
+                                        if (parts.size == 2) { kid = parts[0]; key = parts[1] }
+                                    }
+                                    PlayerDrm(licenseUrl = fb.drmLicenseUrl, scheme = scheme, keyId = kid, key = key)
+                                }
+                            },
+                            drmLicenseHeaders = fb.drmLicenseHeaders?.mapNotNull {
+                                val k = it.key; val v = it.value
+                                if (k != null && v != null) k to v else null
+                            }?.toMap() ?: resolvedConfig.drmLicenseHeaders
+                        )
+                        resolvedConfig = merged
+                        currentServerUrl = u
+                        kotlinx.coroutines.MainScope().launch { loadStream(u, merged) }
+                    },
+                    onDismiss = { showFallbackServerDialog = false }
+                )
+            }
 
         }
     }
