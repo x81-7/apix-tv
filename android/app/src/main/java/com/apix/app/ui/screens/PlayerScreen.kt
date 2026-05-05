@@ -922,6 +922,65 @@ fun PlayerScreen(
     }
 }
 
+// ===== Fallback Server Selection Dialog (network-tower icon) =====
+@Composable
+fun FallbackServerSelectionDialog(
+    servers: List<com.apix.app.data.FallbackServer>,
+    currentUrl: String,
+    primaryUrl: String,
+    onSelectPrimary: () -> Unit,
+    onSelect: (Int, com.apix.app.data.FallbackServer) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isTv = isSystemInTvMode()
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(if (isTv) 0.6f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+            Column(Modifier.fillMaxSize()) {
+                Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+                HorizontalDivider(color = Color(0xFF222222))
+                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                    item {
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        val isActive = currentUrl == primaryUrl
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelectPrimary() }
+                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("السيرفر الأساسي", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            if (isActive) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    itemsIndexed(servers) { idx, server ->
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        val isActive = server.url == currentUrl
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(idx, server) }
+                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(server.name ?: "سيرفر بديل ${idx + 1}", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
+                            if (isActive) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+                HorizontalDivider(color = Color(0xFF222222))
+                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) {
+                    Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 // ===== Server Selection Dialog =====
 @Composable
 fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: String, onSelect: (com.apix.app.data.Server) -> Unit, onDismiss: () -> Unit) {
