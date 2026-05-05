@@ -51,6 +51,40 @@ const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<FallbackServer | null>(null);
 
+  const [showServersButton, setShowServersButton] = useState(false);
+  const [savingToggle, setSavingToggle] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'playerUiConfig')
+        .maybeSingle();
+      const v = (data?.value as any) || {};
+      setShowServersButton(!!v.showServersButton);
+    })();
+  }, []);
+
+  const persistToggle = async (val: boolean) => {
+    setSavingToggle(true);
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'playerUiConfig')
+        .maybeSingle();
+      const next = { ...(data?.value as any || {}), showServersButton: val };
+      await adminDb.upsert('system_settings', { key: 'playerUiConfig', value: next, description: 'Player UI Config' });
+      setShowServersButton(val);
+      toast.success(val ? 'تم تفعيل أيقونة السيرفرات في المشغل' : 'تم إخفاء أيقونة السيرفرات');
+    } catch {
+      toast.error('فشل تحديث الإعداد');
+    } finally {
+      setSavingToggle(false);
+    }
+  };
+
   const startAdd = () => { setDraft(empty()); setOpen(true); };
   const startEdit = (s: FallbackServer) => { setDraft({ ...s }); setOpen(true); };
 
