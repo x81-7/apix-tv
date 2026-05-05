@@ -127,6 +127,14 @@ const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
         ينتقل المشغل تلقائياً للسيرفر التالي عند فشل أو توقف الحالي. كل سيرفر يدعم نفس إمكانيات السيرفر الأصلي (هيدرز / DRM).
       </p>
 
+      <div className="flex items-center justify-between p-2 rounded-md bg-background border border-border">
+        <Label className="text-xs flex items-center gap-2">
+          <RadioTower className="w-4 h-4 text-primary" />
+          إظهار أيقونة برج الشبكة في المشغل (لاختيار السيرفر يدوياً)
+        </Label>
+        <Switch checked={showServersButton} disabled={savingToggle} onCheckedChange={persistToggle} />
+      </div>
+
       {servers.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-3">لا توجد سيرفرات بديلة بعد</p>
       ) : (
