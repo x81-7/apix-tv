@@ -190,10 +190,14 @@ public class SplashActivity extends AppCompatActivity {
                 // If a target versionCode is set in the panel and we're below it, also force.
                 int requiredVersionCode = update.optInt("requiredVersionCode", 0);
                 int currentVersionCode = BuildConfig.VERSION_CODE;
+                String currentVersionName = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
                 boolean belowRequired = requiredVersionCode > 0 && currentVersionCode < requiredVersionCode;
+                // Skip showing the dialog when the device already runs the same/newer versionName.
+                boolean alreadyOnThisVersion = !versionName.isEmpty()
+                        && compareVersionNames(currentVersionName, versionName) >= 0;
                 final boolean mustForce = forceUpdate || belowRequired;
 
-                if (isActive && !downloadUrl.isEmpty()) {
+                if (isActive && !downloadUrl.isEmpty() && (!alreadyOnThisVersion || mustForce)) {
                     runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
                     runOnUiThread(this::proceedToMain);
