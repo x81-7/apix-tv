@@ -297,6 +297,34 @@ private val CastOutlineIcon: ImageVector by lazy {
     }.build()
 }
 
+private val CellTowerOutlineIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "CellTowerOutline", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f
+    ).apply {
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Signal arcs left
+            moveTo(7.05f, 16.95f); arcTo(7f, 7f, 0f, false, true, 7.05f, 7.05f)
+            moveTo(4.22f, 19.78f); arcTo(11f, 11f, 0f, false, true, 4.22f, 4.22f)
+            // Signal arcs right
+            moveTo(16.95f, 7.05f); arcTo(7f, 7f, 0f, false, true, 16.95f, 16.95f)
+            moveTo(19.78f, 4.22f); arcTo(11f, 11f, 0f, false, true, 19.78f, 19.78f)
+            // Tower body
+            moveTo(10.5f, 11f); lineTo(8f, 22f)
+            moveTo(13.5f, 11f); lineTo(16f, 22f)
+            moveTo(9f, 18f); lineTo(15f, 18f)
+            // Center dot
+            moveTo(12f, 10f); arcTo(2f, 2f, 0f, true, true, 12.01f, 10f); close()
+        }
+    }.build()
+}
+
 private val BackOutlineIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "BackOutline", defaultWidth = 24.dp, defaultHeight = 24.dp,
