@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit2, Trash2, Server, Shield, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Server, Shield, ChevronUp, ChevronDown, RadioTower } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { adminDb } from '@/lib/adminDb';
+import { toast } from 'sonner';
 import type { CustomHeader, ClearKeyMode, DrmScheme } from '@/types/admin';
 
 /**
