@@ -1260,11 +1260,12 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
     // لتشفير Widevine إن وجد
     val drm = config.drm
     if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
-        mediaItemBuilder.setDrmConfiguration(
-            MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                .setLicenseUri(drm.licenseUrl)
-                .build()
-        )
+        val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+            .setLicenseUri(drm.licenseUrl)
+        if (!config.drmLicenseHeaders.isNullOrEmpty()) {
+            drmBuilder.setLicenseRequestHeaders(config.drmLicenseHeaders!!)
+        }
+        mediaItemBuilder.setDrmConfiguration(drmBuilder.build())
     }
 
     // إضافة الترجمة إن وجدت
