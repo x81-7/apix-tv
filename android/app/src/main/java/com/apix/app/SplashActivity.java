@@ -174,6 +174,21 @@ public class SplashActivity extends AppCompatActivity {
                 .show();
     }
 
+    /** Compare semantic-ish version strings: returns >=0 when current is same/newer than panel. */
+    private static int compareVersionNames(String a, String b) {
+        try {
+            String[] sa = a.replaceAll("[^0-9.]", "").split("\\.");
+            String[] sb = b.replaceAll("[^0-9.]", "").split("\\.");
+            int n = Math.max(sa.length, sb.length);
+            for (int i = 0; i < n; i++) {
+                int x = i < sa.length && !sa[i].isEmpty() ? Integer.parseInt(sa[i]) : 0;
+                int y = i < sb.length && !sb[i].isEmpty() ? Integer.parseInt(sb[i]) : 0;
+                if (x != y) return Integer.compare(x, y);
+            }
+            return 0;
+        } catch (Throwable t) { return -1; }
+    }
+
     private void checkForUpdate() {
         new Thread(() -> {
             try {
@@ -190,10 +205,14 @@ public class SplashActivity extends AppCompatActivity {
                 // If a target versionCode is set in the panel and we're below it, also force.
                 int requiredVersionCode = update.optInt("requiredVersionCode", 0);
                 int currentVersionCode = BuildConfig.VERSION_CODE;
+                String currentVersionName = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
                 boolean belowRequired = requiredVersionCode > 0 && currentVersionCode < requiredVersionCode;
+                // Skip showing the dialog when the device already runs the same/newer versionName.
+                boolean alreadyOnThisVersion = !versionName.isEmpty()
+                        && compareVersionNames(currentVersionName, versionName) >= 0;
                 final boolean mustForce = forceUpdate || belowRequired;
 
-                if (isActive && !downloadUrl.isEmpty()) {
+                if (isActive && !downloadUrl.isEmpty() && (!alreadyOnThisVersion || mustForce)) {
                     runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
                     runOnUiThread(this::proceedToMain);

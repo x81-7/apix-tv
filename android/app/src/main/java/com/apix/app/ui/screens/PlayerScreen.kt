@@ -297,6 +297,34 @@ private val CastOutlineIcon: ImageVector by lazy {
     }.build()
 }
 
+private val CellTowerOutlineIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "CellTowerOutline", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f
+    ).apply {
+        path(
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            // Signal arcs left
+            moveTo(7.05f, 16.95f); arcTo(7f, 7f, 0f, false, true, 7.05f, 7.05f)
+            moveTo(4.22f, 19.78f); arcTo(11f, 11f, 0f, false, true, 4.22f, 4.22f)
+            // Signal arcs right
+            moveTo(16.95f, 7.05f); arcTo(7f, 7f, 0f, false, true, 16.95f, 16.95f)
+            moveTo(19.78f, 4.22f); arcTo(11f, 11f, 0f, false, true, 19.78f, 19.78f)
+            // Tower body
+            moveTo(10.5f, 11f); lineTo(8f, 22f)
+            moveTo(13.5f, 11f); lineTo(16f, 22f)
+            moveTo(9f, 18f); lineTo(15f, 18f)
+            // Center dot
+            moveTo(12f, 10f); arcTo(2f, 2f, 0f, true, true, 12.01f, 10f); close()
+        }
+    }.build()
+}
+
 private val BackOutlineIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "BackOutline", defaultWidth = 24.dp, defaultHeight = 24.dp,
@@ -777,6 +805,10 @@ fun PlayerScreen(
                                     PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
                                 }
 
+                                if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                    PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
+                                }
+
                                 PlayerControlButton(icon = SettingsOutlineIcon, contentDescription = "Quality", size = 32) { showTrackDialog = true }
 
                                 if (canChangeResize) {
@@ -829,7 +861,122 @@ fun PlayerScreen(
                     onDismiss = { showAudioSourceDialog = false }
                 )
             }
+            if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                FallbackServerSelectionDialog(
+                    servers = resolvedConfig.fallbackServers!!,
+                    currentUrl = currentServerUrl,
+                    primaryUrl = config.url,
+                    onSelectPrimary = {
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = -1
+                        retryCountSameServer = 0
+                        currentServerUrl = config.url
+                        // Reset to original config
+                        resolvedConfig = config
+                        kotlinx.coroutines.MainScope().launch { loadStream(config.url, config) }
+                    },
+                    onSelect = { idx, fb ->
+                        showFallbackServerDialog = false
+                        retryCountSameServer = 0
+                        currentFallbackIndex = idx
+                        val u = fb.url ?: return@FallbackServerSelectionDialog
+                        val merged = resolvedConfig.copy(
+                            url = u,
+                            headers = PlayerHeaders(
+                                userAgent = fb.userAgent ?: resolvedConfig.headers?.userAgent,
+                                referer = fb.referer ?: resolvedConfig.headers?.referer,
+                                cookie = fb.cookie ?: resolvedConfig.headers?.cookie,
+                                origin = fb.origin ?: resolvedConfig.headers?.origin
+                            ),
+                            customHeaders = fb.customHeaders?.mapNotNull {
+                                val k = it.key; val v = it.value
+                                if (k != null && v != null) k to v else null
+                            }?.toMap() ?: resolvedConfig.customHeaders,
+                            drm = run {
+                                val scheme = fb.drmScheme
+                                if (scheme.isNullOrEmpty()) resolvedConfig.drm
+                                else {
+                                    var kid = fb.drmKeyId
+                                    var key = fb.drmKey
+                                    if (fb.drmClearKeyMode == "combined" && !fb.drmClearKeyCombined.isNullOrEmpty()) {
+                                        val parts = fb.drmClearKeyCombined!!.split(":")
+                                        if (parts.size == 2) { kid = parts[0]; key = parts[1] }
+                                    }
+                                    PlayerDrm(licenseUrl = fb.drmLicenseUrl, scheme = scheme, keyId = kid, key = key)
+                                }
+                            },
+                            drmLicenseHeaders = fb.drmLicenseHeaders?.mapNotNull {
+                                val k = it.key; val v = it.value
+                                if (k != null && v != null) k to v else null
+                            }?.toMap() ?: resolvedConfig.drmLicenseHeaders
+                        )
+                        resolvedConfig = merged
+                        currentServerUrl = u
+                        kotlinx.coroutines.MainScope().launch { loadStream(u, merged) }
+                    },
+                    onDismiss = { showFallbackServerDialog = false }
+                )
+            }
 
+        }
+    }
+}
+
+// ===== Fallback Server Selection Dialog (network-tower icon) =====
+@Composable
+fun FallbackServerSelectionDialog(
+    servers: List<com.apix.app.data.FallbackServer>,
+    currentUrl: String,
+    primaryUrl: String,
+    onSelectPrimary: () -> Unit,
+    onSelect: (Int, com.apix.app.data.FallbackServer) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isTv = isSystemInTvMode()
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(if (isTv) 0.6f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+            Column(Modifier.fillMaxSize()) {
+                Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+                HorizontalDivider(color = Color(0xFF222222))
+                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                    item {
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        val isActive = currentUrl == primaryUrl
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelectPrimary() }
+                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("السيرفر الأساسي", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            if (isActive) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    itemsIndexed(servers) { idx, server ->
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        val isActive = server.url == currentUrl
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(idx, server) }
+                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(server.name ?: "سيرفر بديل ${idx + 1}", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
+                            if (isActive) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+                HorizontalDivider(color = Color(0xFF222222))
+                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) {
+                    Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -1113,11 +1260,12 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
     // لتشفير Widevine إن وجد
     val drm = config.drm
     if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
-        mediaItemBuilder.setDrmConfiguration(
-            MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                .setLicenseUri(drm.licenseUrl)
-                .build()
-        )
+        val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+            .setLicenseUri(drm.licenseUrl)
+        if (!config.drmLicenseHeaders.isNullOrEmpty()) {
+            drmBuilder.setLicenseRequestHeaders(config.drmLicenseHeaders!!)
+        }
+        mediaItemBuilder.setDrmConfiguration(drmBuilder.build())
     }
 
     // إضافة الترجمة إن وجدت

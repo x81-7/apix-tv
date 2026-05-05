@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit2, Trash2, Server, Shield, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Server, Shield, ChevronUp, ChevronDown, RadioTower } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { adminDb } from '@/lib/adminDb';
+import { toast } from 'sonner';
 import type { CustomHeader, ClearKeyMode, DrmScheme } from '@/types/admin';
 
 /**
@@ -46,6 +50,40 @@ const empty = (): FallbackServer => ({
 const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<FallbackServer | null>(null);
+
+  const [showServersButton, setShowServersButton] = useState(false);
+  const [savingToggle, setSavingToggle] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'playerUiConfig')
+        .maybeSingle();
+      const v = (data?.value as any) || {};
+      setShowServersButton(!!v.showServersButton);
+    })();
+  }, []);
+
+  const persistToggle = async (val: boolean) => {
+    setSavingToggle(true);
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'playerUiConfig')
+        .maybeSingle();
+      const next = { ...(data?.value as any || {}), showServersButton: val };
+      await adminDb.upsert('system_settings', { key: 'playerUiConfig', value: next, description: 'Player UI Config' });
+      setShowServersButton(val);
+      toast.success(val ? 'تم تفعيل أيقونة السيرفرات في المشغل' : 'تم إخفاء أيقونة السيرفرات');
+    } catch {
+      toast.error('فشل تحديث الإعداد');
+    } finally {
+      setSavingToggle(false);
+    }
+  };
 
   const startAdd = () => { setDraft(empty()); setOpen(true); };
   const startEdit = (s: FallbackServer) => { setDraft({ ...s }); setOpen(true); };
@@ -88,6 +126,14 @@ const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
       <p className="text-xs text-muted-foreground">
         ينتقل المشغل تلقائياً للسيرفر التالي عند فشل أو توقف الحالي. كل سيرفر يدعم نفس إمكانيات السيرفر الأصلي (هيدرز / DRM).
       </p>
+
+      <div className="flex items-center justify-between p-2 rounded-md bg-background border border-border">
+        <Label className="text-xs flex items-center gap-2">
+          <RadioTower className="w-4 h-4 text-primary" />
+          إظهار أيقونة برج الشبكة في المشغل (لاختيار السيرفر يدوياً)
+        </Label>
+        <Switch checked={showServersButton} disabled={savingToggle} onCheckedChange={persistToggle} />
+      </div>
 
       {servers.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-3">لا توجد سيرفرات بديلة بعد</p>
