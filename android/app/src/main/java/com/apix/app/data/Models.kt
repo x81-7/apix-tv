@@ -59,7 +59,13 @@ data class DynamicApiConfig(
     var endpoint: String? = null,
     var method: String? = "GET",
     var channelIdParam: String? = null,
-    var headers: Map<String, String>? = null
+    var headers: Map<String, String>? = null,
+    // When set, the API response's "token" field is appended to the ORIGINAL stream URL
+    // as `?{tokenParam}={token}` instead of replacing the whole URL. Useful for streams
+    // that need a per-request token (e.g. ?token=xxx).
+    var tokenParam: String? = null,
+    // Optional: where in the JSON to read the token (default: "token").
+    var tokenJsonField: String? = null
 )
 
 data class AndroidStreamConfig(
