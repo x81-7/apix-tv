@@ -119,7 +119,7 @@ public final class DeviceIntegrity {
                 fis.close();
                 if (read > 0) {
                     String s = new String(data, 0, read);
-                    String[] needles = {"frida", "xposed", "substrate", "magisk", "lspatch", "lsposed"};
+                    String[] needles = {"frida", "xposed", "substrate", "lspatch", "lsposed"};
                     for (String n : needles) if (s.contains(n)) return "HOOK:" + n;
                 }
             }
@@ -127,8 +127,7 @@ public final class DeviceIntegrity {
         // Installed packages (best-effort, no QUERY_ALL_PACKAGES)
         try {
             PackageManager pm = ctx.getPackageManager();
-            String[] pkgs = {"de.robv.android.xposed.installer", "io.github.lsposed.manager",
-                    "com.topjohnwu.magisk", "eu.chainfire.supersu"};
+            String[] pkgs = {"de.robv.android.xposed.installer", "io.github.lsposed.manager"};
             for (String p : pkgs) {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
             }

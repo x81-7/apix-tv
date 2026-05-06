@@ -1373,6 +1373,23 @@ private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
             val json = com.google.gson.JsonParser.parseString(body).asJsonObject
             val newConfig = config.copy()
 
+            // === Token mode: keep original URL, only append token ===
+            if (!api.tokenParam.isNullOrEmpty()) {
+                val field = api.tokenJsonField?.takeIf { it.isNotEmpty() } ?: "token"
+                val token = when {
+                    json.has(field) -> json[field].asString
+                    json.has("data") && json["data"].isJsonObject && json["data"].asJsonObject.has(field) ->
+                        json["data"].asJsonObject[field].asString
+                    else -> ""
+                }
+                if (token.isNotEmpty()) {
+                    val sep = if (config.url.contains("?")) "&" else "?"
+                    newConfig.url = "${config.url}$sep${api.tokenParam}=$token"
+                    Log.i("PlayerScreen", "Dynamic token appended (param=${api.tokenParam})")
+                    return newConfig
+                }
+            }
+
             if (json.has("url")) newConfig.url = json["url"].asString
             if (json.has("headers")) {
                 val h = json["headers"].asJsonObject

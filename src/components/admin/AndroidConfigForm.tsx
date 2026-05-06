@@ -342,7 +342,28 @@ const AndroidConfigForm: React.FC<AndroidConfigFormProps> = ({
                 <Label className="text-xs">Channel ID Param</Label>
                 <Input value={config.dynamicApi?.channelIdParam || ''} onChange={(e) => updateConfig({ dynamicApi: { ...config.dynamicApi, enabled: true, channelIdParam: e.target.value } })} placeholder="channel_id" className="bg-secondary border-border font-mono text-xs" dir="ltr" />
               </div>
-              <p className="text-xs text-muted-foreground">يرسل طلباً للحصول على رابط بث متجدد + ترويسات + مفاتيح DRM</p>
+              <div className="space-y-1 pt-2 border-t border-border/50">
+                <Label className="text-xs text-amber-400">🔑 وضع التوكن (اختياري)</Label>
+                <p className="text-[10px] text-muted-foreground mb-1">إذا كان الرابط يحتاج توكن (?token=xxx)، اكتب اسم البارامتر هنا. سيبقى الرابط الأصلي ويُضاف التوكن من رد الـ API.</p>
+                <Input
+                  value={config.dynamicApi?.tokenParam || ''}
+                  onChange={(e) => updateConfig({ dynamicApi: { ...config.dynamicApi, enabled: true, tokenParam: e.target.value } })}
+                  placeholder="token"
+                  className="bg-secondary border-border font-mono text-xs"
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">حقل التوكن في JSON (اختياري)</Label>
+                <Input
+                  value={config.dynamicApi?.tokenJsonField || ''}
+                  onChange={(e) => updateConfig({ dynamicApi: { ...config.dynamicApi, enabled: true, tokenJsonField: e.target.value } })}
+                  placeholder="token"
+                  className="bg-secondary border-border font-mono text-xs"
+                  dir="ltr"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">يرسل طلباً للحصول على رابط بث متجدد + ترويسات + مفاتيح DRM، أو فقط جلب توكن وإلصاقه بالرابط.</p>
             </div>
           )}
         </div>

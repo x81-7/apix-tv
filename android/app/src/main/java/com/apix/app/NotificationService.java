@@ -82,6 +82,22 @@ public class NotificationService {
             } catch (Throwable ignored) {}
         }
 
+        // Skip app_update notifications when the device is already on or above the target version.
+        if (action != null && "app_update".equals(action.optString("type", ""))) {
+            try {
+                String minVer = action.optString("minVersionName", "");
+                int reqCode = action.optInt("requiredVersionCode", 0);
+                String cur = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
+                int curCode = BuildConfig.VERSION_CODE;
+                boolean codeOk = reqCode <= 0 || curCode >= reqCode;
+                boolean nameOk = minVer.isEmpty() || compareVerNames(cur, minVer) >= 0;
+                if (codeOk && nameOk) {
+                    Log.d(TAG, "Dropping app_update notif: device already on " + cur + " >= " + minVer);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
+
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String lastId = sp.getString(KEY_LAST_NOTIF_ID, "");
         if (id.equals(lastId)) return;
@@ -138,5 +154,20 @@ public class NotificationService {
             while ((line = r.readLine()) != null) sb.append(line);
         }
         return sb.toString();
+    }
+
+    /** Compare semantic version strings: returns >=0 when current is same/newer. */
+    private static int compareVerNames(String a, String b) {
+        try {
+            String[] sa = a.replaceAll("[^0-9.]", "").split("\\.");
+            String[] sb = b.replaceAll("[^0-9.]", "").split("\\.");
+            int n = Math.max(sa.length, sb.length);
+            for (int i = 0; i < n; i++) {
+                int x = i < sa.length && !sa[i].isEmpty() ? Integer.parseInt(sa[i]) : 0;
+                int y = i < sb.length && !sb[i].isEmpty() ? Integer.parseInt(sb[i]) : 0;
+                if (x != y) return Integer.compare(x, y);
+            }
+            return 0;
+        } catch (Throwable t) { return -1; }
     }
 }

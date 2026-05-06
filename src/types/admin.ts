@@ -71,6 +71,10 @@ export interface DynamicApiConfig {
   method: 'GET' | 'POST';
   channelIdParam?: string;
   headers?: Record<string, string>;
+  /** When set, the API response token is appended to the original stream URL as ?{tokenParam}={token}. */
+  tokenParam?: string;
+  /** JSON field name that holds the token (default: "token"). */
+  tokenJsonField?: string;
 }
 
 export interface StreamConfig {

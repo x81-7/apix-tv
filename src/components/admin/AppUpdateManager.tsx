@@ -108,7 +108,7 @@ const AppUpdateManager: React.FC = () => {
         await adminDb.pushNotification(
           `تحديث جديد ${update.versionName}`,
           update.message,
-          { type: 'app_update', url: update.downloadUrl, mode: installMode },
+          { type: 'app_update', url: update.downloadUrl, mode: installMode, minVersionName: update.versionName, requiredVersionCode: update.requiredVersionCode || 0 },
           'broadcast'
         );
       } catch { /* push is best-effort */ }
@@ -168,6 +168,29 @@ const AppUpdateManager: React.FC = () => {
       setCurrentUpdate(updated);
       setStoragePath(undefined);
       toast.success('تم حذف ملف APK من الكلاود');
+    } catch (e: any) {
+      toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
+    }
+  };
+
+  const handleDeleteUpdateRecord = async () => {
+    if (!confirm('سيتم حذف رسالة التحديث بالكامل، ولن يصل أي إشعار للمستخدمين بعد الآن. متابعة؟')) return;
+    try {
+      // Also remove APK if there is one
+      const path = storagePath || currentUpdate?.storagePath;
+      if (path) {
+        await supabase.storage.from('app-builds').remove([path]).catch(() => null);
+      }
+      // Clear the value entirely
+      await adminDb.upsert('system_settings', { key: 'appUpdate', value: {}, description: 'App Update Config' });
+      setCurrentUpdate(null);
+      setDownloadUrl('');
+      setMessage('');
+      setVersionName('');
+      setStoragePath(undefined);
+      setForceUpdate(false);
+      setRequiredVersionCode('');
+      toast.success('تم حذف رسالة التحديث');
     } catch (e: any) {
       toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
     }
@@ -307,6 +330,14 @@ const AppUpdateManager: React.FC = () => {
               <span className="text-muted-foreground text-sm">مفعّل</span>
               <Switch checked={currentUpdate.isActive} onCheckedChange={handleToggle} />
             </div>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteUpdateRecord}
+              className="w-full mt-2"
+            >
+              <Trash2 className="w-4 h-4 ml-2" /> حذف رسالة التحديث نهائياً
+            </Button>
           </CardContent>
         </Card>
       )}
