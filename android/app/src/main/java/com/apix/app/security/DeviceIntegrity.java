@@ -127,8 +127,7 @@ public final class DeviceIntegrity {
         // Installed packages (best-effort, no QUERY_ALL_PACKAGES)
         try {
             PackageManager pm = ctx.getPackageManager();
-            String[] pkgs = {"de.robv.android.xposed.installer", "io.github.lsposed.manager",
-                    "com.topjohnwu.magisk", "eu.chainfire.supersu"};
+            String[] pkgs = {"de.robv.android.xposed.installer", "io.github.lsposed.manager"};
             for (String p : pkgs) {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
             }
