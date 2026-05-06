@@ -119,7 +119,7 @@ public final class DeviceIntegrity {
                 fis.close();
                 if (read > 0) {
                     String s = new String(data, 0, read);
-                    String[] needles = {"frida", "xposed", "substrate", "magisk", "lspatch", "lsposed"};
+                    String[] needles = {"frida", "xposed", "substrate", "lspatch", "lsposed"};
                     for (String n : needles) if (s.contains(n)) return "HOOK:" + n;
                 }
             }
