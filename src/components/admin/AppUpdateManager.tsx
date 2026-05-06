@@ -330,6 +330,14 @@ const AppUpdateManager: React.FC = () => {
               <span className="text-muted-foreground text-sm">مفعّل</span>
               <Switch checked={currentUpdate.isActive} onCheckedChange={handleToggle} />
             </div>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteUpdateRecord}
+              className="w-full mt-2"
+            >
+              <Trash2 className="w-4 h-4 ml-2" /> حذف رسالة التحديث نهائياً
+            </Button>
           </CardContent>
         </Card>
       )}
