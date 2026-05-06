@@ -108,7 +108,7 @@ const AppUpdateManager: React.FC = () => {
         await adminDb.pushNotification(
           `تحديث جديد ${update.versionName}`,
           update.message,
-          { type: 'app_update', url: update.downloadUrl, mode: installMode },
+          { type: 'app_update', url: update.downloadUrl, mode: installMode, minVersionName: update.versionName, requiredVersionCode: update.requiredVersionCode || 0 },
           'broadcast'
         );
       } catch { /* push is best-effort */ }
