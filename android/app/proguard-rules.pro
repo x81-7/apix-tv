@@ -1,7 +1,7 @@
 # =====================================================================
 # ProGuard / R8 Rules for APiX TV
 # Strategy: aggressive obfuscation on player/security/network/viewmodel,
-# strict KEEP for AdMob, ExoPlayer/Media3, Activities, JSON data classes.
+# strict KEEP for AdMob, ExoPlayer/Media3, Activities (Names ONLY), JSON data classes.
 # =====================================================================
 
 # ===== AGGRESSIVE OBFUSCATION =====
@@ -43,7 +43,7 @@
 -dontwarn androidx.media3.**
 
 # =====================================================================
-# 3) Android system: Activities, Application, Lifecycle
+# 3) Android system: Activities, Application, Lifecycle (SHIELDED)
 # =====================================================================
 -keep public class * extends android.app.Activity
 -keep public class * extends androidx.activity.ComponentActivity
@@ -53,22 +53,22 @@
 -keep public class * extends android.app.Service
 -keep public class * extends android.content.BroadcastReceiver
 
-# Project Activities (manifest-declared) — full keep
--keep class com.apix.app.SplashActivity { *; }
--keep class com.apix.app.HomeActivity { *; }
--keep class com.apix.app.SubMenuActivity { *; }
--keep class com.apix.app.MainActivity { *; }
--keep class com.apix.app.PlayerActivity { *; }
--keep class com.apix.app.WebViewActivity { *; }
--keep class com.apix.app.WebAdActivity { *; }
--keep class com.apix.app.AboutActivity { *; }
--keep class com.apix.app.GateActivity { *; }
--keep class com.apix.app.ActivationActivity { *; }
--keep class com.apix.app.ComposeActivity { *; }
--keep class com.apix.app.KillScreenActivity { *; }
--keep class com.apix.app.ApixApplication { *; }
--keep class com.apix.app.NotificationService { *; }
--keep class com.apix.app.BootReceiver { *; }
+# Project Activities (manifest-declared) — Keep ONLY class names to avoid crashing, but obfuscate internals
+-keep public class com.apix.app.SplashActivity
+-keep public class com.apix.app.HomeActivity
+-keep public class com.apix.app.SubMenuActivity
+-keep public class com.apix.app.MainActivity
+-keep public class com.apix.app.PlayerActivity
+-keep public class com.apix.app.WebViewActivity
+-keep public class com.apix.app.WebAdActivity
+-keep public class com.apix.app.AboutActivity
+-keep public class com.apix.app.GateActivity
+-keep public class com.apix.app.ActivationActivity
+-keep public class com.apix.app.ComposeActivity
+-keep public class com.apix.app.KillScreenActivity
+-keep public class com.apix.app.ApixApplication
+-keep public class com.apix.app.NotificationService
+-keep public class com.apix.app.BootReceiver
 
 # ViewModels (allow internal renaming, keep class name for instantiation)
 -keep public class * extends androidx.lifecycle.ViewModel { <init>(...); }
