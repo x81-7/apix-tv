@@ -10,7 +10,6 @@
 -verbose
 -allowaccessmodification
 -repackageclasses ''
--flattenpackagehierarchy ''
 
 # Strip log calls
 -assumenosideeffects class android.util.Log {
@@ -140,19 +139,7 @@
 -keepclassmembers class com.apix.app.SecureCacheManager { public static *; }
 
 # =====================================================================
-# 8) Allow obfuscation explicitly for sensitive internal code
-# =====================================================================
--allowobfuscation class com.apix.app.AdManager
--allowobfuscation class com.apix.app.RewardedAdHelper
--allowobfuscation class com.apix.app.ui.screens.**
--allowobfuscation class com.apix.app.viewmodel.**
--allowobfuscation class com.apix.app.PlayerEngine
--allowobfuscation class com.apix.app.MediaSourceBuilder
--allowobfuscation class com.apix.app.DynamicStreamResolver
--allowobfuscation class com.apix.app.StreamAnalyzer
-
-# =====================================================================
-# 9) Anti-decompilation polish
+# 8) Anti-decompilation polish
 # =====================================================================
 -renamesourcefileattribute ''
 -keepattributes !SourceFile,!LineNumberTable
