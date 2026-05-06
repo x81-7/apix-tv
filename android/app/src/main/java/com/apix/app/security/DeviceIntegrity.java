@@ -136,10 +136,7 @@ public final class DeviceIntegrity {
     }
 
     /**
-     * STRICT emulator detection. Per project policy emulators are banned
-     * outright (primary RE environment). Returns true when the current
-     * runtime looks like an Android emulator (LDPlayer, BlueStacks, Genymotion,
-     * Android Studio AVD, MEmu, Nox, etc.).
+     * MODIFIED FOR TV BOX COMPATIBILITY & STRICT CLOUD EMULATOR BLOCKING
      */
     public static boolean isEmulator() {
         try {
@@ -152,24 +149,29 @@ public final class DeviceIntegrity {
             String hw  = String.valueOf(Build.HARDWARE).toLowerCase();
             String bd  = String.valueOf(Build.BOARD).toLowerCase();
 
-            // 1) Generic Android Studio / SDK emulator markers
-            if (fp.startsWith("generic") || fp.startsWith("unknown") || fp.contains("generic_x86")
-                    || fp.contains("test-keys") || fp.contains("emu") || fp.contains("vbox")
+            String haystack = fp + "|" + mdl + "|" + mfr + "|" + brd + "|" + dev + "|" + prd + "|" + hw + "|" + bd;
+
+            // 1) Cloud Emulators & Server-Side VMs (Redfinger, VMOS, AWS, Tencent)
+            String[] cloudVms = {"redfinger", "vmos", "vphone", "netmulator", "tencent", "cloudvm", "aliyun"};
+            for (String c : cloudVms) if (haystack.contains(c)) return true;
+
+            // 2) Generic Android Studio / SDK emulator markers
+            // REMOVED: "test-keys", "generic", "unknown" as they are common in Chinese TV Boxes
+            if (fp.contains("generic_x86") || fp.contains("emu") || fp.contains("vbox")
                     || fp.contains("sdk_gphone") || fp.contains("ranchu") || fp.contains("goldfish")) return true;
             if (mdl.contains("google_sdk") || mdl.contains("emulator") || mdl.contains("android sdk")) return true;
             if (mfr.contains("genymotion")) return true;
-            if (brd.startsWith("generic") && dev.startsWith("generic")) return true;
+            if (brd.equals("generic") && dev.equals("generic")) return true; // Strict generic check
             if (prd.contains("sdk") || prd.contains("emulator") || prd.contains("simulator") || prd.contains("vbox")) return true;
-            if (hw.contains("goldfish") || hw.contains("ranchu") || hw.contains("vbox") || hw.contains("ttvm")) return true;
+            if (hw.contains("goldfish") || hw.contains("ranchu") || hw.contains("vbox") || hw.contains("ttvm") || hw.contains("intel")) return true;
             if (bd.contains("qemu") || bd.contains("vbox")) return true;
 
-            // 2) LDPlayer / BlueStacks / Nox / MEmu — popular RE emulators
+            // 3) LDPlayer / BlueStacks / Nox / MEmu — popular RE emulators
             String[] emuMarkers = {"ldplayer", "bluestacks", "noxplayer", "nox ", "memu", "andy",
-                    "droid4x", "ttvm", "windroye", "mumu", "phoenix os"};
-            String haystack = fp + "|" + mdl + "|" + mfr + "|" + brd + "|" + dev + "|" + prd + "|" + hw + "|" + bd;
+                    "droid4x", "ttvm", "windroye", "mumu", "phoenix os", "koplayer"};
             for (String m : emuMarkers) if (haystack.contains(m)) return true;
 
-            // 3) Telltale files only present in emulator images
+            // 4) Telltale files only present in emulator images
             String[] emuFiles = {
                 "/dev/socket/qemud", "/dev/qemu_pipe", "/system/lib/libc_malloc_debug_qemu.so",
                 "/sys/qemu_trace", "/system/bin/qemu-props", "/dev/socket/genyd",
