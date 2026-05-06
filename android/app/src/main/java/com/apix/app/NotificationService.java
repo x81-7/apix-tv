@@ -82,6 +82,22 @@ public class NotificationService {
             } catch (Throwable ignored) {}
         }
 
+        // Skip app_update notifications when the device is already on or above the target version.
+        if (action != null && "app_update".equals(action.optString("type", ""))) {
+            try {
+                String minVer = action.optString("minVersionName", "");
+                int reqCode = action.optInt("requiredVersionCode", 0);
+                String cur = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
+                int curCode = BuildConfig.VERSION_CODE;
+                boolean codeOk = reqCode <= 0 || curCode >= reqCode;
+                boolean nameOk = minVer.isEmpty() || compareVerNames(cur, minVer) >= 0;
+                if (codeOk && nameOk) {
+                    Log.d(TAG, "Dropping app_update notif: device already on " + cur + " >= " + minVer);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
+
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String lastId = sp.getString(KEY_LAST_NOTIF_ID, "");
         if (id.equals(lastId)) return;
