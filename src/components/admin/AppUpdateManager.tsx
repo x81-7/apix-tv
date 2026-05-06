@@ -173,6 +173,29 @@ const AppUpdateManager: React.FC = () => {
     }
   };
 
+  const handleDeleteUpdateRecord = async () => {
+    if (!confirm('سيتم حذف رسالة التحديث بالكامل، ولن يصل أي إشعار للمستخدمين بعد الآن. متابعة؟')) return;
+    try {
+      // Also remove APK if there is one
+      const path = storagePath || currentUpdate?.storagePath;
+      if (path) {
+        await supabase.storage.from('app-builds').remove([path]).catch(() => null);
+      }
+      // Clear the value entirely
+      await adminDb.upsert('system_settings', { key: 'appUpdate', value: {}, description: 'App Update Config' });
+      setCurrentUpdate(null);
+      setDownloadUrl('');
+      setMessage('');
+      setVersionName('');
+      setStoragePath(undefined);
+      setForceUpdate(false);
+      setRequiredVersionCode('');
+      toast.success('تم حذف رسالة التحديث');
+    } catch (e: any) {
+      toast.error(`فشل الحذف: ${e?.message ?? 'خطأ'}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="border-border bg-card">
