@@ -11,7 +11,9 @@
       width: 100%; height: 100%; object-fit: contain; background: #000;
       pointer-events: none; outline: none;
     }
+    /* secondary headless audio element — invisible */
     #audio2 { display: none; }
+    /* Smart Logo Overlay — absolute positioned via JS (% units) */
     #logo {
       position: absolute; pointer-events: none;
       max-width: 50%; max-height: 50%;
@@ -41,6 +43,7 @@
     const audio2 = document.getElementById('audio2');
     const logo = document.getElementById('logo');
     let player = null;
+    let audioPlayer = null;
     let lockAspect = false;
 
     function sendState() {
@@ -59,6 +62,7 @@
     }
 
     function applyAspect(mode) {
+      // 4 supported modes: original/fit, stretch/fill, zoom/cover, 16:9, 4:3
       const m = String(mode || '').toLowerCase();
       if (m === 'fill' || m === 'stretch') { video.style.objectFit = 'fill'; }
       else if (m === 'zoom' || m === 'cover' || m === 'crop') { video.style.objectFit = 'cover'; }
@@ -76,6 +80,7 @@
       const yPct = Math.max(0, Math.min(100, cfg.offsetY || 0));
       logo.style.width = wPct + '%';
       logo.style.height = 'auto';
+      // Reset positioning, then apply named position OR x/y%
       logo.style.left = logo.style.right = logo.style.top = logo.style.bottom = 'auto';
       switch ((cfg.position || '').toLowerCase()) {
         case 'top-left':     logo.style.left = xPct + '%'; logo.style.top = yPct + '%'; break;
@@ -89,11 +94,13 @@
 
     function startExternalAudio(url) {
       if (!url) return;
+      // Mute main, play external audio in second element synchronized.
       video.muted = true;
       audio2.src = url;
       audio2.muted = false;
       audio2.volume = 1.0;
       audio2.play().catch(()=>{});
+      // Mirror play/pause + correct drift > 1.5s.
       video.addEventListener('play', () => audio2.play().catch(()=>{}));
       video.addEventListener('pause', () => audio2.pause());
       setInterval(() => {
@@ -103,56 +110,61 @@
       }, 2000);
     }
 
-    // 🔴 هذه الدالة الجديدة هي الجسر السري الذي يحقن منه الأندرويد البيانات
-    window.initializePlayer = async function(jsonPayload) {
-        try {
-            const cfg = JSON.parse(jsonPayload);
-            const url = cfg.url;
-            const ck = cfg.ck;
-            lockAspect = cfg.lock === 1;
+    async function init() {
+        const p = new URLSearchParams(window.location.search);
+        const url = p.get('url');
+        const ck = p.get('ck');
+        const aspectMode = p.get('aspect') || '';
+        lockAspect = p.get('lock') === '1';
+        const logoUrl = p.get('logo');
+        const logoPos = p.get('logoPos');
+        const logoX = parseInt(p.get('logoX') || '0', 10);
+        const logoY = parseInt(p.get('logoY') || '0', 10);
+        const logoW = parseInt(p.get('logoW') || '0', 10);
+        const logoOpa = parseFloat(p.get('logoOpa') || '1');
+        const audio2Url = p.get('audio2');
 
-            applyAspect(cfg.aspect);
-            if (cfg.logo) applyLogo({ url: cfg.logo, position: cfg.logoPos, offsetX: cfg.logoX, offsetY: cfg.logoY, width: cfg.logoW, opacity: cfg.logoOpa });
+        applyAspect(aspectMode);
+        if (logoUrl) applyLogo({ url: logoUrl, position: logoPos, offsetX: logoX, offsetY: logoY, width: logoW, opacity: logoOpa });
 
-            shaka.polyfill.installAll();
-            player = new shaka.Player(video);
+        shaka.polyfill.installAll();
+        player = new shaka.Player(video);
 
-            const drmConfig = { clearKeys: {} };
-            if (ck && ck.includes(':')) {
-                const parts = ck.split(':');
-                const kid = parts[0].replace(/[^a-fA-F0-9]/g, '');
-                const key = parts[1].replace(/[^a-fA-F0-9]/g, '');
-                drmConfig.clearKeys[kid] = key;
-                if (kid.length === 32) {
-                    const rKid = kid.substring(6,8) + kid.substring(4,6) + kid.substring(2,4) + kid.substring(0,2) + 
-                                 kid.substring(10,12) + kid.substring(8,10) + kid.substring(14,16) + kid.substring(12,14) + kid.substring(16);
-                    drmConfig.clearKeys[rKid] = key;
-                }
+        const drmConfig = { clearKeys: {} };
+        if (ck && ck.includes(':')) {
+            const parts = ck.split(':');
+            const kid = parts[0].replace(/[^a-fA-F0-9]/g, '');
+            const key = parts[1].replace(/[^a-fA-F0-9]/g, '');
+            drmConfig.clearKeys[kid] = key;
+            if (kid.length === 32) {
+                const rKid = kid.substring(6,8) + kid.substring(4,6) + kid.substring(2,4) + kid.substring(0,2) + 
+                             kid.substring(10,12) + kid.substring(8,10) + kid.substring(14,16) + kid.substring(12,14) + kid.substring(16);
+                drmConfig.clearKeys[rKid] = key;
             }
-            player.configure({ drm: drmConfig });
+        }
+        player.configure({ drm: drmConfig });
 
-            player.addEventListener('error', (e) => {
-                if(window.AndroidHybrid) window.AndroidHybrid.error(e.detail?.message || "خطأ في تشغيل البث");
-            });
+        player.addEventListener('error', (e) => {
+            if(window.AndroidHybrid) window.AndroidHybrid.error(e.detail?.message || "خطأ في تشغيل البث");
+        });
 
-            setInterval(sendState, 500);
+        setInterval(sendState, 500);
 
+        try {
             await player.load(url);
-            if (!cfg.audio2) { video.muted = false; }
+            if (!audio2Url) { video.muted = false; }
             video.play();
             video.addEventListener('playing', () => {
                 const c = document.getElementById('cover');
                 if (c) c.classList.add('hidden');
             }, { once: true });
             sendTracks();
-            if (cfg.audio2) startExternalAudio(cfg.audio2);
-
+            if (audio2Url) startExternalAudio(audio2Url);
         } catch (e) {
-            if(window.AndroidHybrid) window.AndroidHybrid.error("فشل تحميل البث. تأكد من البيانات المرسلة.");
+            if(window.AndroidHybrid) window.AndroidHybrid.error("فشل تحميل البث، قد يكون الرابط أو المفتاح خاطئاً");
         }
-    };
+    }
 
-    // دوال التحكم
     window.playVid = () => video.play();
     window.pauseVid = () => video.pause();
     window.seekVid = (sec) => { video.currentTime += sec; sendState(); };
@@ -163,6 +175,7 @@
     };
     window.setA = (lang) => { player.selectAudioLanguage(lang); };
     window.setFit = (mode) => {
+        // If aspect is locked from panel, ignore manual changes.
         if (lockAspect) return;
         if (typeof mode === 'string') { applyAspect(mode); return; }
         const modes = ['contain', 'fill', 'cover'];
@@ -170,7 +183,7 @@
     };
     window.isAspectLocked = () => lockAspect;
 
-    // ملاحظة: تم مسح EventListener الخاص بـ DOMContentLoaded. الآن ننتظر الأندرويد ليطلق initializePlayer()
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>

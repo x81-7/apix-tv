@@ -1,9 +1,0 @@
-package com.apix.app.db;
-
-import androidx.room.Database;
-import androidx.room.RoomDatabase;
-
-@Database(entities = {SecureCacheEntity.class}, version = 1, exportSchema = false)
-public abstract class AppDatabase extends RoomDatabase {
-    public abstract SecureCacheDao secureCacheDao();
-}
