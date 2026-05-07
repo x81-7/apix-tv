@@ -21,6 +21,7 @@ public class SecureStorageManager {
                 AppDatabase.class, "apix_secure_vault.db")
                 .openHelperFactory(factory) // تفعيل التشفير
                 .fallbackToDestructiveMigration()
+                .allowMainThreadQueries() // <-- تم إضافة هذا السطر للسماح بالقراءة السريعة (Instant UI)
                 .build();
     }
 
