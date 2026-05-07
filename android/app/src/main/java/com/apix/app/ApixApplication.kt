@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit
 import com.apix.app.db.SecureStorageManager
 import com.apix.app.security.KeysVault
 
+
 /**
  * Custom Application with global Coil ImageLoader.
  * - Large persistent disk cache (up to 500 MB)
