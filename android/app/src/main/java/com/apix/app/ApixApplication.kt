@@ -8,6 +8,8 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
+import com.apix.app.db.SecureStorageManager // 🔴 استدعاء قاعدة البيانات المشفرة
+import com.apix.app.security.KeysVault // 🔴 استدعاء القبو الفولاذي
 
 /**
  * Custom Application with global Coil ImageLoader.
@@ -15,20 +17,33 @@ import java.util.concurrent.TimeUnit
  * - Aggressive memory cache
  * - Long OkHttp timeouts for slow networks
  *
- * Effect: on first launch all channel/sub-channel images are downloaded once,
- * then reused forever (until cache eviction or app data clear). Later refreshes
- * only update the stream URLs, not images.
+ * + Secured: Initializes C++ NDK Vault & SQLCipher Database on startup.
  */
 class ApixApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
-        // Warm Coil singleton so Compose AsyncImage uses our custom loader
+        
+        // 1. تفعيل القبو الفولاذي (C++ NDK) وقت الإقلاع
+        try {
+            // استدعاء سريع لضمان تحميل مكتبة C++ المحمية في الذاكرة فوراً
+            KeysVault.getEncryptionSecretKey()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 2. تهيئة قاعدة البيانات المشفرة (SQLCipher) لتكون جاهزة وسريعة
+        try {
+            SecureStorageManager.getInstance(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // إعداداتك السابقة كما هي بدون تغيير
         coil.Coil.setImageLoader(newImageLoader())
-        // Initialize AdMob SDK eagerly so the first rewarded ad request is fast
+        
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
-        // Start in-process realtime notification listener (no foreground service / no
-        // persistent "ready" notification). Works while the app process is alive.
+        
         try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}
     }
 
