@@ -1,11 +1,8 @@
 package com.apix.app;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
-
-import com.apix.app.security.KeysVault; 
-import com.apix.app.security.HmacSigner; 
-import com.apix.app.db.SecureStorageManager; // استدعاء قاعدة البيانات المشفرة
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,12 +23,13 @@ import java.util.Map;
  * SupabaseDataManager — fetches categories, channels, side menus, sub-channels
  * and system settings directly from Supabase REST API.
  *
- * Secured with C++ NDK Vault, HMAC Signatures, and Offline-First capability 
- * backed by SQLCipher Encrypted Room DB.
+ * Offline-first: caches full JSON locally. On pull-to-refresh only metadata
+ * (streams, hidden state, keys) is re-fetched; images/names come from cache.
  */
 public class SupabaseDataManager {
 
     private static final String TAG = "SupabaseData";
+    private static final String PREFS = "supabase_cache";
     private static final String KEY_CATEGORIES = "categories_json";
     private static final String KEY_CHANNELS = "channels_json";
     private static final String KEY_SIDE_MENUS = "side_menus_json";
@@ -40,6 +38,9 @@ public class SupabaseDataManager {
     private static final String KEY_LAST_FETCH = "last_fetch_ts";
     private static final String KEY_BUNDLE_ETAG = "bundle_etag";
     private static final String KEY_CLOUD_URL = "cloud_url";
+
+    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
+    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
 
     public interface DataCallback {
         void onSuccess(DataBundle data);
@@ -53,24 +54,20 @@ public class SupabaseDataManager {
         public Map<String, String> settings = new HashMap<>();
     }
 
-    /** Load cached data synchronously (for instant UI) from Encrypted DB. */
+    /** Load cached data synchronously (for instant UI). Returns null if no cache. */
     public static DataBundle loadCached(Context ctx) {
-        SecureStorageManager secureDb = SecureStorageManager.getInstance(ctx);
-        String currentCloudUrl = KeysVault.INSTANCE.getSupabaseUrl();
-        String cachedCloud = secureDb.getString(KEY_CLOUD_URL);
-        
-        if (cachedCloud != null && !cachedCloud.equals(currentCloudUrl)) return null;
-        
-        String catsJson = secureDb.getString(KEY_CATEGORIES);
+        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+        if (cachedCloud != null && !cachedCloud.equals(SUPABASE_URL)) return null;
+        String catsJson = sp.getString(KEY_CATEGORIES, null);
         if (catsJson == null) return null;
-        
         try {
             return parseAll(
                 catsJson,
-                secureDb.getString(KEY_CHANNELS) != null ? secureDb.getString(KEY_CHANNELS) : "[]",
-                secureDb.getString(KEY_SIDE_MENUS) != null ? secureDb.getString(KEY_SIDE_MENUS) : "[]",
-                secureDb.getString(KEY_SUB_CHANNELS) != null ? secureDb.getString(KEY_SUB_CHANNELS) : "[]",
-                secureDb.getString(KEY_SETTINGS) != null ? secureDb.getString(KEY_SETTINGS) : "[]"
+                sp.getString(KEY_CHANNELS, "[]"),
+                sp.getString(KEY_SIDE_MENUS, "[]"),
+                sp.getString(KEY_SUB_CHANNELS, "[]"),
+                sp.getString(KEY_SETTINGS, "[]")
             );
         } catch (Exception e) {
             Log.w(TAG, "Cache parse error", e);
@@ -80,20 +77,19 @@ public class SupabaseDataManager {
 
     /**
      * Fetch fresh data via the cached-data Edge Function. Sends If-None-Match;
-     * Secured with HMAC. Falls back to local Encrypted cache if offline.
+     * on 304 we just return the local cache (zero DB hit, almost-zero egress).
+     * On 200 we re-cache the bundle and the new ETag. Falls back to direct REST
+     * on errors so the app still works if the function is down.
      */
     public static void fetchRemote(Context ctx, DataCallback cb) {
         new Thread(() -> {
-            SecureStorageManager secureDb = SecureStorageManager.getInstance(ctx);
-            String currentCloudUrl = KeysVault.INSTANCE.getSupabaseUrl();
-            
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             try {
-                String cachedCloud = secureDb.getString(KEY_CLOUD_URL);
-                if (cachedCloud == null || !cachedCloud.equals(currentCloudUrl)) {
-                    secureDb.saveString(KEY_CLOUD_URL, currentCloudUrl);
+                String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+                if (cachedCloud == null || !cachedCloud.equals(SUPABASE_URL)) {
+                    sp.edit().clear().putString(KEY_CLOUD_URL, SUPABASE_URL).apply();
                 }
-                
-                String prevEtag = secureDb.getString(KEY_BUNDLE_ETAG);
+                String prevEtag = sp.getString(KEY_BUNDLE_ETAG, null);
                 BundleResponse resp = fetchBundleEdge(prevEtag);
 
                 if (resp.notModified) {
@@ -102,7 +98,8 @@ public class SupabaseDataManager {
                         cb.onSuccess(bundle);
                         return;
                     }
-                    secureDb.saveString(KEY_BUNDLE_ETAG, ""); // Clear invalid ETag
+                    // No cache locally despite 304 — force a full pull next time.
+                    sp.edit().remove(KEY_BUNDLE_ETAG).apply();
                 }
 
                 String catsJson  = resp.body != null ? resp.categoriesJson : null;
@@ -112,6 +109,7 @@ public class SupabaseDataManager {
                 String settingsJson = resp.body != null ? resp.settingsJson : null;
 
                 if (catsJson == null) {
+                    // Edge function unavailable → fall back to direct REST.
                     catsJson = restGet("/rest/v1/categories?select=*&order=sort_order");
                     chansJson = restGet("/rest/v1/channels?select=*&order=sort_order");
                     menusJson = restGet("/rest/v1/side_menus?select=*&order=sort_order");
@@ -119,29 +117,22 @@ public class SupabaseDataManager {
                     settingsJson = restGet("/rest/v1/system_settings?select=*");
                 }
 
-                // الحفظ في قاعدة البيانات المشفرة
-                secureDb.saveString(KEY_CATEGORIES, catsJson);
-                secureDb.saveString(KEY_CHANNELS, chansJson);
-                secureDb.saveString(KEY_SIDE_MENUS, menusJson);
-                secureDb.saveString(KEY_SUB_CHANNELS, subsJson);
-                secureDb.saveString(KEY_SETTINGS, settingsJson);
-                secureDb.saveString(KEY_CLOUD_URL, currentCloudUrl);
-                secureDb.saveString(KEY_LAST_FETCH, String.valueOf(System.currentTimeMillis()));
-                
-                if (resp.etag != null) secureDb.saveString(KEY_BUNDLE_ETAG, resp.etag);
+                SharedPreferences.Editor ed = sp.edit()
+                    .putString(KEY_CATEGORIES, catsJson)
+                    .putString(KEY_CHANNELS, chansJson)
+                    .putString(KEY_SIDE_MENUS, menusJson)
+                    .putString(KEY_SUB_CHANNELS, subsJson)
+                    .putString(KEY_SETTINGS, settingsJson)
+                    .putString(KEY_CLOUD_URL, SUPABASE_URL)
+                    .putLong(KEY_LAST_FETCH, System.currentTimeMillis());
+                if (resp.etag != null) ed.putString(KEY_BUNDLE_ETAG, resp.etag);
+                ed.apply();
 
                 DataBundle bundle = parseAll(catsJson, chansJson, menusJson, subsJson, settingsJson);
                 cb.onSuccess(bundle);
-                
             } catch (Exception e) {
-                Log.e(TAG, "Network Fetch error, attempting Offline-First fallback", e);
-                // OFFLINE-FIRST LOGIC: إذا فشل السيرفر، اقرأ من القاعدة المشفرة ولا تعطل التطبيق
-                DataBundle offlineBundle = loadCached(ctx);
-                if (offlineBundle != null) {
-                    cb.onSuccess(offlineBundle);
-                } else {
-                    cb.onError(e.getMessage() != null ? e.getMessage() : "لا يوجد اتصال ولا توجد بيانات محلية");
-                }
+                Log.e(TAG, "Fetch error", e);
+                cb.onError(e.getMessage() != null ? e.getMessage() : "خطأ غير معروف");
             }
         }).start();
     }
@@ -160,23 +151,14 @@ public class SupabaseDataManager {
     private static BundleResponse fetchBundleEdge(String prevEtag) {
         BundleResponse resp = new BundleResponse();
         try {
-            String url = KeysVault.INSTANCE.getSupabaseUrl();
-            String anonKey = KeysVault.INSTANCE.getSupabaseAnonKey();
-            
-            HttpURLConnection conn = (HttpURLConnection) new URL(url + "/functions/v1/cached-data").openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(SUPABASE_URL + "/functions/v1/cached-data").openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(20000);
-            
-            // حقن مفاتيح السيرفر والتوقيع الأمني HMAC
-            conn.setRequestProperty("apikey", anonKey);
-            conn.setRequestProperty("Authorization", "Bearer " + anonKey);
+            conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+            conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("X-App-Signature", HmacSigner.generateSignature(""));
-            
-            if (prevEtag != null && !prevEtag.isEmpty()) {
-                conn.setRequestProperty("If-None-Match", prevEtag);
-            }
+            if (prevEtag != null) conn.setRequestProperty("If-None-Match", prevEtag);
 
             int code = conn.getResponseCode();
             String etag = conn.getHeaderField("ETag");
@@ -194,7 +176,8 @@ public class SupabaseDataManager {
                 while ((line = r.readLine()) != null) sb.append(line);
             }
             String envelope = sb.toString();
-            
+            // The Edge Function always returns AES-256-GCM encrypted JSON
+            // { "iv": "...", "data": "..." }. Decrypt before parsing.
             String plain;
             try {
                 plain = PayloadCipher.decryptEnvelope(envelope);
@@ -215,10 +198,12 @@ public class SupabaseDataManager {
         return resp;
     }
 
+    /** Fetch only allowed signatures from system_settings. */
     public static List<String> fetchSignatures(Context ctx) {
         return fetchHashList("security_signatures");
     }
 
+    /** Fetch BLOCKED signatures from system_settings (manual ban list). */
     public static List<String> fetchBlockedSignatures(Context ctx) {
         return fetchHashList("security_blocked_signatures");
     }
@@ -245,6 +230,7 @@ public class SupabaseDataManager {
         }
     }
 
+    /** Fetch app update settings. */
     public static JSONObject fetchAppUpdate() {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.appUpdate&select=value");
@@ -257,6 +243,7 @@ public class SupabaseDataManager {
         }
     }
 
+    /** Fetch gate (front login screen) config. */
     public static JSONObject fetchGateConfig() {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.gateConfig&select=value");
@@ -269,6 +256,7 @@ public class SupabaseDataManager {
         }
     }
 
+    /** Fetch app settings (e.g. showSettingsSection). */
     public static JSONObject fetchAppSettings() {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.appSettings&select=value");
@@ -293,6 +281,12 @@ public class SupabaseDataManager {
         }
     }
 
+    /**
+     * Fetches the developer-allow-list (UUIDs) from
+     * `system_settings.developer_uuids` and caches it locally so the strict
+     * emulator gate (DeviceIntegrity.shouldStrictBanEmulator) can read it
+     * without a network call on next launch.
+     */
     public static void syncDeveloperUUIDs(android.content.Context ctx) {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.developer_uuids&select=value");
@@ -302,7 +296,8 @@ public class SupabaseDataManager {
                 JSONArray inner = arr.getJSONObject(0).optJSONArray("value");
                 if (inner != null) value = inner.toString();
             }
-            SecureStorageManager.getInstance(ctx).saveString("developer_uuids", value);
+            ctx.getSharedPreferences("apix_dev_overrides", android.content.Context.MODE_PRIVATE)
+                    .edit().putString("developer_uuids", value).apply();
         } catch (Exception e) {
             Log.w(TAG, "syncDeveloperUUIDs error", e);
         }
@@ -330,6 +325,7 @@ public class SupabaseDataManager {
         }
     }
 
+    /** Fetch local custom-ads behavior config: { trigger: "off|app_open|on_channel|both", channelIds:[...] }. */
     public static JSONObject fetchLocalAdsConfig() {
         try {
             String json = restGet("/rest/v1/system_settings?key=eq.local_ads_config&select=value");
@@ -342,6 +338,11 @@ public class SupabaseDataManager {
         }
     }
 
+    /**
+     * Fetch a single channel's latest stream directly from Supabase, bypassing
+     * the local cache. Used when the panel has `offline_cache_enabled = false`
+     * on a given channel — users must receive a fresh link every session.
+     */
     public static void fetchChannelFresh(String channelId, FreshChannelCallback cb) {
         new Thread(() -> {
             try {
@@ -385,20 +386,13 @@ public class SupabaseDataManager {
     // ========== Internal ==========
 
     private static String restGet(String path) throws Exception {
-        String url = KeysVault.INSTANCE.getSupabaseUrl();
-        String anonKey = KeysVault.INSTANCE.getSupabaseAnonKey();
-        
-        HttpURLConnection conn = (HttpURLConnection) new URL(url + path).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(SUPABASE_URL + path).openConnection();
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(20000);
-        
-        // حقن التوقيع الأمني في كل طلبات REST
-        conn.setRequestProperty("apikey", anonKey);
-        conn.setRequestProperty("Authorization", "Bearer " + anonKey);
+        conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+        conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
         conn.setRequestProperty("Accept", "application/json");
-        conn.setRequestProperty("X-App-Signature", HmacSigner.generateSignature(""));
-        
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
         StringBuilder sb = new StringBuilder();
@@ -418,6 +412,7 @@ public class SupabaseDataManager {
         JSONArray subs = new JSONArray(subsJson);
         JSONArray settings = new JSONArray(settingsJson);
 
+        // Parse categories
         Map<String, RemoteModels.Category> catMap = new HashMap<>();
         for (int i = 0; i < cats.length(); i++) {
             JSONObject c = cats.getJSONObject(i);
@@ -433,6 +428,7 @@ public class SupabaseDataManager {
         }
         Collections.sort(b.categories, (a, bb) -> a.sortOrder - bb.sortOrder);
 
+        // Parse channels and assign to categories
         for (int i = 0; i < chans.length(); i++) {
             JSONObject ch = chans.getJSONObject(i);
             RemoteModels.Channel channel = parseChannel(ch);
@@ -443,6 +439,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // Parse side menus
         Map<String, RemoteModels.SideMenu> menuMap = new HashMap<>();
         for (int i = 0; i < menus.length(); i++) {
             JSONObject m = menus.getJSONObject(i);
@@ -455,6 +452,7 @@ public class SupabaseDataManager {
             menuMap.put(menu.id, menu);
         }
 
+        // Parse sub-channels
         for (int i = 0; i < subs.length(); i++) {
             JSONObject sc = subs.getJSONObject(i);
             String menuId = sc.optString("side_menu_id", "");
@@ -465,6 +463,7 @@ public class SupabaseDataManager {
         }
         b.sideMenus = menuMap;
 
+        // Parse settings
         for (int i = 0; i < settings.length(); i++) {
             JSONObject s = settings.getJSONObject(i);
             String key = s.optString("key", "");
@@ -490,8 +489,10 @@ public class SupabaseDataManager {
         c.androidActionType = ch.optString("android_action_type", null);
         c.iosActionType = ch.optString("ios_action_type", null);
 
+        // Panel → per-channel offline cache toggle + forced aspect ratio.
         c.offlineCacheEnabled = ch.optBoolean("offline_cache_enabled", false);
         c.cacheVersion = ch.optLong("cache_version", 1L);
+        // Per-channel PIN (panel `pin_code` column on channels table).
         c.pinCode = ch.optString("pin_code", null);
         if (c.pinCode != null && (c.pinCode.isEmpty() || "null".equals(c.pinCode))) c.pinCode = null;
         if (!ch.isNull("android_stream")) {
@@ -503,6 +504,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // web_stream → RemoteModels.StreamConfig
         if (!ch.isNull("web_stream")) {
             JSONObject ws = ch.optJSONObject("web_stream");
             if (ws != null) {
@@ -514,6 +516,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // android_stream → RemoteModels.AndroidStreamConfig
         if (!ch.isNull("android_stream")) {
             JSONObject as = ch.optJSONObject("android_stream");
             if (as != null) {
@@ -521,6 +524,8 @@ public class SupabaseDataManager {
             }
         }
 
+        // ios_stream → RemoteModels.IosStreamConfig (iOS will use this; we
+        // still parse it in Android so realtime updates round-trip cleanly.)
         if (!ch.isNull("ios_stream")) {
             JSONObject is = ch.optJSONObject("ios_stream");
             if (is != null) {
@@ -541,9 +546,11 @@ public class SupabaseDataManager {
         s.preferredPlayer = sc.optString("preferred_player", null);
         s.androidActionType = sc.optString("android_action_type", null);
         s.iosActionType = sc.optString("ios_action_type", null);
+        // pin_code on a sub-channel locks just that one channel.
         s.pinCode = sc.optString("pin_code", null);
         if (s.pinCode != null && (s.pinCode.isEmpty() || "null".equals(s.pinCode))) s.pinCode = null;
 
+        // Panel → per-channel offline cache toggle + forced aspect ratio.
         s.offlineCacheEnabled = sc.optBoolean("offline_cache_enabled", false);
         s.cacheVersion = sc.optLong("cache_version", 1L);
         if (!sc.isNull("android_stream")) {
@@ -657,6 +664,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // headers
         if (!as.isNull("headers")) {
             JSONObject h = as.optJSONObject("headers");
             if (h != null) {
@@ -669,6 +677,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // customHeaders
         if (!as.isNull("customHeaders")) {
             JSONArray arr = as.optJSONArray("customHeaders");
             if (arr != null) {
@@ -683,6 +692,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // drmLicenseHeaders
         if (!as.isNull("drmLicenseHeaders")) {
             JSONArray arr = as.optJSONArray("drmLicenseHeaders");
             if (arr != null) {
@@ -697,6 +707,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // servers
         if (!as.isNull("servers")) {
             JSONArray arr = as.optJSONArray("servers");
             if (arr != null) {
@@ -711,6 +722,7 @@ public class SupabaseDataManager {
             }
         }
 
+        // fallbackServers — full-power alternates with their own headers + DRM
         if (!as.isNull("fallbackServers")) {
             JSONArray arr = as.optJSONArray("fallbackServers");
             if (arr != null) {

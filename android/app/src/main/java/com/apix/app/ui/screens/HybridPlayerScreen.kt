@@ -70,6 +70,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.rememberAsyncImagePainter
 import com.apix.app.data.PlayerConfig
+
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +81,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
-import org.json.JSONObject // لإرسال البيانات للويب بأمان
+
 
 // ===== Custom Outline Icons =====
 private val PlayOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "PlayOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(8f, 6f); lineTo(8f, 18f); lineTo(18f, 12f); close() } }.build() }
@@ -92,7 +93,6 @@ private val PipOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "Pi
 private val ResizeOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "ResizeOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(15f, 3f); lineTo(21f, 3f); lineTo(21f, 9f); moveTo(9f, 21f); lineTo(3f, 21f); lineTo(3f, 15f); moveTo(21f, 3f); lineTo(14f, 10f); moveTo(3f, 21f); lineTo(10f, 14f) } }.build() }
 private val CastOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "CastOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(2f, 16.1f); arcTo(5f, 5f, 0f, false, true, 5.9f, 20f); moveTo(2f, 12.05f); arcTo(9f, 9f, 0f, false, true, 9.95f, 20f); moveTo(2f, 8f); arcTo(13f, 13f, 0f, false, true, 14f, 20f); moveTo(2f, 20f); lineTo(2.01f, 20f); moveTo(20f, 4f); lineTo(4f, 4f); moveTo(20f, 4f); lineTo(20f, 20f); lineTo(14f, 20f) } }.build() }
 private val BackOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "BackOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(19f, 12f); lineTo(5f, 12f); moveTo(12f, 19f); lineTo(5f, 12f); lineTo(12f, 5f) } }.build() }
-
 
 @Composable
 private fun HybridControlButton(icon: ImageVector, contentDescription: String, size: Int = 44, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
@@ -117,9 +117,7 @@ private fun HybridControlButton(icon: ImageVector, contentDescription: String, s
     }
 }
 
-// تم إصلاح دالة الوقت لتعالج الأرقام الكبيرة بشكل صحيح وتتطابق مع المشغل الحقيقي
 private fun formatHybridTime(ms: Long): String {
-    if (ms < 0 || ms > 86400000000L) return "00:00" // تجاهل الأرقام الخيالية
     val totalSeconds = ms / 1000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
@@ -183,7 +181,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
         }
     }
 
-    // 🔥 الطريقة المشفرة الجديدة لتشغيل البث (بدون URL Parameters)
+    // Function to reload stream
     fun loadWebViewStream(streamUrl: String, cfg: PlayerConfig) {
         errorMessage = null
         val baseUrl = if (cfg.hybridPlayerType == "jw") {
@@ -191,50 +189,37 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
         } else {
             "file:///android_asset/shaka_player.html"
         }
-        
-        // بناء كائن JSON مشفر لحقنه في الويب
-        val payload = JSONObject()
-        payload.put("url", streamUrl)
-        
+        val enc: (String) -> String = { java.net.URLEncoder.encode(it, "UTF-8") }
+        val sb = StringBuilder("$baseUrl?url=${enc(streamUrl)}")
+
         cfg.drm?.let { drm ->
             val currentKeyId = drm.keyId
             val currentKey = drm.key
             if (!currentKeyId.isNullOrEmpty() && !currentKey.isNullOrEmpty()) {
                 val kid = currentKeyId.replace(Regex("[^a-fA-F0-9]"), "")
                 val finalKey = currentKey.replace(Regex("[^a-fA-F0-9]"), "")
-                payload.put("ck", "$kid:$finalKey")
+                sb.append("&ck=$kid:$finalKey")
             }
         }
-        
-        if (!cfg.forcedAspectRatio.isNullOrBlank()) payload.put("aspect", cfg.forcedAspectRatio)
-        if (cfg.lockAspectRatio) payload.put("lock", 1)
-        
+        // Aspect mode + lock from panel → applied by HTML
+        if (!cfg.forcedAspectRatio.isNullOrBlank()) sb.append("&aspect=").append(enc(cfg.forcedAspectRatio!!))
+        if (cfg.lockAspectRatio) sb.append("&lock=1")
+        // Smart logo overlay → forwarded to <img id="logo">
         cfg.logoOverlay?.let { l ->
             if (!l.url.isNullOrBlank()) {
-                payload.put("logo", l.url)
-                if (!l.position.isNullOrBlank()) payload.put("logoPos", l.position)
-                payload.put("logoX", l.offsetX)
-                payload.put("logoY", l.offsetY)
-                payload.put("logoW", l.width)
-                payload.put("logoOpa", l.opacity)
+                sb.append("&logo=").append(enc(l.url!!))
+                if (!l.position.isNullOrBlank()) sb.append("&logoPos=").append(enc(l.position!!))
+                sb.append("&logoX=").append(l.offsetX)
+                sb.append("&logoY=").append(l.offsetY)
+                sb.append("&logoW=").append(l.width)
+                sb.append("&logoOpa=").append(l.opacity)
             }
         }
-        
+        // External audio: keep main video muted, headless audio in <video id="audio2">
         cfg.audioSources?.firstOrNull()?.url?.takeIf { it.isNotBlank() }?.let { audioUrl ->
-            payload.put("audio2", audioUrl)
+            sb.append("&audio2=").append(enc(audioUrl))
         }
-
-        val jsonString = payload.toString().replace("\"", "\\\"")
-
-        // تحميل الصفحة فارغة أولاً، ثم حقن البيانات بشكل خفي
-        webViewRef?.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                // الحقن السري للدالة initializePlayer الموجودة في HTML (يجب تحديث الـ HTML لتدعم هذه الدالة)
-                view?.evaluateJavascript("if(window.initializePlayer) { window.initializePlayer(\"$jsonString\"); }", null)
-            }
-        }
-        webViewRef?.loadUrl(baseUrl)
+        webViewRef?.loadUrl(sb.toString())
     }
 
     // Dynamic API fetcher
@@ -360,8 +345,9 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                             }
                         }, "AndroidHybrid")
 
+                        webViewClient = WebViewClient()
                         webChromeClient = WebChromeClient()
-                        // URL is loaded via loadWebViewStream and injected via WebViewClient
+                        // URL is loaded via LaunchedEffect
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -377,6 +363,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                     ) { showControls = !showControls }
             )
 
+            // اللوجو (Logo) المطابق للأساسي
             resolvedConfig.logoOverlay?.let { logo ->
                 if (!logo.url.isNullOrEmpty()) {
                     val alignment = when (logo.position) {
@@ -402,10 +389,12 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                 }
             }
 
+            // علامة التحميل
             if (isBuffering && currentPosition < 1000L && errorMessage == null) {
                 CircularProgressIndicator(color = MediumRed, strokeWidth = 3.dp, modifier = Modifier.size(44.dp).align(Alignment.Center))
             }
 
+            // رسالة الخطأ
             errorMessage?.let { err ->
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -418,31 +407,32 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                 }
             }
 
+            // ===== تصميم المشغل الأصلي (Compose) =====
             AnimatedVisibility(visible = showControls && errorMessage == null, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
+                    // الشريط العلوي
                     Row(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(0.7f), Color.Transparent))).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         HybridControlButton(icon = BackOutlineIcon, contentDescription = "Back", size = 36, onClick = onBack)
                         Text(text = resolvedConfig.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 300.dp))
                     }
 
+                    // الشريط السفلي والتحكم
                     Column(modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.8f)))).padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(formatHybridTime(currentPosition), color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
-                            
-                            // تم إصلاح اتجاه Slider 
                             Slider(
-                                value = if (duration > 0) (currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+                                value = if (duration > 0) currentPosition.toFloat() / duration else 0f,
                                 onValueChange = { webViewRef?.evaluateJavascript("window.seekTo(${(it * duration) / 1000f});", null) },
                                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFE50914), inactiveTrackColor = Color(0x44FFFFFF)),
                                 modifier = Modifier.weight(1f).height(16.dp).focusable()
                             )
-                            
                             Text(formatHybridTime(duration), color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp))
                         }
 
                         Spacer(Modifier.height(4.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            // الأزرار اليسرى: تقديم وتأخير
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 HybridControlButton(icon = RewindOutlineIcon, contentDescription = "Rewind", size = 38) { webViewRef?.evaluateJavascript("window.seekVid(-10);", null) }
                                 HybridControlButton(icon = if (isPlaying) PauseOutlineIcon else PlayOutlineIcon, contentDescription = "Play/Pause", size = 44) {
@@ -451,21 +441,27 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                                 HybridControlButton(icon = ForwardOutlineIcon, contentDescription = "Forward", size = 38) { webViewRef?.evaluateJavascript("window.seekVid(10);", null) }
                             }
 
+                            // الأزرار اليمنى
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // الصوتيات الخارجية (لوحة التحكم)
                                 if (!resolvedConfig.audioSources.isNullOrEmpty()) {
                                     HybridControlButton(icon = Icons.Default.Audiotrack, contentDescription = "External Audio", size = 32) { showAudioSourceDialog = true }
                                 }
+                                // السيرفرات الديناميكية
                                 if (!resolvedConfig.servers.isNullOrEmpty()) {
                                     HybridControlButton(icon = CastOutlineIcon, contentDescription = "Servers", size = 32) { showServerDialog = true }
                                 }
+                                // قائمة الجودة والصوت المدمج
                                 HybridControlButton(icon = SettingsOutlineIcon, contentDescription = "Settings", size = 32) { showTrackDialog = true }
 
+                                // تغيير الأبعاد
                                 if (canChangeResize) {
                                     HybridControlButton(icon = ResizeOutlineIcon, contentDescription = "Resize", size = 32) {
                                         currentResizeMode = (currentResizeMode + 1) % 3
                                         webViewRef?.evaluateJavascript("window.setFit($currentResizeMode);", null)
                                     }
                                 }
+                                // وضع الشاشة المصغرة (PiP)
                                 HybridControlButton(icon = PipOutlineIcon, contentDescription = "PiP", size = 32, focusRequester = pipFocusRequester) {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
                                         try { activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } catch (_: Exception) {}
@@ -477,6 +473,9 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                 }
             }
 
+            // ===== النوافذ المنبثقة (Dialogs) المطابقة 100% =====
+            
+            // 1. الجودة والصوت الداخلي (TrackSelectionDialog Hybrid)
             if (showTrackDialog) {
                 var selectedTab by remember { mutableIntStateOf(0) }
                 val tabs = listOf("الجودة", "الصوت")
@@ -498,7 +497,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                             HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
                             
                             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                if (selectedTab == 0) { 
+                                if (selectedTab == 0) { // الجودة
                                     item {
                                         val itemInteraction = remember { MutableInteractionSource() }
                                         val itemFocused by itemInteraction.collectIsFocusedAsState()
@@ -517,7 +516,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                                             if (isItemSelected) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
                                         }
                                     }
-                                } else { 
+                                } else { // الصوت
                                     if (audios.isEmpty()) {
                                         item { Text("افتراضي", color = Gold, fontSize = 13.sp, modifier = Modifier.padding(14.dp)) }
                                     }
@@ -541,6 +540,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                 }
             }
 
+            // 2. السيرفرات
             if (showServerDialog && !resolvedConfig.servers.isNullOrEmpty()) {
                 HybridServerDialog(
                     servers = resolvedConfig.servers!!,
@@ -555,18 +555,21 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                 )
             }
 
+            // 3. مصادر الصوت الخارجية
             if (showAudioSourceDialog && !resolvedConfig.audioSources.isNullOrEmpty()) {
                 HybridAudioSourceDialog(
                     sources = resolvedConfig.audioSources!!,
                     isTv = isTv,
                     onSelect = { source ->
                         showAudioSourceDialog = false
+                        // تمرير رابط الصوت الخارجي إلى الويب (نحتاج لدالة setExtAudio في HTML)
                         val aUrl = source.url ?: return@HybridAudioSourceDialog
                         webViewRef?.evaluateJavascript("if(window.selectExternalAudio) window.selectExternalAudio('$aUrl');", null)
                     },
                     onDismiss = { showAudioSourceDialog = false }
                 )
             }
+
         }
     }
 }

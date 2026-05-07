@@ -66,7 +66,7 @@ fun MainScreen(
         buildList {
             addAll(uiState.categories)
             if (uiState.showSettingsSection) {
-                add(Category(id = "__settings", name = "SETTINGS", sortOrder = Int.MAX_VALUE))
+                add(Category(id = "__settings", name = "الإعدادات", sortOrder = Int.MAX_VALUE))
             }
         }
     }
