@@ -130,3 +130,49 @@
 # =====================================================================
 -adaptresourcefilenames
 -adaptresourcefilecontents
+# =====================================================================
+# 11) C++ NDK Vault & JNI Bridge (CRITICAL)
+# =====================================================================
+# Prevents renaming of native methods in KeysVault to avoid UnsatisfiedLinkError
+-keep class com.apix.app.security.KeysVault {
+    native <methods>;
+}
+-keepclassmembers class com.apix.app.security.KeysVault {
+    <methods>;
+}
+
+# =====================================================================
+# 12) SQLCipher & Room Persistence (ENCRYPTED DB)
+# =====================================================================
+# Keeps SQLCipher and SQLite framework from being obfuscated
+-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.database.** { *; }
+-keep class androidx.sqlite.db.** { *; }
+-keep class androidx.room.** { *; }
+-keep class com.apix.app.db.** { *; }
+-dontwarn net.sqlcipher.**
+
+# =====================================================================
+# 13) HMAC Signing & Payload Security
+# =====================================================================
+# Protects the HMAC signature generator from being stripped or renamed
+-keep class com.apix.app.security.HmacSigner { *; }
+-keep class com.apix.app.PayloadCipher { *; }
+
+# =====================================================================
+# 14) WebView Bridge (Android Interface)
+# =====================================================================
+# Ensures JavaScript-to-Java communication remains intact
+-keepclassmembers class com.apix.app.MainActivity$AndroidBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepclassmembers class com.apix.app.ui.screens.HybridPlayerScreenKt** {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# =====================================================================
+# 15) General Hardening
+# =====================================================================
+-dontnote net.sqlcipher.**
+-dontnote com.apix.app.security.**
+-keepattributes SourceFile,LineNumberTable
