@@ -93,12 +93,6 @@ private val ResizeOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = 
 private val CastOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "CastOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(2f, 16.1f); arcTo(5f, 5f, 0f, false, true, 5.9f, 20f); moveTo(2f, 12.05f); arcTo(9f, 9f, 0f, false, true, 9.95f, 20f); moveTo(2f, 8f); arcTo(13f, 13f, 0f, false, true, 14f, 20f); moveTo(2f, 20f); lineTo(2.01f, 20f); moveTo(20f, 4f); lineTo(4f, 4f); moveTo(20f, 4f); lineTo(20f, 20f); lineTo(14f, 20f) } }.build() }
 private val BackOutlineIcon: ImageVector by lazy { ImageVector.Builder(name = "BackOutline", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply { path(fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White), strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) { moveTo(19f, 12f); lineTo(5f, 12f); moveTo(12f, 19f); lineTo(5f, 12f); lineTo(12f, 5f) } }.build() }
 
-@Composable
-private fun isSystemInTvMode(): Boolean {
-    val context = LocalContext.current
-    val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-    return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-}
 
 @Composable
 private fun HybridControlButton(icon: ImageVector, contentDescription: String, size: Int = 44, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
