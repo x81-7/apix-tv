@@ -3,49 +3,52 @@ package com.apix.app
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
-import com.apix.app.security.KeysVault
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
-import com.apix.app.db.SecureStorageManager // 🔴 استدعاء قاعدة البيانات المشفرة
-import com.apix.app.security.KeysVault // 🔴 استدعاء القبو الفولاذي
+import com.apix.app.db.SecureStorageManager
+import com.apix.app.security.KeysVault
 
 /**
  * Custom Application with global Coil ImageLoader.
- * - Large persistent disk cache (up to 500 MB) → images stay on device
+ * - Large persistent disk cache (up to 500 MB)
  * - Aggressive memory cache
  * - Long OkHttp timeouts for slow networks
- *
- * + Secured: Initializes C++ NDK Vault & SQLCipher Database on startup.
+ * - Secured: Initializes C++ NDK Vault & SQLCipher Database on startup.
  */
 class ApixApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
         
-        // 1. تفعيل القبو الفولاذي (C++ NDK) وقت الإقلاع
+        // 1. Initialize Native C++ Vault
         try {
-            // استدعاء سريع لضمان تحميل مكتبة C++ المحمية في الذاكرة فوراً
             KeysVault.getEncryptionSecretKey()
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
-        // 2. تهيئة قاعدة البيانات المشفرة (SQLCipher) لتكون جاهزة وسريعة
+        // 2. Initialize Encrypted SQLCipher Database
         try {
             SecureStorageManager.getInstance(this)
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
-        // إعداداتك السابقة كما هي بدون تغيير
+        // Coil singleton initialization
         coil.Coil.setImageLoader(newImageLoader())
         
-        try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
+        // Initialize AdMob
+        try { 
+            RewardedAdHelper.initIfNeeded(applicationContext, null) 
+        } catch (_: Throwable) {}
         
-        try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}
+        // Start Realtime Notification Listener
+        try { 
+            RealtimeNotificationManager.start(applicationContext) 
+        } catch (_: Throwable) {}
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -65,10 +68,10 @@ class ApixApplication : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("apix_image_cache"))
-                    .maxSizeBytes(500L * 1024 * 1024) // 500 MB persistent
+                    .maxSizeBytes(500L * 1024 * 1024) 
                     .build()
             }
-            .respectCacheHeaders(false) // always reuse cached image if present
+            .respectCacheHeaders(false) 
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
             .networkCachePolicy(CachePolicy.ENABLED)
