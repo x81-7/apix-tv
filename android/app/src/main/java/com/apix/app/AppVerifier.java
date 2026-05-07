@@ -13,8 +13,9 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Debug;
-import android.util.Log;
 import android.view.Display;
+
+import com.apix.app.security.KeysVault; // استدعاء القبو الفولاذي
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -30,8 +31,8 @@ import java.util.zip.ZipFile;
 
 /**
  * Application Verifier - Runtime integrity & environment validation.
- * 
- * Supports dynamic hash verification from remote config with 24h cache.
+ * * Supports dynamic hash verification from remote config with 24h cache.
+ * Now strongly coupled with C++ NDK Vault to prevent native tampering.
  */
 public class AppVerifier {
     
@@ -52,7 +53,6 @@ public class AppVerifier {
     // One-time validation with EncryptedSharedPreferences fallback
     private static final String PREFS_NAME = "app_vf";
     private static final String KEY_LAST_CHECK = "lc";
-    private static final String KEY_IS_VALID = "iv";
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L; // 24 hours
     
     // Dangerous packages
@@ -108,18 +108,12 @@ public class AppVerifier {
         return instance;
     }
 
-    /**
-     * Check if we need to run verification (24h cache)
-     */
     private boolean shouldRunCheck() {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long lastCheck = prefs.getLong(KEY_LAST_CHECK, 0);
         return (System.currentTimeMillis() - lastCheck) >= CHECK_INTERVAL_MS;
     }
 
-    /**
-     * Mark check as completed (save timestamp)
-     */
     private void markCheckDone() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -127,9 +121,6 @@ public class AppVerifier {
             .apply();
     }
 
-    /**
-     * Fetch allowed hashes from Supabase system_settings
-     */
     private void fetchRemoteHashes() {
         new Thread(() -> {
             try {
@@ -148,18 +139,16 @@ public class AppVerifier {
         return currentHash;
     }
     
-    /**
-     * Run initial check with 24h cache support.
-     * Returns null if passed, or error message string.
-     */
     public String runCheck() {
-        // Blocked-signature check runs ALWAYS (no 24h cache) — manual ban list.
         if (detectBlockedHash()) return "هذه النسخة محظورة";
 
         if (!shouldRunCheck()) {
-            return null; // Within 24h window, skip
+            return null; 
         }
         
+        // --- الفحص الأمني الجديد لطبقة C++ ---
+        if (detectVaultTampering()) return "تم التلاعب بملفات الحماية الأساسية للتطبيق";
+
         if (detectSniffers()) return "تم اكتشاف برنامج مراقبة";
         if (detectCloudPhone()) return "لا يمكن تشغيل التطبيق على هاتف سحابي";
         if (detectSecondaryDisplay()) return "لا يمكن تشغيل التطبيق على شاشة ثانوية";
@@ -168,7 +157,6 @@ public class AppVerifier {
         if (detectTampering()) return "تم تعديل ملفات التطبيق";
         if (detectFrida()) return "تم اكتشاف أداة اختراق";
         
-        // All checks passed - mark as done for 24h
         markCheckDone();
         return null;
     }
@@ -199,6 +187,9 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
+                    // التحقق المستمر من أن قبو C++ لم يتم إيقافه
+                    if (detectVaultTampering()) { killApp(); return; }
+
                     if (detectBlockedHash()) { killApp(); return; }
                     if (detectSniffers()) { killApp(); return; }
                     if (detectCloudPhone()) { killApp(); return; }
@@ -224,14 +215,6 @@ public class AppVerifier {
         monitorThread.start();
     }
     
-    public void stopMonitor() {
-        running = false;
-        if (monitorThread != null) {
-            monitorThread.interrupt();
-            monitorThread = null;
-        }
-    }
-    
     private void killApp() {
         running = false;
         try {
@@ -251,6 +234,23 @@ public class AppVerifier {
         System.exit(0);
     }
     
+    // ======== C++ NDK VAULT TAMPER DETECTION ========
+    /**
+     * هذا الفحص يتأكد أن مكتبة C++ تعمل وأن المفاتيح لم يتم استبدالها بقيم فارغة
+     */
+    private boolean detectVaultTampering() {
+        try {
+            String testKey = KeysVault.INSTANCE.getEncryptionSecretKey();
+            if (testKey == null || testKey.isEmpty() || testKey.contains("DEFAULT_KEY")) {
+                return true; 
+            }
+            return false;
+        } catch (Error | Exception e) {
+            // إذا قام الهاكر بحذف ملف libapix_vault.so سيرمي النظام خطأ UnsatisfiedLinkError
+            return true;
+        }
+    }
+
     // ======== DYNAMIC HASH VERIFICATION ========
     
     private boolean detectDynamicHashMismatch() {
@@ -461,7 +461,7 @@ public class AppVerifier {
         try {
             ApplicationInfo appInfo = context.getApplicationInfo();
             if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
-                return false; // Debug build - allow testing
+                return false; 
             }
         } catch (Exception ignored) {}
         
