@@ -4,6 +4,11 @@ plugins {
     id 'org.jetbrains.kotlin.kapt'
 }
 
+// إضافة أداة سلسلة التوليد (Toolchain) لتوحيد مترجم Kotlin على إصدار 17
+kotlin {
+    jvmToolchain(17)
+}
+
 android {
     namespace 'com.apix.app'
     compileSdk 34
@@ -28,6 +33,12 @@ android {
 
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.8'
+    }
+
+    // إضافة توافقية بيئة Java لتعمل على الإصدار 17
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
