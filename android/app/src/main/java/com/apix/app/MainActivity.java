@@ -140,20 +140,13 @@ public class MainActivity extends AppCompatActivity {
     private void launchPlayer(StreamConfig config, String jsonConfig) {
         if (config.isIntentAction() && config.intentUri != null) {
             launchIntent(config.intentUri);
-        } else if (config.isHybridAction()) {
-            openComposePlayer(jsonConfig);
         } else if (config.isWebViewAction()) {
             // Forwarding to secured WebView Player
             openWebView(config.url, config.title, config.webViewOrientation);
         } else {
-            openNativePlayer(jsonConfig);
+            // Default to the new Compose Player natively (Removed old PlayerActivity)
+            openComposePlayer(jsonConfig);
         }
-    }
-    
-    private void openNativePlayer(String jsonConfig) {
-        Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
-        intent.putExtra("streamConfig", jsonConfig);
-        startActivity(intent);
     }
     
     private void openWebView(String url, String title, String orientation) {
