@@ -1,11 +1,11 @@
 package com.apix.app;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.util.Log;
 
-import com.apix.app.security.KeysVault; // استدعاء القبو الفولاذي
-import com.apix.app.security.HmacSigner; // استدعاء مولد التوقيع الأمني
+import com.apix.app.security.KeysVault; 
+import com.apix.app.security.HmacSigner; 
+import com.apix.app.db.SecureStorageManager; // استدعاء قاعدة البيانات المشفرة
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,12 +26,12 @@ import java.util.Map;
  * SupabaseDataManager — fetches categories, channels, side menus, sub-channels
  * and system settings directly from Supabase REST API.
  *
- * Secured with C++ NDK Vault, HMAC Signatures, and Offline-First capability.
+ * Secured with C++ NDK Vault, HMAC Signatures, and Offline-First capability 
+ * backed by SQLCipher Encrypted Room DB.
  */
 public class SupabaseDataManager {
 
     private static final String TAG = "SupabaseData";
-    private static final String PREFS = "supabase_cache";
     private static final String KEY_CATEGORIES = "categories_json";
     private static final String KEY_CHANNELS = "channels_json";
     private static final String KEY_SIDE_MENUS = "side_menus_json";
@@ -53,23 +53,24 @@ public class SupabaseDataManager {
         public Map<String, String> settings = new HashMap<>();
     }
 
-    /** Load cached data synchronously (for instant UI). Returns null if no cache. */
+    /** Load cached data synchronously (for instant UI) from Encrypted DB. */
     public static DataBundle loadCached(Context ctx) {
-        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SecureStorageManager secureDb = SecureStorageManager.getInstance(ctx);
         String currentCloudUrl = KeysVault.INSTANCE.getSupabaseUrl();
-        String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+        String cachedCloud = secureDb.getString(KEY_CLOUD_URL);
         
         if (cachedCloud != null && !cachedCloud.equals(currentCloudUrl)) return null;
         
-        String catsJson = sp.getString(KEY_CATEGORIES, null);
+        String catsJson = secureDb.getString(KEY_CATEGORIES);
         if (catsJson == null) return null;
+        
         try {
             return parseAll(
                 catsJson,
-                sp.getString(KEY_CHANNELS, "[]"),
-                sp.getString(KEY_SIDE_MENUS, "[]"),
-                sp.getString(KEY_SUB_CHANNELS, "[]"),
-                sp.getString(KEY_SETTINGS, "[]")
+                secureDb.getString(KEY_CHANNELS) != null ? secureDb.getString(KEY_CHANNELS) : "[]",
+                secureDb.getString(KEY_SIDE_MENUS) != null ? secureDb.getString(KEY_SIDE_MENUS) : "[]",
+                secureDb.getString(KEY_SUB_CHANNELS) != null ? secureDb.getString(KEY_SUB_CHANNELS) : "[]",
+                secureDb.getString(KEY_SETTINGS) != null ? secureDb.getString(KEY_SETTINGS) : "[]"
             );
         } catch (Exception e) {
             Log.w(TAG, "Cache parse error", e);
@@ -79,20 +80,20 @@ public class SupabaseDataManager {
 
     /**
      * Fetch fresh data via the cached-data Edge Function. Sends If-None-Match;
-     * Secured with HMAC. Falls back to local cache if offline.
+     * Secured with HMAC. Falls back to local Encrypted cache if offline.
      */
     public static void fetchRemote(Context ctx, DataCallback cb) {
         new Thread(() -> {
-            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            SecureStorageManager secureDb = SecureStorageManager.getInstance(ctx);
             String currentCloudUrl = KeysVault.INSTANCE.getSupabaseUrl();
             
             try {
-                String cachedCloud = sp.getString(KEY_CLOUD_URL, null);
+                String cachedCloud = secureDb.getString(KEY_CLOUD_URL);
                 if (cachedCloud == null || !cachedCloud.equals(currentCloudUrl)) {
-                    sp.edit().clear().putString(KEY_CLOUD_URL, currentCloudUrl).apply();
+                    secureDb.saveString(KEY_CLOUD_URL, currentCloudUrl);
                 }
                 
-                String prevEtag = sp.getString(KEY_BUNDLE_ETAG, null);
+                String prevEtag = secureDb.getString(KEY_BUNDLE_ETAG);
                 BundleResponse resp = fetchBundleEdge(prevEtag);
 
                 if (resp.notModified) {
@@ -101,7 +102,7 @@ public class SupabaseDataManager {
                         cb.onSuccess(bundle);
                         return;
                     }
-                    sp.edit().remove(KEY_BUNDLE_ETAG).apply();
+                    secureDb.saveString(KEY_BUNDLE_ETAG, ""); // Clear invalid ETag
                 }
 
                 String catsJson  = resp.body != null ? resp.categoriesJson : null;
@@ -118,23 +119,23 @@ public class SupabaseDataManager {
                     settingsJson = restGet("/rest/v1/system_settings?select=*");
                 }
 
-                SharedPreferences.Editor ed = sp.edit()
-                    .putString(KEY_CATEGORIES, catsJson)
-                    .putString(KEY_CHANNELS, chansJson)
-                    .putString(KEY_SIDE_MENUS, menusJson)
-                    .putString(KEY_SUB_CHANNELS, subsJson)
-                    .putString(KEY_SETTINGS, settingsJson)
-                    .putString(KEY_CLOUD_URL, currentCloudUrl)
-                    .putLong(KEY_LAST_FETCH, System.currentTimeMillis());
-                if (resp.etag != null) ed.putString(KEY_BUNDLE_ETAG, resp.etag);
-                ed.apply();
+                // الحفظ في قاعدة البيانات المشفرة
+                secureDb.saveString(KEY_CATEGORIES, catsJson);
+                secureDb.saveString(KEY_CHANNELS, chansJson);
+                secureDb.saveString(KEY_SIDE_MENUS, menusJson);
+                secureDb.saveString(KEY_SUB_CHANNELS, subsJson);
+                secureDb.saveString(KEY_SETTINGS, settingsJson);
+                secureDb.saveString(KEY_CLOUD_URL, currentCloudUrl);
+                secureDb.saveString(KEY_LAST_FETCH, String.valueOf(System.currentTimeMillis()));
+                
+                if (resp.etag != null) secureDb.saveString(KEY_BUNDLE_ETAG, resp.etag);
 
                 DataBundle bundle = parseAll(catsJson, chansJson, menusJson, subsJson, settingsJson);
                 cb.onSuccess(bundle);
                 
             } catch (Exception e) {
                 Log.e(TAG, "Network Fetch error, attempting Offline-First fallback", e);
-                // OFFLINE-FIRST LOGIC: إذا فشل السيرفر، اقرأ من الكاش ولا تعطل التطبيق
+                // OFFLINE-FIRST LOGIC: إذا فشل السيرفر، اقرأ من القاعدة المشفرة ولا تعطل التطبيق
                 DataBundle offlineBundle = loadCached(ctx);
                 if (offlineBundle != null) {
                     cb.onSuccess(offlineBundle);
@@ -171,9 +172,11 @@ public class SupabaseDataManager {
             conn.setRequestProperty("apikey", anonKey);
             conn.setRequestProperty("Authorization", "Bearer " + anonKey);
             conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("X-App-Signature", HmacSigner.generateSignature("")); // توقيع أمني للطلب
+            conn.setRequestProperty("X-App-Signature", HmacSigner.generateSignature(""));
             
-            if (prevEtag != null) conn.setRequestProperty("If-None-Match", prevEtag);
+            if (prevEtag != null && !prevEtag.isEmpty()) {
+                conn.setRequestProperty("If-None-Match", prevEtag);
+            }
 
             int code = conn.getResponseCode();
             String etag = conn.getHeaderField("ETag");
@@ -299,8 +302,7 @@ public class SupabaseDataManager {
                 JSONArray inner = arr.getJSONObject(0).optJSONArray("value");
                 if (inner != null) value = inner.toString();
             }
-            ctx.getSharedPreferences("apix_dev_overrides", android.content.Context.MODE_PRIVATE)
-                    .edit().putString("developer_uuids", value).apply();
+            SecureStorageManager.getInstance(ctx).saveString("developer_uuids", value);
         } catch (Exception e) {
             Log.w(TAG, "syncDeveloperUUIDs error", e);
         }
