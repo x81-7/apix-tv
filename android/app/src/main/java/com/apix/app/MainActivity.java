@@ -15,12 +15,12 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.gson.Gson;
-
 import com.apix.app.databinding.ActivityMainBinding;
+import com.apix.app.security.KeysVault;
+import com.apix.app.db.SecureStorageManager;
 
 /**
- * Main Activity hosting the WebView that loads the APiX web app
- * Handles the split Web/Android architecture with different action types
+ * Main Activity secured with NDK Vault and Encrypted Database integration.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -28,23 +28,29 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private Gson gson = new Gson();
     
-    // Your web app URL
     private static final String WEB_APP_URL = "https://tv-plus.lovable.app";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Ensure Security Vault is ready before UI
+        try {
+            KeysVault.INSTANCE.getEncryptionSecretKey();
+        } catch (Exception e) {
+            Log.e("Security", "Vault initialization failed");
+        }
+
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
         webView = binding.webView;
         setupWebView();
         
-        // Load the web app FIRST, then start security after a delay
         webView.loadUrl(WEB_APP_URL);
         
-        // Delay security monitor to let WebView initialize properly
+        // Start integrity monitor
         webView.postDelayed(() -> {
             AppVerifier.getInstance(MainActivity.this).startMonitor();
         }, 3000);
@@ -63,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
         String userAgent = settings.getUserAgentString();
-        settings.setUserAgentString(userAgent + " APiXAndroid/1.0");
+        settings.setUserAgentString(userAgent + " APiXAndroid/Security_V2");
         
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -73,7 +79,6 @@ public class MainActivity extends AppCompatActivity {
             
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                Log.e("MainActivity", "WebView error: " + description);
                 view.postDelayed(() -> view.loadUrl(WEB_APP_URL), 2000);
             }
         });
@@ -88,14 +93,23 @@ public class MainActivity extends AppCompatActivity {
         public void playVideo(String jsonConfig) {
             runOnUiThread(() -> {
                 try {
+                    // Check app integrity before playing
+                    String integrityError = AppVerifier.getInstance(MainActivity.this).runCheck();
+                    if (integrityError != null) {
+                        showToast(integrityError);
+                        return;
+                    }
+
                     StreamConfig config = gson.fromJson(jsonConfig, StreamConfig.class);
                     if (config == null) {
                         showToast("Invalid stream configuration");
                         return;
                     }
+                    
+                    // Secure Launch
                     launchPlayer(config, jsonConfig);
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    showToast("Playback Error: " + e.getMessage());
                 }
             });
         }
@@ -119,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
         
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.0";
+            return "2.0.0_Secured";
         }
     }
     
@@ -129,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (config.isHybridAction()) {
             openComposePlayer(jsonConfig);
         } else if (config.isWebViewAction()) {
+            // Forwarding to secured WebView Player
             openWebView(config.url, config.title, config.webViewOrientation);
         } else {
             openNativePlayer(jsonConfig);
@@ -190,6 +205,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         webView.onResume();
+        AppVerifier.getInstance(this).runCheckAsync((passed, reason) -> {
+            if (!passed) runOnUiThread(() -> showToast(reason));
+        });
     }
 
     @Override
