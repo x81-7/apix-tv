@@ -27,12 +27,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TVPlus"
         android:usesCleartextTraffic="true"
+        android:allowAudioPlaybackCapture="true"
         tools:targetApi="31">
 
         <!-- AdMob App ID — value is rewritten in-place by the dashboard via update-android-config -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-4070921276882121~6667425901" />
+            
         <!-- Splash Activity (Entry Point - Security Check) -->
         <activity
             android:name=".SplashActivity"
@@ -144,9 +146,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
-
-        <!-- (Removed) NotificationListenerService + BootReceiver — no more "جاهز لاستقبال" persistent notification.
-             Realtime listener now runs in-process from ApixApplication.onCreate(). -->
 
         <activity
             android:name=".WebAdActivity"
