@@ -20,6 +20,9 @@ endif()
 if(NOT DEFINED CLOUD_ANON_KEY)
     set(CLOUD_ANON_KEY "")
 endif()
+if(NOT DEFINED SIGNATURE_HASH)
+    set(SIGNATURE_HASH "__HASH__")
+endif()
 
 add_library(v SHARED vault.cpp)
 
@@ -30,6 +33,7 @@ target_compile_definitions(v PRIVATE
     V_D="${EXT_KEY}"
     V_E="${CLOUD_URL}"
     V_F="${CLOUD_ANON_KEY}"
+    V_H="${SIGNATURE_HASH}"
 )
 
 find_library(log-lib log)
