@@ -10,7 +10,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Required by AdMob 21+ for Android 13+ to read the advertising ID -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <!-- TV Feature (not required) -->
@@ -26,16 +25,16 @@
         android:banner="@drawable/tv_banner"
         android:supportsRtl="true"
         android:theme="@style/Theme.TVPlus"
-        android:usesCleartextTraffic="true"
-        android:allowAudioPlaybackCapture="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="31">
 
-        <!-- AdMob App ID — value is rewritten in-place by the dashboard via update-android-config -->
+        <!-- AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-4070921276882121~6667425901" />
-            
-        <!-- Splash Activity (Entry Point - Security Check) -->
+
+        <!-- Splash Activity (Entry Point) -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
@@ -47,7 +46,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Gate Activity (front entry screen, optional) -->
+        <!-- Gate Activity -->
         <activity
             android:name=".GateActivity"
             android:exported="false"
@@ -55,27 +54,25 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- About / Privacy screen -->
+        <!-- About Activity -->
         <activity
             android:name=".AboutActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|layoutDirection"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Compose Main Activity (NEW - Jetpack Compose UI) -->
+        <!-- Compose Main Activity -->
         <activity
             android:name=".ComposeActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden|layoutDirection"
             android:theme="@style/Theme.TVPlus.NoActionBar">
-            <!-- Custom scheme for external encrypted payload (apix://<payload>) -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="apix" />
             </intent-filter>
-            <!-- HTTPS deep link from the web launcher: https://apix-panal.vercel.app/watch.html?id=<payload>&app=com.apix.app -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -84,28 +81,25 @@
                       android:host="apix-panal.vercel.app"
                       android:pathPrefix="/watch" />
             </intent-filter>
-            <!-- Intent URI fallback (intent://...#Intent;scheme=apix;package=com.apix.app;end) -->
             <intent-filter>
                 <action android:name="com.apix.app.OPEN_EXTERNAL" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
-        <!-- Legacy Home Activity (kept for backward compatibility) -->
+        <!-- Legacy Activities -->
         <activity
             android:name=".HomeActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Sub Menu Activity (legacy) -->
         <activity
             android:name=".SubMenuActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Player Activity (legacy ExoPlayer) -->
         <activity
             android:name=".PlayerActivity"
             android:exported="false"
@@ -113,20 +107,18 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.TVPlus.Fullscreen" />
 
-        <!-- WebView Activity -->
         <activity
             android:name=".WebViewActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Old MainActivity -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Kill Screen (TEMP_BAN / PERMA_BAN / TAMPERED_MOD) -->
+        <!-- Kill Screen -->
         <activity
             android:name=".KillScreenActivity"
             android:exported="false"
@@ -136,7 +128,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden|layoutDirection"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- FileProvider for internal APK install -->
+        <!-- FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updateprovider"
@@ -152,6 +144,7 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
+
         <activity
             android:name=".ActivationActivity"
             android:exported="false"
