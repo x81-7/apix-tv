@@ -10,11 +10,6 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,27 +20,22 @@ public final class AdManager {
     private static final String KEY_FORCED_COUNT = "forced_custom_ads_count";
     private static final String KEY_LAST_INDEX = "last_watched_ad_index";
     private static final String KEY_APP_OPEN_DONE = "rewarded_app_open_done";
-    private static final String KEY_LOCAL_TRIGGER = "local_ads_trigger"; // off | app_open | on_channel | both
-    private static final String KEY_LOCAL_CHANNEL_LIST = "local_ads_channel_ids"; // optional whitelist
+    private static final String KEY_LOCAL_TRIGGER = "local_ads_trigger";
+    private static final String KEY_LOCAL_CHANNEL_LIST = "local_ads_channel_ids";
     private static final String KEY_LOCAL_APP_OPEN_DONE = "local_app_open_done";
     private static final String KEY_LOCAL_FORCE_EXTERNAL = "local_ads_force_external";
     private static final String KEY_NETWORK_FORCE_EXTERNAL = "network_ads_force_external";
     private static final String KEY_APP_OPEN_DONE_AT = "rewarded_app_open_done_at";
-    /** Re-arm the "once per app open" gate after this many hours so users see
-     *  ads regularly even when the dashboard left gateMode at app_open_once. */
     private static final long APP_OPEN_REARM_HOURS = 6L;
 
-    public interface GateCallback {
-        void onAllowed();
-    }
+    public interface GateCallback { void onAllowed(); }
 
     private AdManager() {}
 
-    /** VIP users skip every ad gate (open / unlock / external + local sequential). */
     private static boolean isVip(Context ctx) {
         try {
             return new com.apix.app.vip.VipChecker(
-                    ctx, BuildConfig.CLOUD_URL, BuildConfig.CLOUD_ANON_KEY
+                ctx, BuildConfig.CLOUD_URL, BuildConfig.CLOUD_ANON_KEY
             ).isActiveLocally();
         } catch (Throwable t) { return false; }
     }
@@ -58,8 +48,8 @@ public final class AdManager {
                 JSONObject localCfg = SupabaseDataManager.fetchLocalAdsConfig();
                 SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 SharedPreferences.Editor ed = sp.edit()
-                        .putString(KEY_CUSTOM_ADS, ads.toString())
-                        .putInt(KEY_FORCED_COUNT, Math.max(1, forcedCount));
+                    .putString(KEY_CUSTOM_ADS, ads.toString())
+                    .putInt(KEY_FORCED_COUNT, Math.max(1, forcedCount));
                 if (localCfg != null) {
                     ed.putString(KEY_LOCAL_TRIGGER, localCfg.optString("trigger", "app_open"));
                     JSONArray ids = localCfg.optJSONArray("channelIds");
@@ -69,10 +59,14 @@ public final class AdManager {
                 JSONObject adCfg = SupabaseDataManager.fetchAdConfig();
                 if (adCfg != null) {
                     ed.putBoolean(KEY_NETWORK_FORCE_EXTERNAL, adCfg.optBoolean("forceExternal", false));
+                    // حفظ إعدادات الإعلان في SharedPreferences للاستخدام لاحقاً بدون شبكة
+                    ed.putBoolean("ads_enabled", adCfg.optBoolean("adsEnabled", false));
+                    ed.putString("ads_gate_mode", adCfg.optString("gateMode", "app_open_each"));
+                    ed.putString("ads_unit_id", adCfg.optString("rewardedAdUnitId",
+                        adCfg.optString("admobRewardedId", "")));
                     String unit = adCfg.optString("rewardedAdUnitId",
-                                  adCfg.optString("admobRewardedId", ""));
+                        adCfg.optString("admobRewardedId", ""));
                     if (!unit.isEmpty()) {
-                        // Pre-warm a rewarded ad in background
                         try { RewardedAdHelper.preload(context, unit); } catch (Throwable ignored) {}
                     }
                 }
@@ -83,147 +77,164 @@ public final class AdManager {
         }).start();
     }
 
+    // ── App Open Gate ─────────────────────────────────────────────────
     public static void maybeRunAppOpenGate(Activity activity, GateCallback callback) {
         if (isVip(activity)) { callback.onAllowed(); return; }
-        // Use the freshly-cached config from refreshCacheAsync (also fetches fresh)
-        JSONObject config = null;
-        try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
-        final JSONObject fConfig = config;
 
-        SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        Runnable afterRewarded = () -> {
-            // 2) Run LOCAL sequential ads if trigger includes app_open
-            String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
-            boolean localOnAppOpen = "app_open".equalsIgnoreCase(trigger) || "both".equalsIgnoreCase(trigger);
-            if (localOnAppOpen && !sp.getBoolean(KEY_LOCAL_APP_OPEN_DONE, false)) {
-                showSequentialAds(activity, () -> {
-                    sp.edit().putBoolean(KEY_LOCAL_APP_OPEN_DONE, true).apply();
-                    callback.onAllowed();
-                });
-            } else {
-                callback.onAllowed();
-            }
-        };
+        new Thread(() -> {
+            // جلب config في الخلفية — لا NetworkOnMainThreadException
+            JSONObject freshConfig = null;
+            try { freshConfig = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
+            final JSONObject fConfig = freshConfig;
 
-        boolean adsOn = fConfig != null && fConfig.optBoolean("adsEnabled", false);
-        // Default changed to app_open_each so ads show on every launch when
-        // the dashboard didn't explicitly pick a mode. Previous default
-        // (app_open_once) caused users to never see ads after the first show.
-        String gateMode = fConfig != null ? fConfig.optString("gateMode", "app_open_each") : "";
-        String unitId = fConfig != null
-            ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
-            : "";
+            activity.runOnUiThread(() -> {
+                SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-        // Re-arm the once-per-launch flag after APP_OPEN_REARM_HOURS so the
-        // ad re-shows even on a long-running install.
-        long doneAt = sp.getLong(KEY_APP_OPEN_DONE_AT, 0L);
-        if (doneAt > 0L && System.currentTimeMillis() - doneAt > APP_OPEN_REARM_HOURS * 3600_000L) {
-            sp.edit().putBoolean(KEY_APP_OPEN_DONE, false).remove(KEY_APP_OPEN_DONE_AT).apply();
-        }
+                // حفظ config الجديد إذا وُجد
+                if (fConfig != null) {
+                    sp.edit()
+                      .putBoolean("ads_enabled", fConfig.optBoolean("adsEnabled", false))
+                      .putString("ads_gate_mode", fConfig.optString("gateMode", "app_open_each"))
+                      .putString("ads_unit_id", fConfig.optString("rewardedAdUnitId",
+                          fConfig.optString("admobRewardedId", "")))
+                      .apply();
+                }
 
-        // Diagnostics — exposes WHY an ad gate did or didn't fire.
-        // Filter logs with: adb logcat -s AdManager:* RewardedAdHelper:*
-        Log.d(TAG, "OPEN_GATE: adsOn=" + adsOn
-                + " gateMode=" + gateMode
-                + " unitIdSet=" + (unitId != null && !unitId.isEmpty())
-                + " appOpenDone=" + sp.getBoolean(KEY_APP_OPEN_DONE, false)
-                + " configPresent=" + (fConfig != null));
-        if (fConfig == null) {
-            Log.w(TAG, "OPEN_GATE: adConfig is NULL — system_settings.adConfig row missing or unreachable");
-        } else if (!adsOn) {
-            Log.w(TAG, "OPEN_GATE: adsEnabled=false in dashboard. Toggle it on to show ads.");
-        } else if (unitId == null || unitId.isEmpty()) {
-            Log.w(TAG, "OPEN_GATE: rewardedAdUnitId / admobRewardedId is EMPTY in dashboard.");
-        }
+                // قراءة القيم (من الكاش أو الجديد)
+                boolean adsOn = sp.getBoolean("ads_enabled", false);
+                String gateMode = sp.getString("ads_gate_mode", "app_open_each");
+                String unitId = sp.getString("ads_unit_id", "");
 
-        if (adsOn && "app_open_once".equalsIgnoreCase(gateMode)
-                && !sp.getBoolean(KEY_APP_OPEN_DONE, false)
-                && unitId != null && !unitId.isEmpty()) {
-            // Show on EVERY app open if dashboard set "app_open_each" — but default is once.
-            RewardedAdHelper.showOrSkip(activity, unitId, rewarded -> {
-                sp.edit()
-                  .putBoolean(KEY_APP_OPEN_DONE, true)
-                  .putLong(KEY_APP_OPEN_DONE_AT, System.currentTimeMillis())
-                  .apply();
-                afterRewarded.run();
+                // إعادة ضبط Rewarded بعد 6 ساعات
+                long doneAt = sp.getLong(KEY_APP_OPEN_DONE_AT, 0L);
+                if (doneAt > 0L && System.currentTimeMillis() - doneAt > APP_OPEN_REARM_HOURS * 3600_000L) {
+                    sp.edit().putBoolean(KEY_APP_OPEN_DONE, false).remove(KEY_APP_OPEN_DONE_AT).apply();
+                }
+
+                // إعادة ضبط إعلانات الويب بعد 6 ساعات
+                long localDoneAt = sp.getLong("local_app_open_done_at", 0L);
+                if (localDoneAt > 0L && System.currentTimeMillis() - localDoneAt > APP_OPEN_REARM_HOURS * 3600_000L) {
+                    sp.edit().putBoolean(KEY_LOCAL_APP_OPEN_DONE, false)
+                              .remove("local_app_open_done_at").apply();
+                }
+
+                Log.d(TAG, "OPEN_GATE: adsOn=" + adsOn + " gateMode=" + gateMode
+                    + " unitId=" + (unitId.isEmpty() ? "EMPTY" : "SET")
+                    + " appOpenDone=" + sp.getBoolean(KEY_APP_OPEN_DONE, false));
+
+                Runnable afterRewarded = () -> {
+                    String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
+                    boolean localOnAppOpen = "app_open".equalsIgnoreCase(trigger)
+                        || "both".equalsIgnoreCase(trigger);
+                    if (localOnAppOpen && !sp.getBoolean(KEY_LOCAL_APP_OPEN_DONE, false)) {
+                        showSequentialAds(activity, () -> {
+                            sp.edit()
+                              .putBoolean(KEY_LOCAL_APP_OPEN_DONE, true)
+                              .putLong("local_app_open_done_at", System.currentTimeMillis())
+                              .apply();
+                            callback.onAllowed();
+                        });
+                    } else {
+                        callback.onAllowed();
+                    }
+                };
+
+                if (adsOn && "app_open_once".equalsIgnoreCase(gateMode)
+                        && !sp.getBoolean(KEY_APP_OPEN_DONE, false)
+                        && !unitId.isEmpty()) {
+                    RewardedAdHelper.showOrSkip(activity, unitId, rewarded -> {
+                        sp.edit()
+                          .putBoolean(KEY_APP_OPEN_DONE, true)
+                          .putLong(KEY_APP_OPEN_DONE_AT, System.currentTimeMillis())
+                          .apply();
+                        afterRewarded.run();
+                    });
+                } else if (adsOn && "app_open_each".equalsIgnoreCase(gateMode) && !unitId.isEmpty()) {
+                    RewardedAdHelper.showOrSkip(activity, unitId, rewarded -> afterRewarded.run());
+                } else {
+                    afterRewarded.run();
+                }
             });
-        } else if (adsOn && "app_open_each".equalsIgnoreCase(gateMode)
-                && unitId != null && !unitId.isEmpty()) {
-            RewardedAdHelper.showOrSkip(activity, unitId, rewarded -> afterRewarded.run());
-        } else {
-            afterRewarded.run();
-        }
+        }).start();
     }
 
+    // ── Unlock Gate (عند فتح قناة) ────────────────────────────────────
     public static void maybeRunUnlockGate(Activity activity, String channelId, GateCallback callback) {
         if (isVip(activity)) { callback.onAllowed(); return; }
-        JSONObject config = null;
-        try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
-        final JSONObject fConfig = config;
 
-        SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        boolean rewardedFires = isRewardedGateEnabled(fConfig, "unlock_channel") && isLockedChannel(fConfig, channelId);
+        new Thread(() -> {
+            JSONObject freshConfig = null;
+            try { freshConfig = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
+            final JSONObject fConfig = freshConfig;
 
-        String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
-        boolean localOnChannel = "on_channel".equalsIgnoreCase(trigger) || "both".equalsIgnoreCase(trigger);
-        boolean localFires = localOnChannel && isLocalAdAllowedForChannel(sp, channelId);
+            activity.runOnUiThread(() -> {
+                SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                boolean rewardedFires = isRewardedGateEnabled(fConfig, "unlock_channel")
+                    && isLockedChannel(fConfig, channelId);
+                String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
+                boolean localOnChannel = "on_channel".equalsIgnoreCase(trigger)
+                    || "both".equalsIgnoreCase(trigger);
+                boolean localFires = localOnChannel && isLocalAdAllowedForChannel(sp, channelId);
 
-        if (!rewardedFires && !localFires) { callback.onAllowed(); return; }
+                if (!rewardedFires && !localFires) { callback.onAllowed(); return; }
 
-        Runnable afterRewarded = () -> {
-            if (localFires) showSequentialAds(activity, callback::onAllowed);
-            else callback.onAllowed();
-        };
-        if (rewardedFires) {
-            String unitId = fConfig != null
-                ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
-                : "";
-            RewardedAdHelper.showOrSkip(activity, unitId, r -> afterRewarded.run());
-        } else {
-            afterRewarded.run();
-        }
+                Runnable afterRewarded = () -> {
+                    if (localFires) showSequentialAds(activity, callback::onAllowed);
+                    else callback.onAllowed();
+                };
+                if (rewardedFires) {
+                    String unitId = fConfig != null
+                        ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
+                        : sp.getString("ads_unit_id", "");
+                    RewardedAdHelper.showOrSkip(activity, unitId, r -> afterRewarded.run());
+                } else {
+                    afterRewarded.run();
+                }
+            });
+        }).start();
     }
 
-    /**
-     * Forced ad gate before opening an EXTERNAL encrypted link.
-     * Hybrid behavior: when both network and local are flagged forceExternal, alternates
-     * between them based on a counter so the user sees variety.
-     */
+    // ── External Gate (روابط خارجية) ──────────────────────────────────
     public static void maybeRunExternalGate(Activity activity, GateCallback callback) {
         if (isVip(activity)) { callback.onAllowed(); return; }
-        JSONObject config = null;
-        try { config = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
-        final JSONObject fConfig = config;
 
-        SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
-                && fConfig != null && fConfig.optBoolean("adsEnabled", false);
-        boolean localOn = sp.getBoolean(KEY_LOCAL_FORCE_EXTERNAL, false);
+        new Thread(() -> {
+            JSONObject freshConfig = null;
+            try { freshConfig = SupabaseDataManager.fetchAdConfig(); } catch (Throwable ignored) {}
+            final JSONObject fConfig = freshConfig;
 
-        if (!networkOn && !localOn) { callback.onAllowed(); return; }
+            activity.runOnUiThread(() -> {
+                SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
+                    && fConfig != null && fConfig.optBoolean("adsEnabled", false);
+                boolean localOn = sp.getBoolean(KEY_LOCAL_FORCE_EXTERNAL, false);
 
-        // Hybrid alternation
-        int counter = sp.getInt("ext_ad_counter", 0);
-        sp.edit().putInt("ext_ad_counter", counter + 1).apply();
-        boolean useNetwork = networkOn && (!localOn || counter % 2 == 0);
+                if (!networkOn && !localOn) { callback.onAllowed(); return; }
 
-        if (useNetwork) {
-            String unitId = fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""));
-            RewardedAdHelper.showOrSkip(activity, unitId, r -> {
-                if (!r && localOn) showSequentialAds(activity, callback::onAllowed);
-                else callback.onAllowed();
+                int counter = sp.getInt("ext_ad_counter", 0);
+                sp.edit().putInt("ext_ad_counter", counter + 1).apply();
+                boolean useNetwork = networkOn && (!localOn || counter % 2 == 0);
+
+                if (useNetwork) {
+                    String unitId = fConfig != null
+                        ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
+                        : sp.getString("ads_unit_id", "");
+                    RewardedAdHelper.showOrSkip(activity, unitId, r -> {
+                        if (!r && localOn) showSequentialAds(activity, callback::onAllowed);
+                        else callback.onAllowed();
+                    });
+                } else {
+                    showSequentialAds(activity, callback::onAllowed);
+                }
             });
-        } else {
-            showSequentialAds(activity, callback::onAllowed);
-        }
+        }).start();
     }
 
-    /** Whitelist check: empty list = applies to ALL channels. */
     private static boolean isLocalAdAllowedForChannel(SharedPreferences sp, String channelId) {
         try {
             String raw = sp.getString(KEY_LOCAL_CHANNEL_LIST, "[]");
             JSONArray arr = new JSONArray(raw);
-            if (arr.length() == 0) return true; // unrestricted
+            if (arr.length() == 0) return true;
             if (channelId == null) return false;
             for (int i = 0; i < arr.length(); i++) {
                 if (channelId.equals(arr.optString(i))) return true;
@@ -235,7 +246,7 @@ public final class AdManager {
     private static boolean isRewardedGateEnabled(JSONObject config, String mode) {
         if (config == null) return false;
         return config.optBoolean("adsEnabled", false)
-                && mode.equalsIgnoreCase(config.optString("gateMode", "app_open_once"));
+            && mode.equalsIgnoreCase(config.optString("gateMode", "app_open_once"));
     }
 
     private static boolean isLockedChannel(JSONObject config, String channelId) {
@@ -253,24 +264,15 @@ public final class AdManager {
         String raw = sp.getString(KEY_CUSTOM_ADS, "[]");
         int forcedCount = Math.max(1, sp.getInt(KEY_FORCED_COUNT, 1));
         int lastIndex = Math.max(0, sp.getInt(KEY_LAST_INDEX, 0));
-
         try {
             JSONArray array = new JSONArray(raw);
-            if (array.length() == 0) {
-                callback.onAllowed();
-                return;
-            }
-
+            if (array.length() == 0) { callback.onAllowed(); return; }
             List<String> urls = new ArrayList<>();
             for (int i = 0; i < forcedCount; i++) {
                 int idx = (lastIndex + i) % array.length();
-                JSONObject obj = array.getJSONObject(idx);
-                urls.add(obj.optString("video_url", ""));
+                urls.add(array.getJSONObject(idx).optString("video_url", ""));
             }
-
-            int nextIndex = (lastIndex + urls.size()) % array.length();
-            sp.edit().putInt(KEY_LAST_INDEX, nextIndex).apply();
-
+            sp.edit().putInt(KEY_LAST_INDEX, (lastIndex + urls.size()) % array.length()).apply();
             Intent intent = new Intent(activity, WebViewActivity.class);
             intent.putExtra("sequential_ad_urls", new JSONArray(urls).toString());
             intent.putExtra("url", "about:blank");
@@ -284,30 +286,19 @@ public final class AdManager {
     }
 
     public static void handleUpdateInstall(Activity activity, String url, boolean internalInstall) {
-        if (internalInstall) {
-            UpdateInstaller.downloadAndInstall(activity, url);
-        } else {
-            try {
-                activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-            } catch (Exception ignored) {}
+        if (internalInstall) { UpdateInstaller.downloadAndInstall(activity, url); }
+        else {
+            try { activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
+            catch (Exception ignored) {}
         }
     }
 
     public static final class SequentialAdBridge {
         private static GateCallback pending;
-
         private SequentialAdBridge() {}
-
-        public static void registerCallback(GateCallback callback) {
-            pending = callback;
-        }
-
+        public static void registerCallback(GateCallback cb) { pending = cb; }
         public static void complete() {
-            if (pending != null) {
-                GateCallback cb = pending;
-                pending = null;
-                cb.onAllowed();
-            }
+            if (pending != null) { GateCallback cb = pending; pending = null; cb.onAllowed(); }
         }
     }
 }
