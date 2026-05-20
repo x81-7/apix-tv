@@ -2,6 +2,7 @@ apply plugin: 'kotlin-kapt'
 
 plugins {
     id 'com.android.application'
+    id 'com.android.library' // أضفتها تحسباً لو كانت موجودة في ملفك الأصلي
     id 'org.jetbrains.kotlin.android'
 }
 
@@ -140,13 +141,11 @@ dependencies {
     implementation 'androidx.leanback:leanback:1.0.0'
     implementation 'androidx.compose.material3:material3-window-size-class'
 
-    // Room DB المشفرة — جديد
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"
     implementation "androidx.room:room-ktx:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
 
-    // SQLCipher — جديد
     implementation "net.zetetic:android-database-sqlcipher:4.5.4"
     implementation "androidx.sqlite:sqlite-ktx:2.4.0"
 
