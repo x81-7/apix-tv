@@ -20,19 +20,16 @@ class p6(private val ctx: Context) {
 
     companion object {
         private const val T  = "p6"
-        private const val KV = "v"    // data_version key
-        private const val KS = "s"    // last_sync key
+        private const val KV = "v"
+        private const val KS = "s"
         private const val D30 = 30L * 24 * 60 * 60 * 1000
     }
 
-    // هل يوجد بيانات محلية؟
     fun ok(): Boolean = db.r1().n1() > 0
 
-    // هل ضمن 30 يوم؟
     fun fresh(): Boolean =
         (System.currentTimeMillis() - sp.getLong(KS, 0L)) < D30
 
-    // قراءة فورية من Room
     fun local(): SupabaseDataManager.DataBundle? {
         return try {
             val cats  = db.r2().q1()
@@ -45,7 +42,6 @@ class p6(private val ctx: Context) {
         }
     }
 
-    // فحص إصدار البيانات من السيرفر
     fun remoteVer(): Int {
         return try {
             val url  = URL(BuildConfig.CLOUD_URL + "/functions/v1/data-version")
@@ -65,10 +61,8 @@ class p6(private val ctx: Context) {
     }
 
     fun localVer(): Int = sp.getInt(KV, -1)
-
     fun saveVer(v: Int) = sp.edit().putInt(KV, v).apply()
 
-    // حفظ البيانات في Room
     fun sync(bundle: SupabaseDataManager.DataBundle) {
         try {
             val cats = bundle.categories.map { c ->
@@ -76,8 +70,8 @@ class p6(private val ctx: Context) {
                     a = c.id ?: "",
                     b = c.name ?: "",
                     c = c.icon ?: "",
-                    d = c.sortOrder ?: 0,
-                    e = c.isHidden ?: false
+                    d = c.sortOrder,
+                    e = c.hidden // تم التعديل من isHidden إلى hidden لتطابق الجافا
                 )
             }
             val chans = bundle.allChannels.map { c ->
@@ -85,10 +79,10 @@ class p6(private val ctx: Context) {
                     a = c.id ?: "",
                     b = c.name ?: "",
                     c = c.categoryId ?: "",
-                    d = c.logo ?: "",
+                    d = c.imageUrl ?: "", // تم التعديل من logo إلى imageUrl لتطابق الجافا
                     e = c.androidStreamJson ?: "{}",
-                    f = c.sortOrder ?: 0,
-                    g = c.isHidden ?: false,
+                    f = c.sortOrder,
+                    g = c.hidden, // تم التعديل لتطابق الجافا
                     h = System.currentTimeMillis()
                 )
             }
@@ -101,7 +95,6 @@ class p6(private val ctx: Context) {
         }
     }
 
-    // تحويل Room → DataBundle
     private fun toBundle(
         cats: List<p3>,
         chans: List<p2>
@@ -113,7 +106,7 @@ class p6(private val ctx: Context) {
                 it.name      = e.b
                 it.icon      = e.c
                 it.sortOrder = e.d
-                it.isHidden  = e.e
+                it.hidden    = e.e // مطابقة للجافا
             }
         }
         b.allChannels = chans.map { e ->
@@ -121,10 +114,10 @@ class p6(private val ctx: Context) {
                 it.id               = e.a
                 it.name             = e.b
                 it.categoryId       = e.c
-                it.logo             = e.d
+                it.imageUrl         = e.d // مطابقة للجافا
                 it.androidStreamJson = e.e
                 it.sortOrder        = e.f
-                it.isHidden         = e.g
+                it.hidden           = e.g // مطابقة للجافا
             }
         }
         return b
