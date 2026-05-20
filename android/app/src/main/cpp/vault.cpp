@@ -1,7 +1,6 @@
 #include <jni.h>
 #include <string>
 
-// مفتاح XOR للتمويه — 16 بايت
 static constexpr uint8_t K[] = {
     0x4A, 0x37, 0x7E, 0x12,
     0x5C, 0x09, 0x33, 0x6B,
@@ -9,7 +8,6 @@ static constexpr uint8_t K[] = {
     0x71, 0x3C, 0x69, 0x25
 };
 
-// دالة استرجاع المفتاح — الاسم q() لا يكشف وظيفتها
 static std::string q(const char* s) {
     std::string r(s);
     for (size_t i = 0; i < r.size(); i++)
@@ -17,22 +15,21 @@ static std::string q(const char* s) {
     return r;
 }
 
-// ماكرو لتعريف كل مفتاح
 #define MK(n, v) static std::string n() { \
     static const char r[] = v; \
     return std::string(r); \
 }
 
-MK(va, V_A)  // enc key
-MK(vb, V_B)  // hmac
-MK(vc, V_C)  // salt
-MK(vd, V_D)  // ext key
-MK(ve, V_E)  // cloud url
-MK(vf, V_F)  // anon key
+MK(va, V_A)
+MK(vb, V_B)
+MK(vc, V_C)
+MK(vd, V_D)
+MK(ve, V_E)
+MK(vf, V_F)
+MK(vh, V_H)
 
 extern "C" {
 
-// اسم الدالة يطابق package com.apix.app.security.g4
 JNIEXPORT jstring JNICALL
 Java_com_apix_app_security_g4_a(JNIEnv* e, jobject) {
     return e->NewStringUTF(va().c_str());
@@ -59,10 +56,13 @@ Java_com_apix_app_security_g4_f(JNIEnv* e, jobject) {
 }
 JNIEXPORT jstring JNICALL
 Java_com_apix_app_security_g4_g(JNIEnv* e, jobject) {
-    // dbPassphrase = enc_key + salt (أول 64 حرف)
     std::string p = va() + vc();
     if (p.size() > 64) p = p.substr(0, 64);
     return e->NewStringUTF(p.c_str());
+}
+JNIEXPORT jstring JNICALL
+Java_com_apix_app_security_g4_h(JNIEnv* e, jobject) {
+    return e->NewStringUTF(vh().c_str());
 }
 
 } // extern "C"
