@@ -265,63 +265,146 @@ public class SplashActivity extends AppCompatActivity {
         });
     }
 
-    private void proceedToMain() {
+
+
+
+private void proceedToMain() {
         new Thread(() -> {
-            // Run extra guards (DNS / sniffers / signature) — show messages instead of killing
-            String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
-            if (guardMsg != null) {
-                runOnUiThread(() -> showGuardMessage(guardMsg));
+
+            String gm = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
+            if (gm != null) {
+                runOnUiThread(() -> showGuardMessage(gm));
                 return;
             }
 
-            // ── Server-authoritative anti-tamper / ban handshake ──
             try {
-                String supaUrl = BuildConfig.CLOUD_URL;
-                String anonKey = BuildConfig.CLOUD_ANON_KEY;
                 com.apix.app.security.HandshakeClient.Verdict v =
-                        com.apix.app.security.HandshakeClient.handshake(SplashActivity.this, supaUrl, anonKey,
-                                com.apix.app.BuildConfig.VERSION_NAME);
-                if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
+                    com.apix.app.security.HandshakeClient.handshake(
+                        SplashActivity.this,
+                        BuildConfig.CLOUD_URL,
+                        BuildConfig.CLOUD_ANON_KEY,
+                        BuildConfig.VERSION_NAME);
+                if (v.status != null
+                        && !"ACTIVE".equals(v.status)
+                        && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
                     runOnUiThread(() -> {
-                        KillScreenActivity.launch(SplashActivity.this, fv.status, fv.banUntil, fv.reason, fv.telegramUrl);
+                        KillScreenActivity.launch(
+                            SplashActivity.this,
+                            fv.status, fv.banUntil,
+                            fv.reason, fv.telegramUrl);
                         finish();
                     });
                     return;
                 }
             } catch (Throwable ignored) {}
 
-            boolean gateEnabled = false;
-            String currentCode = "";
-            try {
-                JSONObject gate = SupabaseDataManager.fetchGateConfig();
-                if (gate != null) {
-                    gateEnabled = gate.optBoolean("enabled", false);
-                    currentCode = gate.optString("bypassCode", "");
-                }
-            } catch (Exception ignored) {}
+            com.apix.app.data.p6 repo =
+                new com.apix.app.data.p6(SplashActivity.this);
 
-            // Mirror developer-allow-list (UUIDs) into local prefs so the
-            // emulator strict-ban gate works offline on next launch.
-            try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
+            if (repo.ok() && repo.fresh()) {
+                runOnUiThread(() -> statusText.setText("جاري الفتح..."));
+                new Thread(() -> {
+                    int sv = repo.remoteVer();
+                    int lv = repo.localVer();
+                    if (sv > 0 && sv != lv) {
+                        SupabaseDataManager.fetchRemote(
+                            SplashActivity.this,
+                            new SupabaseDataManager.DataCallback() {
+                                @Override
+                                public void onSuccess(
+                                        SupabaseDataManager.DataBundle d) {
+                                    repo.sync(d);
+                                    repo.saveVer(sv);
+                                }
+                                @Override
+                                public void onError(String e) {
+                                    Log.w(TAG, "bg sync: " + e);
+                                }
+                            });
+                    }
+                }).start();
+                launchMain();
+                return;
+            }
 
-            GateActivity.revalidateBypass(SplashActivity.this, currentCode);
-            boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
-
-            Class<?> target = (gateEnabled && !bypassed) ? GateActivity.class : ComposeActivity.class;
-            runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
-                Intent intent = new Intent(SplashActivity.this, target);
-                String actionJson = getIntent().getStringExtra("notification_action");
-                if (actionJson != null && !actionJson.isEmpty()) intent.putExtra("notification_action", actionJson);
-                startActivity(intent);
-                finish();
-                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-                if (!BuildConfig.DEBUG) {
-                    AppVerifier.getInstance(SplashActivity.this).startMonitor();
-                }
-            }));
+            runOnUiThread(() -> statusText.setText("جاري تحميل القنوات..."));
+            SupabaseDataManager.fetchRemote(
+                SplashActivity.this,
+                new SupabaseDataManager.DataCallback() {
+                    @Override
+                    public void onSuccess(SupabaseDataManager.DataBundle d) {
+                        repo.sync(d);
+                        int sv = repo.remoteVer();
+                        if (sv > 0) repo.saveVer(sv);
+                        launchMain();
+                    }
+                    @Override
+                    public void onError(String e) {
+                        if (repo.ok()) {
+                            launchMain();
+                        } else {
+                            runOnUiThread(() -> {
+                                progressBar.setVisibility(
+                                    android.view.View.GONE);
+                                errorText.setVisibility(
+                                    android.view.View.VISIBLE);
+                                errorText.setText(
+                                    "فشل الاتصال بالسيرفر");
+                            });
+                        }
+                    }
+                });
         }).start();
     }
+
+    private void launchMain() {
+        boolean ge = false;
+        String cc = "";
+        try {
+            JSONObject gate = SupabaseDataManager.fetchGateConfig();
+            if (gate != null) {
+                ge = gate.optBoolean("enabled", false);
+                cc = gate.optString("bypassCode", "");
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this);
+        } catch (Throwable ignored) {}
+
+        GateActivity.revalidateBypass(SplashActivity.this, cc);
+        boolean bp = GateActivity.isBypassed(SplashActivity.this);
+        Class<?> target = (ge && !bp)
+            ? GateActivity.class
+            : ComposeActivity.class;
+
+        runOnUiThread(() ->
+            AdManager.maybeRunAppOpenGate(
+                SplashActivity.this, () -> {
+                    Intent i = new Intent(SplashActivity.this, target);
+                    String aj = getIntent()
+                        .getStringExtra("notification_action");
+                    if (aj != null && !aj.isEmpty())
+                        i.putExtra("notification_action", aj);
+                    startActivity(i);
+                    finish();
+                    overridePendingTransition(
+                        android.R.anim.fade_in,
+                        android.R.anim.fade_out);
+                    if (!BuildConfig.DEBUG) {
+                        AppVerifier.getInstance(
+                            SplashActivity.this).startMonitor();
+                    }
+                }));
+    }
+
+
+
+
+
+
+
 
     private void showGuardMessage(String msg) {
         new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
