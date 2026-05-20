@@ -535,25 +535,34 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(config) {
-        if (config.dynamicApi?.enabled == true && !config.dynamicApi?.endpoint.isNullOrEmpty()) {
-            try {
-                val apiConfig = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    fetchDynamicStreamConfig(config)
-                }
-                if (apiConfig != null) {
-                    resolvedConfig = apiConfig
-                    currentServerUrl = apiConfig.url
-                    loadStream(apiConfig.url, apiConfig)
-                } else {
-                    loadStream(config.url, config)
-                }
-            } catch (e: Exception) {
-                loadStream(config.url, config)
+        try {
+            // 1. فك تشفير الرابط المموه في الخلفية (لمنع كراش الشبكة NetworkOnMainThread)
+            val apixResolved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                resolveApixIfNeeded(config)
             }
-        } else {
+
+            // 2. التحقق من وجود Dynamic API بعد فك التشفير
+            if (apixResolved.dynamicApi?.enabled == true && !apixResolved.dynamicApi?.endpoint.isNullOrEmpty()) {
+                val apiConfig = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    fetchDynamicStreamConfig(apixResolved)
+                }
+                val finalConfig = apiConfig ?: apixResolved
+                resolvedConfig = finalConfig
+                currentServerUrl = finalConfig.url
+                loadStream(finalConfig.url, finalConfig)
+            } else {
+                // 3. التشغيل المباشر إذا لم يكن هناك Dynamic API
+                resolvedConfig = apixResolved
+                currentServerUrl = apixResolved.url
+                loadStream(apixResolved.url, apixResolved)
+            }
+        } catch (e: Exception) {
+            Log.e("PlayerScreen", "Error resolving config", e)
+            // في حالة فشل أي شيء، نعود للتشغيل الأساسي
             loadStream(config.url, config)
         }
     }
+
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -1349,7 +1358,12 @@ private fun hexToBase64Url(hex: String): String {
 }
 
 // ===== Dynamic API Stream Config Fetcher =====
-
+// كشف وحل روابط apix.png المشفرة من CloudFlare
+private fun resolveApixIfNeeded(config: PlayerConfig): PlayerConfig {
+    val url = config.url ?: return config
+    if (!com.apix.app.data.ApixStreamResolver.isApixStream(url)) return config
+    return com.apix.app.data.ApixStreamResolver.resolve(url, config) ?: config
+}
 private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
     val api = config.dynamicApi ?: return null
     val endpoint = api.endpoint ?: return null
