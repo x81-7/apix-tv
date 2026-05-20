@@ -75,9 +75,9 @@ class p6(private val ctx: Context) {
                 p3(
                     a = c.id ?: "",
                     b = c.name ?: "",
-                    c = c.icon,
-                    d = c.sortOrder,
-                    e = c.isHidden
+                    c = c.icon ?: "",
+                    d = c.sortOrder ?: 0,
+                    e = c.isHidden ?: false
                 )
             }
             val chans = bundle.allChannels.map { c ->
@@ -85,10 +85,10 @@ class p6(private val ctx: Context) {
                     a = c.id ?: "",
                     b = c.name ?: "",
                     c = c.categoryId ?: "",
-                    d = c.logo,
+                    d = c.logo ?: "",
                     e = c.androidStreamJson ?: "{}",
-                    f = c.sortOrder,
-                    g = c.isHidden,
+                    f = c.sortOrder ?: 0,
+                    g = c.isHidden ?: false,
                     h = System.currentTimeMillis()
                 )
             }
