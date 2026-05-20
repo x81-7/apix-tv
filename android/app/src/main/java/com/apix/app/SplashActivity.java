@@ -210,9 +210,16 @@ public class SplashActivity extends AppCompatActivity {
                 // Skip showing the dialog when the device already runs the same/newer versionName.
                 boolean alreadyOnThisVersion = !versionName.isEmpty()
                         && compareVersionNames(currentVersionName, versionName) >= 0;
-                final boolean mustForce = forceUpdate || belowRequired;
+final boolean mustForce = forceUpdate || belowRequired;
 
-                if (isActive && !downloadUrl.isEmpty() && (!alreadyOnThisVersion || mustForce)) {
+                // إذا كان المستخدم على نفس الإصدار أو أحدث لا نزعجه أبداً
+                // حتى لو كان forceUpdate=true في Panel
+                if (alreadyOnThisVersion) {
+                    runOnUiThread(this::proceedToMain);
+                    return;
+                }
+
+                if (isActive && !downloadUrl.isEmpty()) {
                     runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
                     runOnUiThread(this::proceedToMain);
