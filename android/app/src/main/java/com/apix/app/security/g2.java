@@ -1,11 +1,11 @@
 package com.apix.app.security;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.os.Build;
+import android.util.Log;
 
 import com.apix.app.SupabaseDataManager;
 
@@ -13,37 +13,49 @@ import java.security.MessageDigest;
 import java.util.List;
 
 /**
- * Fingerprint guard. Validates the APK signing certificate against allowed
- * hashes from Supabase. Runs ONCE on first launch only — result is cached
- * locally and not re-verified to save backend calls.
+ * g2 — توقيع التطبيق
+ * يتحقق في كل مرة (لا كاش) ومقارنة مزدوجة:
+ * 1. مقارنة مع القائمة المسموحة من Supabase
+ * 2. مقارنة مع الهاش المضمّن في NDK (لا يمكن تعديله)
  */
 public final class g2 {
 
-    private static final String P = "g2_st";
-    private static final String K_OK = "ok";
-    private static final String K_HASH = "h";
+    private static final String T = "g2";
 
     public static String check(Context ctx) {
-        SharedPreferences sp = ctx.getSharedPreferences(P, Context.MODE_PRIVATE);
-        boolean ok = sp.getBoolean(K_OK, false);
-        if (ok) return null; // already validated, never check again
-
         String hash = computeHash(ctx);
         if (hash == null) {
             return "تعذر التحقق من توقيع التطبيق";
         }
 
+        // ── التحقق 1: الهاش المضمّن في NDK ──────────────────────────
+        // هذا لا يمكن تعديله حتى بعد فك وإعادة تجميع APK
+        try {
+            String ndkHash = g4.kh(); // هاش التوقيع من vault.cpp
+            if (ndkHash != null && !ndkHash.isEmpty()
+                    && !ndkHash.equals("__HASH__")) {
+                if (!hash.equalsIgnoreCase(ndkHash.trim())) {
+                    Log.w(T, "NDK hash mismatch");
+                    return "نسخة معدّلة — TAMPERED_MOD";
+                }
+                // NDK تحقق بنجاح — لا حاجة لطلب شبكة
+                return null;
+            }
+        } catch (Throwable ignored) {}
+
+        // ── التحقق 2: القائمة من Supabase (fallback) ─────────────────
         List<String> allowed = SupabaseDataManager.fetchSignatures(ctx);
         if (allowed == null || allowed.isEmpty()) {
-            // No allowed list configured — pass-through (don't block legitimate users)
-            return null;
+            return null; // لا قائمة = مرور آمن
         }
-
         if (allowed.contains(hash.toLowerCase())) {
-            sp.edit().putBoolean(K_OK, true).putString(K_HASH, hash).apply();
             return null;
         }
         return "نسختك ليست رسمية، يرجى تنزيل النسخة الأصلية من القناة الرسمية";
+    }
+
+    public static String currentHash(Context ctx) {
+        return computeHash(ctx);
     }
 
     @SuppressWarnings("deprecation")
@@ -53,15 +65,19 @@ public final class g2 {
             Signature sig = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 info = ctx.getPackageManager().getPackageInfo(
-                    ctx.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+                    ctx.getPackageName(),
+                    PackageManager.GET_SIGNING_CERTIFICATES);
                 if (info.signingInfo != null) {
                     Signature[] sigs = info.signingInfo.getApkContentsSigners();
                     if (sigs != null && sigs.length > 0) sig = sigs[0];
                 }
             } else {
                 info = ctx.getPackageManager().getPackageInfo(
-                    ctx.getPackageName(), PackageManager.GET_SIGNATURES);
-                if (info.signatures != null && info.signatures.length > 0) sig = info.signatures[0];
+                    ctx.getPackageName(),
+                    PackageManager.GET_SIGNATURES);
+                if (info.signatures != null
+                        && info.signatures.length > 0)
+                    sig = info.signatures[0];
             }
             if (sig == null) return null;
             MessageDigest md = MessageDigest.getInstance("SHA-256");
