@@ -118,10 +118,9 @@
             android:exported="false"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- x -->
+        <!-- Kill Screen -->
         <activity
             android:name=".KillScreenActivity"
-            android:process=":x"
             android:exported="false"
             android:excludeFromRecents="true"
             android:noHistory="true"
