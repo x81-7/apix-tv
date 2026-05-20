@@ -130,3 +130,13 @@
 # =====================================================================
 -adaptresourcefilenames
 -adaptresourcefilecontents
+# NDK JNI
+-keepclasseswithmembernames class * { native <methods>; }
+-keep class com.apix.app.security.g4 { *; }
+-keep class com.apix.app.security.g5 { *; }
+
+# Room + SQLCipher
+-keep class androidx.room.** { *; }
+-keep class net.sqlcipher.** { *; }
+-dontwarn net.sqlcipher.**
+-keep class com.apix.app.data.** { *; }
