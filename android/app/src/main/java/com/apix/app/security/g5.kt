@@ -12,7 +12,7 @@ import java.net.HttpURLConnection
 object g5 {
 
     // توليد التوقيع
-    fun s(body: String): String {
+    @JvmStatic fun s(body: String): String {
         val ts  = System.currentTimeMillis() / 1000
         val sec = g4.kb()
         val msg = "$ts.$body"
@@ -27,7 +27,7 @@ object g5 {
     }
 
     // إضافة الهيدر للاتصال
-    fun h(conn: HttpURLConnection, body: String) {
+    @JvmStatic fun h(conn: HttpURLConnection, body: String) {
         try {
             val ts = System.currentTimeMillis() / 1000
             conn.setRequestProperty("X-S", s(body))
