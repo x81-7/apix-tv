@@ -1,4 +1,4 @@
-Name: Build Android App
+name: Build Android App
 
 on:
   push:
@@ -42,21 +42,6 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/ci-release.keystore
-
-      # ==========================================
-      # الخطوة الجديدة: استخراج التوقيع الرقمي (SHA-256)
-      # ==========================================
-      - name: 🔍 Extract SHA-256 Signature Hash
-        if: env.KEYSTORE_BASE64 != ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        run: |
-          echo "========================================================="
-          echo "🔥 توقيع SHA-256 الخاص بتطبيقك سيظهر في السطر التالي 🔥"
-          keytool -list -v -keystore android/app/ci-release.keystore -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep SHA256
-          echo "========================================================="
 
       - name: Build Release APK (signed)
         if: env.KEYSTORE_BASE64 != ''
