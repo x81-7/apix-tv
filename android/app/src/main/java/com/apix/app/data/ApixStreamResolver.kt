@@ -68,18 +68,14 @@ object ApixStreamResolver {
                 config.backupUrl = it
             }
 
-            // User-Agent وReferer من headers
+            // الهيدرز بما فيها User-Agent و Referer
             obj.optJSONObject("headers")?.let { h ->
-                val ua = h.optString("userAgent", "")
-                if (ua.isNotEmpty()) config.userAgent = ua
-
-                // باقي الهيدرز
-                val headers = mutableMapOf<String, String>()
+                val headersMap = mutableMapOf<String, String>()
                 h.keys().forEach { k ->
-                    if (k != "userAgent") headers[k] = h.optString(k)
+                    headersMap[k] = h.optString(k)
                 }
-                if (headers.isNotEmpty()) {
-                    val merged = (config.customHeaders ?: emptyMap()) + headers
+                if (headersMap.isNotEmpty()) {
+                    val merged = (config.customHeaders ?: emptyMap()) + headersMap
                     config.customHeaders = merged
                 }
             }
