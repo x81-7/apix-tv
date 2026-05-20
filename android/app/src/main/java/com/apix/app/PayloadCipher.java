@@ -31,7 +31,7 @@ public final class PayloadCipher {
 
     private static byte[] keyBytes() {
         // المفتاح من NDK Vault — لا يظهر في BuildConfig أبداً
-        String raw = com.apix.app.security.g4.INSTANCE.ka();
+        String raw = com.apix.app.security.g4.ka();
         if (raw == null || raw.isEmpty()) {
             throw new IllegalStateException("key missing");
         }
