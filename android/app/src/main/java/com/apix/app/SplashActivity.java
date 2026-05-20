@@ -13,6 +13,7 @@ import android.widget.ProgressBar;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.provider.Settings;
+import android.content.Context; // تمت إضافة هذا الاستيراد لحل مشكلة الـ Context
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -49,9 +50,6 @@ public class SplashActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_SECURE);
 
         // === STRICT EMULATOR BAN (per project policy) ===
-        // Allowed only when this device's UUID is on the developer override list
-        // (system_settings.developer_uuids → mirrored into local prefs by
-        //  CloudDataManager / SupabaseDataManager on each successful sync).
         if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
             try {
                 android.widget.Toast.makeText(this,
@@ -174,7 +172,6 @@ public class SplashActivity extends AppCompatActivity {
                 .show();
     }
 
-    /** Compare semantic-ish version strings: returns >=0 when current is same/newer than panel. */
     private static int compareVersionNames(String a, String b) {
         try {
             String[] sa = a.replaceAll("[^0-9.]", "").split("\\.");
@@ -202,18 +199,15 @@ public class SplashActivity extends AppCompatActivity {
                 String installMode = update.optString("installMode", "internal");
                 boolean forceUpdate = update.optBoolean("forceUpdate", false);
 
-                // If a target versionCode is set in the panel and we're below it, also force.
                 int requiredVersionCode = update.optInt("requiredVersionCode", 0);
                 int currentVersionCode = BuildConfig.VERSION_CODE;
                 String currentVersionName = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
                 boolean belowRequired = requiredVersionCode > 0 && currentVersionCode < requiredVersionCode;
-                // Skip showing the dialog when the device already runs the same/newer versionName.
+                
                 boolean alreadyOnThisVersion = !versionName.isEmpty()
                         && compareVersionNames(currentVersionName, versionName) >= 0;
-final boolean mustForce = forceUpdate || belowRequired;
+                final boolean mustForce = forceUpdate || belowRequired;
 
-                // إذا كان المستخدم على نفس الإصدار أو أحدث لا نزعجه أبداً
-                // حتى لو كان forceUpdate=true في Panel
                 if (alreadyOnThisVersion) {
                     runOnUiThread(this::proceedToMain);
                     return;
@@ -272,10 +266,7 @@ final boolean mustForce = forceUpdate || belowRequired;
         });
     }
 
-
-
-
-private void proceedToMain() {
+    private void proceedToMain() {
         new Thread(() -> {
 
             String gm = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
@@ -291,19 +282,50 @@ private void proceedToMain() {
                         BuildConfig.CLOUD_URL,
                         BuildConfig.CLOUD_ANON_KEY,
                         BuildConfig.VERSION_NAME);
-                if (v.status != null
-                        && !"ACTIVE".equals(v.status)
-                        && !"ERROR".equals(v.status)) {
+
+                // --- إصلاح مشكلة الكاش هنا ---
+                // حفظ حالة الحظر محلياً (تم استبدال ctx بـ SplashActivity.this)
+                if (v.status != null && !"ERROR".equals(v.status)) {
+                    SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE)
+                       .edit()
+                       .putString("last_status", v.status)
+                       .putLong("last_check", System.currentTimeMillis())
+                       .apply();
+                }
+
+                // إذا كان الاتصال فاشلاً، تحقق من الكاش المحلي
+                String effectiveStatus = v.status;
+                if ("ERROR".equals(v.status)) {
+                    android.content.SharedPreferences bc =
+                        SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE);
+                    String cached = bc.getString("last_status", "ACTIVE");
+                    long lastCheck = bc.getLong("last_check", 0L);
+                    // إذا الكاش أقل من 24 ساعة واحتوى على حظر، طبّقه
+                    boolean fresh = System.currentTimeMillis() - lastCheck < 86400_000L;
+                    if (fresh && !"ACTIVE".equals(cached) && !"ERROR".equals(cached)) {
+                        effectiveStatus = cached;
+                    }
+                }
+
+                // فحص الحظر بناءً على الـ effectiveStatus لضمان تفعيل الكاش
+                if (effectiveStatus != null
+                        && !"ACTIVE".equals(effectiveStatus)
+                        && !"ERROR".equals(effectiveStatus)) {
+                    final String fStatus = effectiveStatus;
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
                     runOnUiThread(() -> {
                         KillScreenActivity.launch(
                             SplashActivity.this,
-                            fv.status, fv.banUntil,
-                            fv.reason, fv.telegramUrl);
+                            fStatus, // تمرير الحالة الصحيحة
+                            fv.banUntil,
+                            fv.reason != null ? fv.reason : "تم الحظر", // تفادي أي قيمة Null
+                            fv.telegramUrl);
                         finish();
                     });
                     return;
                 }
+                // --- نهاية الإصلاح ---
+
             } catch (Throwable ignored) {}
 
             com.apix.app.data.p6 repo =
@@ -405,13 +427,6 @@ private void proceedToMain() {
                     }
                 }));
     }
-
-
-
-
-
-
-
 
     private void showGuardMessage(String msg) {
         new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
