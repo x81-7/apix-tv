@@ -7,21 +7,22 @@ import com.apix.app.BuildConfig
 import com.apix.app.RemoteModels
 import com.apix.app.SupabaseDataManager
 import com.apix.app.security.g5
+import com.google.gson.Gson
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-// p6 = OfflineDataRepository
 class p6(private val ctx: Context) {
 
     private val db = p1.get(ctx)
     private val sp: SharedPreferences =
         ctx.getSharedPreferences("m", Context.MODE_PRIVATE)
+    private val gson = Gson()
 
     companion object {
-        private const val T  = "p6"
-        private const val KV = "v"
-        private const val KS = "s"
+        private const val T   = "p6"
+        private const val KV  = "v"
+        private const val KS  = "s"
         private const val D30 = 30L * 24 * 60 * 60 * 1000
     }
 
@@ -47,7 +48,8 @@ class p6(private val ctx: Context) {
             val url  = URL(BuildConfig.CLOUD_URL + "/functions/v1/data-version")
             val conn = url.openConnection() as HttpURLConnection
             conn.setRequestProperty("apikey", BuildConfig.CLOUD_ANON_KEY)
-            conn.setRequestProperty("Authorization", "Bearer ${BuildConfig.CLOUD_ANON_KEY}")
+            conn.setRequestProperty("Authorization",
+                "Bearer ${BuildConfig.CLOUD_ANON_KEY}")
             g5.h(conn, "{}")
             conn.connectTimeout = 5000
             conn.readTimeout    = 5000
@@ -61,31 +63,38 @@ class p6(private val ctx: Context) {
     }
 
     fun localVer(): Int = sp.getInt(KV, -1)
+
     fun saveVer(v: Int) = sp.edit().putInt(KV, v).apply()
 
     fun sync(bundle: SupabaseDataManager.DataBundle) {
         try {
+            // تحويل Category
             val cats = bundle.categories.map { c ->
                 p3(
-                    a = c.id ?: "",
+                    a = c.id   ?: "",
                     b = c.name ?: "",
-                    c = c.icon ?: "",
+                    c = null,               // Category ليس فيها icon
                     d = c.sortOrder,
-                    e = c.hidden // تم التعديل من isHidden إلى hidden لتطابق الجافا
+                    e = c.hidden            // hidden وليس isHidden
                 )
             }
+
+            // تحويل Channel
             val chans = bundle.allChannels.map { c ->
                 p2(
-                    a = c.id ?: "",
+                    a = c.id   ?: "",
                     b = c.name ?: "",
-                    c = c.categoryId ?: "",
-                    d = c.imageUrl ?: "", // تم التعديل من logo إلى imageUrl لتطابق الجافا
-                    e = c.androidStreamJson ?: "{}",
+                    c = "",                 // categoryId غير موجود مباشرة
+                    d = c.imageUrl,         // imageUrl وليس logo
+                    e = if (c.androidStream != null)
+                            gson.toJson(c.androidStream)
+                        else "{}",          // تحويل androidStream لـ JSON
                     f = c.sortOrder,
-                    g = c.hidden, // تم التعديل لتطابق الجافا
+                    g = c.hidden,           // hidden وليس isHidden
                     h = System.currentTimeMillis()
                 )
             }
+
             db.r2().d1(); db.r2().i1(cats)
             db.r1().d1(); db.r1().i1(chans)
             sp.edit().putLong(KS, System.currentTimeMillis()).apply()
@@ -104,20 +113,20 @@ class p6(private val ctx: Context) {
             RemoteModels.Category().also {
                 it.id        = e.a
                 it.name      = e.b
-                it.icon      = e.c
                 it.sortOrder = e.d
-                it.hidden    = e.e // مطابقة للجافا
+                it.hidden    = e.e
             }
         }
         b.allChannels = chans.map { e ->
             RemoteModels.Channel().also {
-                it.id               = e.a
-                it.name             = e.b
-                it.categoryId       = e.c
-                it.imageUrl         = e.d // مطابقة للجافا
-                it.androidStreamJson = e.e
-                it.sortOrder        = e.f
-                it.hidden           = e.g // مطابقة للجافا
+                it.id          = e.a
+                it.name        = e.b
+                it.imageUrl    = e.d
+                it.sortOrder   = e.f
+                it.hidden      = e.g
+                it.androidStream = try {
+                    gson.fromJson(e.e, RemoteModels.AndroidStreamConfig::class.java)
+                } catch (ex: Exception) { null }
             }
         }
         return b
