@@ -158,6 +158,7 @@ public class SupabaseDataManager {
             conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             conn.setRequestProperty("Accept", "application/json");
+            try { com.apix.app.security.g5.INSTANCE.h(conn, "{}"); } catch (Throwable ignored) {}
             if (prevEtag != null) conn.setRequestProperty("If-None-Match", prevEtag);
 
             int code = conn.getResponseCode();
