@@ -1,16 +1,18 @@
 # =====================================================================
-# APiX TV — Hardened R8 Rules (The Production Zenith)
+# APiX TV — Final Optimized Production Rules
 # =====================================================================
 
-# ===== CORE OPTIMIZATION & AGGRESSIVE OBFUSCATION =====
--optimizationpasses 5
+# ===== AGGRESSIVE OPTIMIZATION =====
+-optimizationpasses 7
 -allowaccessmodification
+-mergeinterfacesaggressively
 -repackageclasses 'a'
 -dontusemixedcaseclassnames
 -overloadaggressively
 -useuniqueclassmembernames
+-optimizations !code/simplification/arithmetic,!code/allocation/variable
 
-# ===== REMOVE LOGS =====
+# ===== LOG REMOVAL =====
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
@@ -19,28 +21,19 @@
     public static int e(...);
 }
 
-# ===== ATTRIBUTES (SAFE MINIMUM) =====
-# [CRITICAL FIX]: *Annotation* restored to prevent Retrofit/Gson/DI crashes!
+# ===== CORE ATTRIBUTES =====
 -renamesourcefileattribute ""
--keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 
-# =====================================================================
-# 1) Google Ads (STRICT KEEP)
-# =====================================================================
+# ===== 1-7 (Libraries: Ads, Media3, Gson, Retrofit, Compose) =====
 -keep class com.google.android.gms.ads.** { *; }
 -keep interface com.google.android.gms.ads.** { *; }
 -dontwarn com.google.android.gms.**
 
-# =====================================================================
-# 2) Media3 / ExoPlayer (STRICT KEEP)
-# =====================================================================
 -keep class androidx.media3.** { *; }
 -keep interface androidx.media3.** { *; }
 -dontwarn androidx.media3.**
 
-# =====================================================================
-# 3) Android Components (NAMES & CONSTRUCTORS ONLY)
-# =====================================================================
 -keepnames class * extends android.app.Activity
 -keepnames class * extends androidx.appcompat.app.AppCompatActivity
 -keepnames class * extends androidx.fragment.app.Fragment
@@ -48,94 +41,34 @@
 -keepnames class * extends android.content.BroadcastReceiver
 -keepnames class * extends android.app.Application
 
--keepclassmembers class * extends android.app.Activity { public <init>(); }
--keepclassmembers class * extends androidx.appcompat.app.AppCompatActivity { public <init>(); }
--keepclassmembers class * extends androidx.fragment.app.Fragment { public <init>(); }
--keepclassmembers class * extends android.app.Service { public <init>(); }
--keepclassmembers class * extends android.content.BroadcastReceiver { public <init>(); }
--keepclassmembers class * extends android.app.Application { public <init>(); }
+-keepclassmembers class * extends androidx.lifecycle.ViewModel { <init>(...); }
 
-# =====================================================================
-# 4) ViewModels
-# =====================================================================
--keepclassmembers class * extends androidx.lifecycle.ViewModel {
-    <init>(...);
-}
-
-# =====================================================================
-# 5) Gson & Generics (BALANCED SECURITY & STABILITY)
-# =====================================================================
-# [STABILITY FIX]: Keep names so nested models and reflection don't crash
 -keepnames class com.apix.app.data.**
--keepclassmembers class com.apix.app.data.** {
-    <fields>;
-}
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keep class * implements com.google.gson.TypeAdapterFactory
--keep class * implements com.google.gson.JsonSerializer
--keep class * implements com.google.gson.JsonDeserializer
-
+-keepclassmembers class com.apix.app.data.** { <fields>; }
+-keepclassmembers class * { @com.google.gson.annotations.SerializedName <fields>; }
 -keep class com.google.gson.reflect.TypeToken { *; }
--keep class * extends com.google.gson.reflect.TypeToken
 
-# =====================================================================
-# 6) Retrofit & OkHttp
-# =====================================================================
--keepclassmembers class * {
-    @retrofit2.http.* <methods>;
-}
--dontwarn retrofit2.**
--dontwarn okhttp3.**
--dontwarn okio.**
+-keepclassmembers class * { @retrofit2.http.* <methods>; }
+-dontwarn retrofit2.**,okhttp3.**,okio.**
 
-# =====================================================================
-# 7) Compose & Coroutines
-# =====================================================================
-# [STABILITY FIX]: Prevent silent white screens in some Compose versions
 -keep class androidx.compose.runtime.Composer { *; }
+-dontwarn kotlinx.coroutines.**,androidx.compose.**
 
--dontwarn kotlinx.coroutines.**
--dontwarn androidx.compose.**
+# ===== 8-10 (SECURITY LAYER - DO NOT TOUCH) =====
+-keepclassmembers class com.apix.app.security.GuardRunner { public static java.lang.String runAll(android.content.Context); }
+-keepclassmembers class com.apix.app.security.HandshakeClient { public static com.apix.app.security.HandshakeClient$Verdict handshake(...); }
+-keepclassmembers class com.apix.app.security.DeviceIntegrity { public static boolean runCheck(...); }
+-keepclassmembers class com.apix.app.util.StringObfuscator { public static java.lang.String d(java.lang.String); public static java.lang.String encode(java.lang.String); }
 
--keepnames class kotlinx.coroutines.internal.MainDispatcherFactory
--keepnames class kotlinx.coroutines.CoroutineExceptionHandler
-
-# =====================================================================
-# 8) Security Layer (MILITARY GRADE)
-# =====================================================================
--keepclassmembers class com.apix.app.security.GuardRunner {
-    public static java.lang.String runAll(android.content.Context);
-}
--keepclassmembers class com.apix.app.security.HandshakeClient {
-    public static com.apix.app.security.HandshakeClient$Verdict handshake(...);
-}
--keepclassmembers class com.apix.app.security.DeviceIntegrity {
-    public static boolean runCheck(...); 
-}
--keepclassmembers class com.apix.app.util.StringObfuscator {
-    public static java.lang.String d(java.lang.String);
-    public static java.lang.String encode(java.lang.String);
-}
-
-# =====================================================================
-# 9) Android Security
-# =====================================================================
 -keep class androidx.security.crypto.EncryptedSharedPreferences { *; }
 -keep class androidx.security.crypto.MasterKey { *; }
 
-# =====================================================================
-# 10) Anti Reverse Engineering
-# =====================================================================
 -adaptresourcefilenames
 -adaptresourcefilecontents
-# NDK JNI
 -keepclasseswithmembernames class * { native <methods>; }
 -keep class com.apix.app.security.g4 { *; }
 -keep class com.apix.app.security.g5 { *; }
 
-# Room + SQLCipher
 -keep class androidx.room.** { *; }
 -keep class net.sqlcipher.** { *; }
 -dontwarn net.sqlcipher.**
