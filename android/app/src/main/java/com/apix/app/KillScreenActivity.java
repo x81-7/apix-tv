@@ -171,7 +171,37 @@ public class KillScreenActivity extends AppCompatActivity {
         }
     }
 
-    @Override public void onBackPressed() { /* swallow */ }
+    @Override public void onBackPressed() { /* مستحيل الخروج */ }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (!isFinishing()) {
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (!isFinishing()) {
+                    try {
+                        android.app.ActivityManager am =
+                            (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+                        if (am != null) am.moveTaskToFront(getTaskId(), 0);
+                    } catch (Throwable ignored) {}
+                }
+            }, 300);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (!isFinishing()) {
+            Intent self = new Intent(this, KillScreenActivity.class);
+            self.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            self.putExtra(EX_STATUS,    getIntent().getStringExtra(EX_STATUS));
+            self.putExtra(EX_BAN_UNTIL, getIntent().getStringExtra(EX_BAN_UNTIL));
+            self.putExtra(EX_REASON,    getIntent().getStringExtra(EX_REASON));
+            self.putExtra(EX_TELEGRAM,  getIntent().getStringExtra(EX_TELEGRAM));
+            try { startActivity(self); } catch (Throwable ignored) {}
+        }
+    }
 
     @Override protected void onDestroy() {
         super.onDestroy();
