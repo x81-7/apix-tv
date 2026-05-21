@@ -6,6 +6,8 @@ import android.content.ClipData;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.CountDownTimer;
+import android.os.Handler;    // تم إضافة هذا
+import android.os.Looper;     // تم إضافة هذا
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
