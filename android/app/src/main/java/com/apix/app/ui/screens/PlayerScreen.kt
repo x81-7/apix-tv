@@ -88,7 +88,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 
-
 // ===== Custom Helper =====
 
 @Composable
@@ -309,17 +308,13 @@ private val CellTowerOutlineIcon: ImageVector by lazy {
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
         ) {
-            // Signal arcs left
             moveTo(7.05f, 16.95f); arcTo(7f, 7f, 0f, false, true, 7.05f, 7.05f)
             moveTo(4.22f, 19.78f); arcTo(11f, 11f, 0f, false, true, 4.22f, 4.22f)
-            // Signal arcs right
             moveTo(16.95f, 7.05f); arcTo(7f, 7f, 0f, false, true, 16.95f, 16.95f)
             moveTo(19.78f, 4.22f); arcTo(11f, 11f, 0f, false, true, 19.78f, 19.78f)
-            // Tower body
             moveTo(10.5f, 11f); lineTo(8f, 22f)
             moveTo(13.5f, 11f); lineTo(16f, 22f)
             moveTo(9f, 18f); lineTo(15f, 18f)
-            // Center dot
             moveTo(12f, 10f); arcTo(2f, 2f, 0f, true, true, 12.01f, 10f); close()
         }
     }.build()
@@ -358,23 +353,21 @@ fun PlayerScreen(
 
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
-    var currentPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var duration by remember { mutableStateOf(0L) }
     var showControls by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var currentResizeMode by remember { mutableIntStateOf(0) }
+    var currentResizeMode by remember { mutableStateOf(0) }
     var showTrackDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
     var currentServerUrl by remember { mutableStateOf(config.url) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
     var showFallbackServerDialog by remember { mutableStateOf(false) }
     var latestPlaybackError by remember { mutableStateOf<String?>(null) }
-    // Tracks how far we've walked through fallbackServers list. -1 = primary.
-    var currentFallbackIndex by remember { mutableIntStateOf(-1) }
-    // Retry the SAME server once before walking to the next fallback.
-    var retryCountSameServer by remember { mutableIntStateOf(0) }
-    // Visibility of the new "tower" servers picker icon (admin toggle).
+    var currentFallbackIndex by remember { mutableStateOf(-1) }
+    var retryCountSameServer by remember { mutableStateOf(0) }
     var showServersButtonEnabled by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -403,7 +396,7 @@ fun PlayerScreen(
         } catch (_: Throwable) {}
     }
 
-    var controlsResetKey by remember { mutableLongStateOf(0L) }
+    var controlsResetKey by remember { mutableStateOf(0L) }
     val pipFocusRequester = remember { FocusRequester() }
 
     val initialResizeMode = remember {
@@ -427,7 +420,7 @@ fun PlayerScreen(
         )
     }
 
-    val trackSelector = remember { DefaultTrackSelector(context) }
+    val trackSelector = remember { buildOptimalTrackSelector(context) }
 
     val player = remember {
         val renderersFactory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
@@ -504,7 +497,6 @@ fun PlayerScreen(
                             val updatedHeaders = (cfg.customHeaders ?: emptyMap()).toMutableMap()
                             updatedHeaders.putAll(dynamicHeaders)
                             val newCfg = cfg.copy(url = realUrl, customHeaders = updatedHeaders)
-                            
                             loadStream(realUrl, newCfg)
                         } else {
                             val backup = cfg.backupUrl
@@ -522,7 +514,6 @@ fun PlayerScreen(
             player.stop()
             player.clearMediaItems()
             val effectiveConfig = cfg.copy(url = streamUrl)
-            
             val mediaSource = buildMediaSourceWithDrm(context, effectiveConfig, streamUrl)
 
             player.setMediaSource(mediaSource)
@@ -536,12 +527,10 @@ fun PlayerScreen(
 
     LaunchedEffect(config) {
         try {
-            // 1. فك تشفير الرابط المموه في الخلفية (لمنع كراش الشبكة NetworkOnMainThread)
             val apixResolved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 resolveApixIfNeeded(config)
             }
 
-            // 2. التحقق من وجود Dynamic API بعد فك التشفير
             if (apixResolved.dynamicApi?.enabled == true && !apixResolved.dynamicApi?.endpoint.isNullOrEmpty()) {
                 val apiConfig = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     fetchDynamicStreamConfig(apixResolved)
@@ -551,28 +540,20 @@ fun PlayerScreen(
                 currentServerUrl = finalConfig.url
                 loadStream(finalConfig.url, finalConfig)
             } else {
-                // 3. التشغيل المباشر إذا لم يكن هناك Dynamic API
                 resolvedConfig = apixResolved
                 currentServerUrl = apixResolved.url
                 loadStream(apixResolved.url, apixResolved)
             }
         } catch (e: Exception) {
             Log.e("PlayerScreen", "Error resolving config", e)
-            // في حالة فشل أي شيء، نعود للتشغيل الأساسي
             loadStream(config.url, config)
         }
     }
-
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_READY) {
-                    trackSelector.setParameters(
-                        trackSelector.buildUponParameters().clearVideoSizeConstraints().build()
-                    )
-                }
             }
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -580,7 +561,6 @@ fun PlayerScreen(
             }
             override fun onPlayerError(error: PlaybackException) {
                 Log.w("PlayerScreen", "onPlayerError code=${error.errorCodeName} idx=$currentFallbackIndex retry=$retryCountSameServer msg=${error.message}")
-                // Retry SAME server once before switching to next fallback.
                 if (retryCountSameServer < 1) {
                     retryCountSameServer += 1
                     Log.d("PlayerScreen", "→ retrying same server (attempt #${retryCountSameServer + 1})")
@@ -591,7 +571,6 @@ fun PlayerScreen(
                     return
                 }
                 retryCountSameServer = 0
-                // Walk through fallbackServers sequentially using an explicit index.
                 val fbList = resolvedConfig.fallbackServers ?: emptyList()
                 val nextIdx = currentFallbackIndex + 1
                 val nextFb = fbList.getOrNull(nextIdx)
@@ -633,7 +612,6 @@ fun PlayerScreen(
                     kotlinx.coroutines.MainScope().launch { loadStream(nextFb.url!!, merged) }
                     return
                 }
-                // 2) Legacy single backup URL.
                 val backup = resolvedConfig.backupUrl
                 if (!backup.isNullOrEmpty() && currentServerUrl != backup) {
                     currentServerUrl = backup
@@ -731,7 +709,9 @@ fun PlayerScreen(
                         else -> Alignment.TopEnd
                     }
                     Box(
-                        modifier = Modifier.align(alignment).padding(
+                        modifier = Modifier
+                            .align(alignment)
+                            .padding(
                                 start = (logo.offsetX).dp, top = (logo.offsetY).dp,
                                 end = (logo.offsetX).dp, bottom = (logo.offsetY).dp
                             )
@@ -749,13 +729,17 @@ fun PlayerScreen(
             if (isBuffering) {
                 CircularProgressIndicator(
                     color = MediumRed, strokeWidth = 3.dp,
-                    modifier = Modifier.size(44.dp).align(Alignment.Center)
+                    modifier = Modifier
+                        .size(44.dp)
+                        .align(Alignment.Center)
                 )
             }
 
             errorMessage?.let { err ->
                 Box(
-                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.9f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -771,8 +755,17 @@ fun PlayerScreen(
             AnimatedVisibility(visible = showControls && errorMessage == null, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(0.7f), Color.Transparent)))
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(
+                                        Color.Black.copy(0.7f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -781,17 +774,30 @@ fun PlayerScreen(
                     }
 
                     Column(
-                        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.8f))))
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(0.8f)
+                                    )
+                                )
+                            )
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(formatTime(currentPosition), color = Color.White, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
+                            @OptIn(UnstableApi::class)
                             Slider(
                                 value = if (duration > 0) currentPosition.toFloat() / duration else 0f,
                                 onValueChange = { player.seekTo((it * duration).toLong()) },
                                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFE50914), inactiveTrackColor = Color(0x44FFFFFF)),
-                                modifier = Modifier.weight(1f).height(16.dp).focusable()
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(16.dp)
+                                    .focusable()
                             )
                             Text(formatTime(duration), color = Color.White, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
                         }
@@ -835,7 +841,7 @@ fun PlayerScreen(
                 }
             }
 
-            if (showTrackDialog) TrackSelectionDialog(player = player, trackSelector = trackSelector, onDismiss = { showTrackDialog = false })
+            if (showTrackDialog) TrackSelectionDialog(player = player, onDismiss = { showTrackDialog = false })
             if (showServerDialog && !resolvedConfig.servers.isNullOrEmpty()) {
                 ServerSelectionDialog(
                     servers = resolvedConfig.servers!!,
@@ -843,7 +849,7 @@ fun PlayerScreen(
                     onSelect = { server ->
                         showServerDialog = false
                         currentServerUrl = server.url ?: return@ServerSelectionDialog
-                        currentFallbackIndex = -1 // user pick resets fallback chain
+                        currentFallbackIndex = -1 
                         kotlinx.coroutines.MainScope().launch { loadStream(server.url!!, resolvedConfig) }
                     },
                     onDismiss = { showServerDialog = false }
@@ -880,7 +886,6 @@ fun PlayerScreen(
                         currentFallbackIndex = -1
                         retryCountSameServer = 0
                         currentServerUrl = config.url
-                        // Reset to original config
                         resolvedConfig = config
                         kotlinx.coroutines.MainScope().launch { loadStream(config.url, config) }
                     },
@@ -926,12 +931,11 @@ fun PlayerScreen(
                     onDismiss = { showFallbackServerDialog = false }
                 )
             }
-
         }
     }
 }
 
-// ===== Fallback Server Selection Dialog (network-tower icon) =====
+// ===== Fallback Server Selection Dialog =====
 @Composable
 fun FallbackServerSelectionDialog(
     servers: List<com.apix.app.data.FallbackServer>,
@@ -943,21 +947,33 @@ fun FallbackServerSelectionDialog(
 ) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(if (isTv) 0.6f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.5f)
+            .fillMaxHeight(if (isTv) 0.6f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     item {
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = currentUrl == primaryUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
                                 .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
                                 .clickable(interactionSource = interactionSource, indication = null) { onSelectPrimary() }
-                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("السيرفر الأساسي", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -969,11 +985,15 @@ fun FallbackServerSelectionDialog(
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = server.url == currentUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
                                 .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
                                 .clickable(interactionSource = interactionSource, indication = null) { onSelect(idx, server) }
-                                .focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(server.name ?: "سيرفر بديل ${idx + 1}", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
@@ -982,7 +1002,10 @@ fun FallbackServerSelectionDialog(
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) {
                     Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -995,17 +1018,33 @@ fun FallbackServerSelectionDialog(
 fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: String, onSelect: (com.apix.app.data.Server) -> Unit, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.5f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.5f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     itemsIndexed(servers) { _, server ->
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = server.url == currentUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelect(server) }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(server) }
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(server.name ?: "Server", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
@@ -1014,7 +1053,10 @@ fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: S
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1025,15 +1067,31 @@ fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: S
 fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (com.apix.app.data.AudioSource) -> Unit, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.5f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.5f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("مصادر الصوت", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     itemsIndexed(sources) { _, source ->
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelect(source) }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Row(modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isTv && isFocused) Color.White.copy(0.1f) else Color.Transparent)
+                            .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable(interactionSource = interactionSource, indication = null) { onSelect(source) }
+                            .focusable(interactionSource = interactionSource)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Icon(Icons.Default.Audiotrack, null, tint = Gold, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(12.dp))
                             Text(source.name ?: "Audio", color = Color.White, fontSize = 14.sp)
@@ -1041,7 +1099,10 @@ fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (c
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1050,9 +1111,9 @@ fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (c
 // ===== Track Selection Dialog =====
 @OptIn(UnstableApi::class)
 @Composable
-fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector, onDismiss: () -> Unit) {
+fun TrackSelectionDialog(player: ExoPlayer, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("الجودة", "الصوت")
 
     val videoTracks = remember(player.currentTracks) {
@@ -1063,12 +1124,7 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
                 if (group.type == C.TRACK_TYPE_VIDEO) {
                     for (i in 0 until group.length) {
                         val format = group.getTrackFormat(i)
-                        val height = format.height
-                        val bitrate = format.bitrate
-                        val label = buildString {
-                            if (height > 0) { append("${height}p"); if (height >= 2160) append(" (4K)") else if (height >= 1440) append(" (2K)") else if (height >= 1080) append(" (FHD)") else if (height >= 720) append(" (HD)") } else append("Track ${i + 1}")
-                            if (bitrate > 0) append(" · ${bitrate / 1000}kbps")
-                        }
+                        val label = getTrackLabel(format)
                         tracks.add(TrackInfo(label, groupIndex, i, group.isTrackSelected(i)))
                     }
                 }
@@ -1097,41 +1153,90 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
         tracks
     }
 
-    var selectedVideoIndex by remember { mutableIntStateOf(videoTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
-    var selectedAudioIndex by remember { mutableIntStateOf(audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
+    var selectedVideoIndex by remember { mutableStateOf(videoTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
+    var selectedAudioIndex by remember { mutableStateOf(audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.65f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.65f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
-                Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(top = 8.dp)) {
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0A0A0A))
+                    .padding(top = 8.dp)) {
                     tabs.forEachIndexed { index, title ->
                         val isActive = selectedTab == index
                         val tabInteraction = remember { MutableInteractionSource() }
                         val tabFocused by tabInteraction.collectIsFocusedAsState()
-                        Column(modifier = Modifier.weight(1f).clickable(interactionSource = tabInteraction, indication = null) { selectedTab = index }.focusable(interactionSource = tabInteraction).then(if (tabFocused) Modifier.border(2.dp, Gold, RoundedCornerShape(4.dp)) else Modifier).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(modifier = Modifier
+                            .weight(1f)
+                            .clickable(interactionSource = tabInteraction, indication = null) { selectedTab = index }
+                            .focusable(interactionSource = tabInteraction)
+                            .then(if (tabFocused) Modifier.border(2.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                            .padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = title, color = if (isActive) Gold else Color(0xFF888888), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             if (isActive) { Spacer(Modifier.height(6.dp)); Box(Modifier.width(32.dp).height(2.dp).background(Gold, RoundedCornerShape(1.dp))) }
                         }
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
+                
                 val currentTracks = if (selectedTab == 0) videoTracks else audioTracks
                 val currentSelected = if (selectedTab == 0) selectedVideoIndex else selectedAudioIndex
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                
+                LazyColumn(modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)) {
                     itemsIndexed(currentTracks) { index, track ->
                         val itemInteraction = remember { MutableInteractionSource() }
                         val itemFocused by itemInteraction.collectIsFocusedAsState()
                         val isItemSelected = index == currentSelected
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(when { isTv && itemFocused -> Color.White.copy(0.1f); isItemSelected -> Color(0xFF2A2A2A); itemFocused -> Color(0xFF1E1E1E); else -> Color.Transparent }).then(if (isTv && itemFocused) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = itemInteraction, indication = null) { try { if (selectedTab == 0) { selectedVideoIndex = index; applyVideoTrackSafe(trackSelector, track, player) } else { selectedAudioIndex = index; applyAudioTrackSafe(trackSelector, track, player) } } catch (_: Exception) {} }.focusable(interactionSource = itemInteraction).padding(horizontal = 14.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                when {
+                                    isTv && itemFocused -> Color.White.copy(0.1f)
+                                    isItemSelected -> Color(0xFF2A2A2A)
+                                    itemFocused -> Color(0xFF1E1E1E)
+                                    else -> Color.Transparent
+                                }
+                            )
+                            .then(if (isTv && itemFocused) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable(interactionSource = itemInteraction, indication = null) {
+                                try {
+                                    if (selectedTab == 0) {
+                                        selectedVideoIndex = index
+                                        applyVideoTrackSafe(trackSelector, track, player)
+                                    } else {
+                                        selectedAudioIndex = index
+                                        applyAudioTrackSafe(trackSelector, track, player)
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                            .focusable(interactionSource = itemInteraction)
+                            .padding(horizontal = 14.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = track.label, color = if (isItemSelected || (isTv && itemFocused)) Gold else Color.White, fontSize = 13.sp, fontWeight = if (isItemSelected) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             if (isItemSelected) { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
+
                 HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
                 val closeInteraction = remember { MutableInteractionSource() }
                 val closeFocused by closeInteraction.collectIsFocusedAsState()
-                Box(modifier = Modifier.fillMaxWidth().then(if (closeFocused) Modifier.border(1.5.dp, Gold, RoundedCornerShape(4.dp)) else Modifier).clickable(interactionSource = closeInteraction, indication = null) { onDismiss() }.focusable(interactionSource = closeInteraction).padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (closeFocused) Modifier.border(1.5.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                    .clickable(interactionSource = closeInteraction, indication = null) { onDismiss() }
+                    .focusable(interactionSource = closeInteraction)
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1151,15 +1256,14 @@ private fun applyVideoTrackSafe(trackSelector: DefaultTrackSelector, track: Trac
             )
             return 
         }
-        // جلب المجموعة الصحيحة مباشرة بناءً على رقمها الأصلي
         val trackGroup = player.currentTracks.groups[track.groupIndex].mediaTrackGroup
         val override = TrackSelectionOverride(trackGroup, listOf(track.trackIndex))
         
         trackSelector.setParameters(
             trackSelector.buildUponParameters()
                 .clearVideoSizeConstraints()
-                .clearOverridesOfType(C.TRACK_TYPE_VIDEO) // مسح التحديد السابق
-                .addOverride(override) // تطبيق الجودة الجديدة
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .addOverride(override)
                 .build()
         )
     } catch (e: Exception) { Log.e("PlayerScreen", "Error applying video track", e) }
@@ -1176,18 +1280,18 @@ private fun applyAudioTrackSafe(trackSelector: DefaultTrackSelector, track: Trac
             )
             return
         }
-        // جلب المجموعة الصحيحة مباشرة بناءً على رقمها الأصلي
         val trackGroup = player.currentTracks.groups[track.groupIndex].mediaTrackGroup
         val override = TrackSelectionOverride(trackGroup, listOf(track.trackIndex))
         
         trackSelector.setParameters(
             trackSelector.buildUponParameters()
-                .clearOverridesOfType(C.TRACK_TYPE_AUDIO) // مسح الصوت السابق
-                .addOverride(override) // تطبيق الصوت الجديد
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .addOverride(override)
                 .build()
         )
     } catch (e: Exception) { Log.e("PlayerScreen", "Error applying audio track", e) }
 }
+
 @Composable
 fun PlayerControlButton(icon: ImageVector, contentDescription: String, size: Int = 44, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -1196,7 +1300,13 @@ fun PlayerControlButton(icon: ImageVector, contentDescription: String, size: Int
     val isTv = isSystemInTvMode()
     val isHighlighted = isFocused || isPressed
     val scale by animateFloatAsState(if (isHighlighted) 1.2f else 1f, label = "playerBtnScale")
-    Box(modifier = Modifier.size(size.dp).scale(scale).then(if (isTv && isFocused) Modifier.border(3.dp, Color.White, CircleShape) else if (isFocused) Modifier.border(2.dp, Gold, CircleShape) else Modifier).clip(CircleShape).clickable(interactionSource = interactionSource, indication = null, onClick = onClick).then(if (focusRequester != null) Modifier.focusRequester(focusRequester).focusable(interactionSource = interactionSource) else Modifier.focusable(interactionSource = interactionSource)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier
+        .size(size.dp)
+        .scale(scale)
+        .then(if (isTv && isFocused) Modifier.border(3.dp, Color.White, CircleShape) else if (isFocused) Modifier.border(2.dp, Gold, CircleShape) else Modifier)
+        .clip(CircleShape)
+        .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester).focusable(interactionSource = interactionSource) else Modifier.focusable(interactionSource = interactionSource)), contentAlignment = Alignment.Center) {
         Icon(imageVector = icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size((size * 0.65f).dp))
     }
 }
@@ -1241,13 +1351,46 @@ private fun buildDataSourceFactory(config: PlayerConfig): DefaultHttpDataSource.
     return factory
 }
 
-// 🔥 الهيكلة السحرية الجديدة لبناء وتشغيل الفيديو مع التشفير
+// بناء وإعداد الـ TrackSelector لدعم الـ 4K والـ 120fps على نطاق محرك الميديا بالكامل تلقائياً
+@OptIn(UnstableApi::class)
+private fun buildOptimalTrackSelector(context: Context): DefaultTrackSelector {
+    val params = DefaultTrackSelector.Parameters.Builder(context)
+        .setMaxVideoSize(3840, 2160) // فك قفل دقة 4K
+        .setMaxVideoFrameRate(120)  // دعم 120 إطار في الثانية
+        .setMaxVideoBitrate(Int.MAX_VALUE)
+        .setForceHighestSupportedBitrate(false)
+        .setAllowVideoMixedMimeTypeAdaptiveness(true)
+        .setAllowVideoNonSeamlessAdaptiveness(true)
+        .build()
+    return DefaultTrackSelector(context, params)
+}
+
+// استخراج FPS وعرض اسم الدقة بدقة عالية داخل حوار الجودات
+@OptIn(UnstableApi::class)
+private fun getTrackLabel(format: Format): String {
+    val height = format.height
+    val fps = if (format.frameRate > 0) format.frameRate.toInt() else 0
+    val bitrate = if (format.bitrate > 0) " (${format.bitrate / 1000}k)" else ""
+
+    val quality = when {
+        height >= 2160 -> "4K"
+        height >= 1440 -> "2K (1440p)"
+        height >= 1080 -> "FHD (1080p)"
+        height >= 720  -> "HD (720p)"
+        height >= 480  -> "SD (480p)"
+        height >= 360  -> "360p"
+        height > 0     -> "${height}p"
+        else           -> "تلقائي"
+    }
+
+    return if (fps > 0) "$quality · ${fps}fps$bitrate" else "$quality$bitrate"
+}
+
 @OptIn(UnstableApi::class)
 private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, streamUrl: String): MediaSource {
     val dataSourceFactory = buildDataSourceFactory(config)
     val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-
-    // تطبيق مفاتيح التشفير بشكل مباشر وصحيح
+    
     val jsonKeys = resolveClearKeySync(config)
     if (jsonKeys != null) {
         val callback = LocalMediaDrmCallback(jsonKeys.toByteArray(StandardCharsets.UTF_8))
@@ -1266,7 +1409,6 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
         "hls" -> mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
     }
 
-    // لتشفير Widevine إن وجد
     val drm = config.drm
     if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
         val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
@@ -1277,7 +1419,6 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
         mediaItemBuilder.setDrmConfiguration(drmBuilder.build())
     }
 
-    // إضافة الترجمة إن وجدت
     if (!config.subtitleUrl.isNullOrEmpty()) {
         val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(Uri.parse(config.subtitleUrl!!))
             .setMimeType(if (config.subtitleUrl!!.contains(".srt")) MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
@@ -1302,9 +1443,6 @@ private fun detectStreamFormat(url: String): String {
     }
 }
 
-// ==========================================
-// تجهيز المفاتيح للـ ClearKey بدقة
-// ==========================================
 private fun resolveClearKeySync(config: PlayerConfig): String? {
     val drm = config.drm ?: return null
     val keyId = drm.keyId
@@ -1338,7 +1476,6 @@ private fun buildClearKeyJson(keyId: String, key: String): String {
     val keyIdB64 = hexToBase64Url(cleanKid)
     val keyB64 = hexToBase64Url(cleanKey)
 
-    // المفتاح المعكوس لحل مشكلة قنوات Intigral (MBC)
     val reversedKid = cleanKid.substring(6, 8) + cleanKid.substring(4, 6) +
             cleanKid.substring(2, 4) + cleanKid.substring(0, 2) +
             cleanKid.substring(10, 12) + cleanKid.substring(8, 10) +
@@ -1357,13 +1494,12 @@ private fun hexToBase64Url(hex: String): String {
     return Base64.encodeToString(data, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
 }
 
-// ===== Dynamic API Stream Config Fetcher =====
-// كشف وحل روابط apix.png المشفرة من CloudFlare
 private fun resolveApixIfNeeded(config: PlayerConfig): PlayerConfig {
     val url = config.url ?: return config
     if (!com.apix.app.data.ApixStreamResolver.isApixStream(url)) return config
     return com.apix.app.data.ApixStreamResolver.resolve(url, config) ?: config
 }
+
 private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
     val api = config.dynamicApi ?: return null
     val endpoint = api.endpoint ?: return null
@@ -1387,7 +1523,6 @@ private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
             val json = com.google.gson.JsonParser.parseString(body).asJsonObject
             val newConfig = config.copy()
 
-            // === Token mode: keep original URL, only append token ===
             if (!api.tokenParam.isNullOrEmpty()) {
                 val field = api.tokenJsonField?.takeIf { it.isNotEmpty() } ?: "token"
                 val token = when {
