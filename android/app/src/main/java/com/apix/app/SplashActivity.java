@@ -13,7 +13,7 @@ import android.widget.ProgressBar;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.provider.Settings;
-import android.content.Context; // تمت إضافة هذا الاستيراد لحل مشكلة الـ Context
+import android.content.Context;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -44,12 +44,10 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Block screen-recording / casting from capturing splash content.
         getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE);
 
-        // === STRICT EMULATOR BAN (per project policy) ===
         if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
             try {
                 android.widget.Toast.makeText(this,
@@ -196,7 +194,6 @@ public class SplashActivity extends AppCompatActivity {
                 String downloadUrl = update.optString("downloadUrl", "");
                 String message = update.optString("message", "هناك تحديث جديد متوفر");
                 String versionName = update.optString("versionName", "");
-                String installMode = update.optString("installMode", "internal");
                 boolean forceUpdate = update.optBoolean("forceUpdate", false);
 
                 int requiredVersionCode = update.optInt("requiredVersionCode", 0);
@@ -208,12 +205,8 @@ public class SplashActivity extends AppCompatActivity {
                         && compareVersionNames(currentVersionName, versionName) >= 0;
                 final boolean mustForce = forceUpdate || belowRequired;
 
-                if (alreadyOnThisVersion) {
-                    runOnUiThread(this::proceedToMain);
-                    return;
-                }
-
-                if (isActive && !downloadUrl.isEmpty()) {
+                // التعديل الصحيح لمنع التحديث إذا كان الإصدار متطابقاً وليس إجبارياً
+                if (isActive && !downloadUrl.isEmpty() && (!alreadyOnThisVersion || mustForce)) {
                     runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
                     runOnUiThread(this::proceedToMain);
@@ -283,8 +276,6 @@ public class SplashActivity extends AppCompatActivity {
                         BuildConfig.CLOUD_ANON_KEY,
                         BuildConfig.VERSION_NAME);
 
-                // --- إصلاح مشكلة الكاش هنا ---
-                // حفظ حالة الحظر محلياً (تم استبدال ctx بـ SplashActivity.this)
                 if (v.status != null && !"ERROR".equals(v.status)) {
                     SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE)
                        .edit()
@@ -293,21 +284,18 @@ public class SplashActivity extends AppCompatActivity {
                        .apply();
                 }
 
-                // إذا كان الاتصال فاشلاً، تحقق من الكاش المحلي
                 String effectiveStatus = v.status;
                 if ("ERROR".equals(v.status)) {
                     android.content.SharedPreferences bc =
                         SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE);
                     String cached = bc.getString("last_status", "ACTIVE");
                     long lastCheck = bc.getLong("last_check", 0L);
-                    // إذا الكاش أقل من 24 ساعة واحتوى على حظر، طبّقه
                     boolean fresh = System.currentTimeMillis() - lastCheck < 86400_000L;
                     if (fresh && !"ACTIVE".equals(cached) && !"ERROR".equals(cached)) {
                         effectiveStatus = cached;
                     }
                 }
 
-                // فحص الحظر بناءً على الـ effectiveStatus لضمان تفعيل الكاش
                 if (effectiveStatus != null
                         && !"ACTIVE".equals(effectiveStatus)
                         && !"ERROR".equals(effectiveStatus)) {
@@ -316,16 +304,14 @@ public class SplashActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         KillScreenActivity.launch(
                             SplashActivity.this,
-                            fStatus, // تمرير الحالة الصحيحة
+                            fStatus,
                             fv.banUntil,
-                            fv.reason != null ? fv.reason : "تم الحظر", // تفادي أي قيمة Null
+                            fv.reason != null ? fv.reason : "تم الحظر",
                             fv.telegramUrl);
                         finish();
                     });
                     return;
                 }
-                // --- نهاية الإصلاح ---
-
             } catch (Throwable ignored) {}
 
             com.apix.app.data.p6 repo =
@@ -340,16 +326,8 @@ public class SplashActivity extends AppCompatActivity {
                         SupabaseDataManager.fetchRemote(
                             SplashActivity.this,
                             new SupabaseDataManager.DataCallback() {
-                                @Override
-                                public void onSuccess(
-                                        SupabaseDataManager.DataBundle d) {
-                                    repo.sync(d);
-                                    repo.saveVer(sv);
-                                }
-                                @Override
-                                public void onError(String e) {
-                                    Log.w(TAG, "bg sync: " + e);
-                                }
+                                @Override public void onSuccess(SupabaseDataManager.DataBundle d) { repo.sync(d); repo.saveVer(sv); }
+                                @Override public void onError(String e) { Log.w(TAG, "bg sync: " + e); }
                             });
                     }
                 }).start();
@@ -374,12 +352,9 @@ public class SplashActivity extends AppCompatActivity {
                             launchMain();
                         } else {
                             runOnUiThread(() -> {
-                                progressBar.setVisibility(
-                                    android.view.View.GONE);
-                                errorText.setVisibility(
-                                    android.view.View.VISIBLE);
-                                errorText.setText(
-                                    "فشل الاتصال بالسيرفر");
+                                progressBar.setVisibility(View.GONE);
+                                errorText.setVisibility(View.VISIBLE);
+                                errorText.setText("فشل الاتصال بالسيرفر");
                             });
                         }
                     }
@@ -398,33 +373,22 @@ public class SplashActivity extends AppCompatActivity {
             }
         } catch (Exception ignored) {}
 
-        try {
-            SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this);
-        } catch (Throwable ignored) {}
+        try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
 
         GateActivity.revalidateBypass(SplashActivity.this, cc);
         boolean bp = GateActivity.isBypassed(SplashActivity.this);
-        Class<?> target = (ge && !bp)
-            ? GateActivity.class
-            : ComposeActivity.class;
+        Class<?> target = (ge && !bp) ? GateActivity.class : ComposeActivity.class;
 
         runOnUiThread(() ->
             AdManager.maybeRunAppOpenGate(
                 SplashActivity.this, () -> {
                     Intent i = new Intent(SplashActivity.this, target);
-                    String aj = getIntent()
-                        .getStringExtra("notification_action");
-                    if (aj != null && !aj.isEmpty())
-                        i.putExtra("notification_action", aj);
+                    String aj = getIntent().getStringExtra("notification_action");
+                    if (aj != null && !aj.isEmpty()) i.putExtra("notification_action", aj);
                     startActivity(i);
                     finish();
-                    overridePendingTransition(
-                        android.R.anim.fade_in,
-                        android.R.anim.fade_out);
-                    if (!BuildConfig.DEBUG) {
-                        AppVerifier.getInstance(
-                            SplashActivity.this).startMonitor();
-                    }
+                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                    if (!BuildConfig.DEBUG) { AppVerifier.getInstance(SplashActivity.this).startMonitor(); }
                 }));
     }
 
@@ -433,10 +397,7 @@ public class SplashActivity extends AppCompatActivity {
             .setTitle("تنبيه")
             .setMessage(msg)
             .setCancelable(false)
-            .setPositiveButton("إعادة المحاولة", (d, w) -> {
-                d.dismiss();
-                proceedToMain();
-            })
+            .setPositiveButton("إعادة المحاولة", (d, w) -> { d.dismiss(); proceedToMain(); })
             .setNegativeButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
             .show();
     }
