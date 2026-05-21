@@ -789,7 +789,6 @@ fun PlayerScreen(
                     ) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(formatTime(currentPosition), color = Color.White, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
-                            @OptIn(UnstableApi::class)
                             Slider(
                                 value = if (duration > 0) currentPosition.toFloat() / duration else 0f,
                                 onValueChange = { player.seekTo((it * duration).toLong()) },
@@ -841,7 +840,7 @@ fun PlayerScreen(
                 }
             }
 
-            if (showTrackDialog) TrackSelectionDialog(player = player, onDismiss = { showTrackDialog = false })
+            if (showTrackDialog) TrackSelectionDialog(player = player, trackSelector = trackSelector, onDismiss = { showTrackDialog = false })
             if (showServerDialog && !resolvedConfig.servers.isNullOrEmpty()) {
                 ServerSelectionDialog(
                     servers = resolvedConfig.servers!!,
@@ -1111,7 +1110,7 @@ fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (c
 // ===== Track Selection Dialog =====
 @OptIn(UnstableApi::class)
 @Composable
-fun TrackSelectionDialog(player: ExoPlayer, onDismiss: () -> Unit) {
+fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("الجودة", "الصوت")
