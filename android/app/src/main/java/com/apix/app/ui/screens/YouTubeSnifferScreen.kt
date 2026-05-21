@@ -164,7 +164,7 @@ private fun tryInnerTubeApi(videoId: String): String? {
 // ── الشاشة الرئيسية ───────────────────────────────────────────────
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun YouTubePlayerScreen(
+fun YouTubeSnifferScreen(
     youtubeUrl: String,
     config: PlayerConfig,
     onBack: () -> Unit,
