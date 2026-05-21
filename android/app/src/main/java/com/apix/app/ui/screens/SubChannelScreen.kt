@@ -16,20 +16,16 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -40,14 +36,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.apix.app.data.Channel
 import com.apix.app.ui.theme.CharcoalCard
 import com.apix.app.ui.theme.Gold
-import kotlinx.coroutines.android.awaitFrame
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 
 @Composable
 fun SubChannelScreen(
@@ -59,6 +54,17 @@ fun SubChannelScreen(
     onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // حالة التحميل عند الضغط على قناة
+    var loadingChannel by remember { mutableStateOf<Channel?>(null) }
+
+    // عند الضغط: أظهر دائرة لثانية ثم افتح القناة
+    LaunchedEffect(loadingChannel) {
+        val ch = loadingChannel ?: return@LaunchedEffect
+        delay(800L)
+        loadingChannel = null
+        onChannelClick(ch)
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         val config = LocalConfiguration.current
         val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -66,71 +72,95 @@ fun SubChannelScreen(
             if (config.screenWidthDp > 900) 4 else 3
         } else 2
 
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            // Top bar: back, title (no refresh — channels use cached/encrypted data)
-            Row(
+        Box(modifier = modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .background(Color.Black)
             ) {
-                val backInteraction = remember { MutableInteractionSource() }
-                val backFocused by backInteraction.collectIsFocusedAsState()
-                val backPressed by backInteraction.collectIsPressedAsState()
-
-                IconButton(
-                    onClick = onBack,
+                // شريط علوي
+                Row(
                     modifier = Modifier
-                        .focusable(interactionSource = backInteraction)
-                        .then(
-                            if (backFocused || backPressed) Modifier.border(2.dp, Gold, RoundedCornerShape(8.dp))
-                            else Modifier
-                        )
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
+                    val backInteraction = remember { MutableInteractionSource() }
+                    val backFocused by backInteraction.collectIsFocusedAsState()
+                    val backPressed by backInteraction.collectIsPressedAsState()
+
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .focusable(interactionSource = backInteraction)
+                            .then(
+                                if (backFocused || backPressed)
+                                    Modifier.border(2.dp, Gold, RoundedCornerShape(8.dp))
+                                else Modifier
+                            )
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                                append("AP")
+                            }
+                            withStyle(SpanStyle(color = Gold, fontWeight = FontWeight.ExtraBold)) {
+                                append("iX ")
+                            }
+                            withStyle(SpanStyle(color = Gold, fontWeight = FontWeight.Bold)) {
+                                append(menuName)
+                            }
+                        },
+                        fontSize = 22.sp,
+                        textAlign = TextAlign.Center
                     )
+
+                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(48.dp))
                 }
 
-                Spacer(Modifier.weight(1f))
-
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
-                            append("AP")
-                        }
-                        withStyle(SpanStyle(color = Gold, fontWeight = FontWeight.ExtraBold)) {
-                            append("iX ")
-                        }
-                        withStyle(SpanStyle(color = Gold, fontWeight = FontWeight.Bold)) {
-                            append(menuName)
-                        }
-                    },
-                    fontSize = 22.sp,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.width(48.dp)) // balance back-button width
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(cols),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(channels, key = { it.id }) { channel ->
+                        SubChannelCard(
+                            channel = channel,
+                            isLoading = loadingChannel?.id == channel.id,
+                            onClick = {
+                                if (loadingChannel == null) {
+                                    loadingChannel = channel
+                                }
+                            }
+                        )
+                    }
+                }
             }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(cols),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(channels, key = { it.id }) { channel ->
-                    SubChannelCard(
-                        channel = channel,
-                        onClick = { onChannelClick(channel) }
+            // دائرة تحميل مركزية عند الضغط
+            if (loadingChannel != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = Gold,
+                        strokeWidth = 4.dp,
+                        modifier = Modifier.size(56.dp)
                     )
                 }
             }
@@ -141,13 +171,14 @@ fun SubChannelScreen(
 @Composable
 private fun SubChannelCard(
     channel: Channel,
+    isLoading: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val isPressed by interactionSource.collectIsPressedAsState()
-    val isHighlighted = isFocused || isPressed
+    val isHighlighted = isFocused || isPressed || isLoading
 
     val scale by animateFloatAsState(
         targetValue = if (isHighlighted) 1.05f else 1f,
@@ -201,6 +232,22 @@ private fun SubChannelCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart)
             )
+        }
+
+        // مؤشر تحميل صغير على البطاقة المضغوطة
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Gold,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }
