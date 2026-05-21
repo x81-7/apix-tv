@@ -168,6 +168,7 @@ fun YouTubeSnifferScreen(
     youtubeUrl: String,
     config: PlayerConfig,
     onBack: () -> Unit,
+    onStreamReady: (String) -> Unit = {}, // 👈 هذا هو السطر الذي أضفناه ليحل المشكلة
     modifier: Modifier = Modifier
 ) {
     // مراحل: api_loading → api_success → sniffing → playing → error
@@ -190,6 +191,7 @@ fun YouTubeSnifferScreen(
         val url = withContext(Dispatchers.IO) { tryInnerTubeApi(videoId) }
         if (!url.isNullOrEmpty()) {
             finalStreamUrl = url
+            onStreamReady(url) // 👈 إبلاغ الأكتيفتي برابط البث
             phase = "playing"
         } else {
             // الانتقال للمرحلة 2: WebView Sniffing
@@ -259,6 +261,7 @@ fun YouTubeSnifferScreen(
                                         sniffFound = true
                                         view?.post {
                                             finalStreamUrl = reqUrl
+                                            onStreamReady(reqUrl) // 👈 إبلاغ الأكتيفتي برابط البث
                                             phase = "playing"
                                             view.stopLoading()
                                             view.destroy()
