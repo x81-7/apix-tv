@@ -1,46 +1,48 @@
 # =====================================================================
-# APiX TV — Hardened R8 Rules (The Production Zenith)
+# APiX TV — THE ULTIMATE R8 RULES (ROOT FLATTENING + DICTIONARY)
 # =====================================================================
 
-# ===== CORE OPTIMIZATION & AGGRESSIVE OBFUSCATION =====
+# 1. CORE AGGRESSIVE OBFUSCATION & FLATTENING
 -optimizationpasses 5
 -allowaccessmodification
--repackageclasses 'a'
+-repackageclasses ''
+-flattenpackagehierarchy ''
+-mergeinterfacesaggressively
 -dontusemixedcaseclassnames
 -overloadaggressively
 -useuniqueclassmembernames
+-adaptclassstrings
 
-# ===== REMOVE LOGS =====
+# استخدام القاموس المخصص لجعل أسماء الملفات مربكة جداً (I, l, O, 0)
+-obfuscationdictionary dictionary.txt
+-classobfuscationdictionary dictionary.txt
+-packageobfuscationdictionary dictionary.txt
+
+# 2. SILENT KILLER: REMOVE ALL LOGS
 -assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
-    public static int d(...);
     public static int i(...);
     public static int w(...);
+    public static int d(...);
     public static int e(...);
+    public static java.lang.String getStackTraceString(java.lang.Throwable);
 }
 
-# ===== ATTRIBUTES (SAFE MINIMUM) =====
-# [CRITICAL FIX]: *Annotation* restored to prevent Retrofit/Gson/DI crashes!
+# 3. METADATA STRIPPING & EXCEPTIONS (STABILITY)
 -renamesourcefileattribute ""
--keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keepattributes Exceptions,Signature,*Annotation*,InnerClasses,EnclosingMethod
 
-# =====================================================================
-# 1) Google Ads (STRICT KEEP)
-# =====================================================================
--keep class com.google.android.gms.ads.** { *; }
--keep interface com.google.android.gms.ads.** { *; }
+# 4. GOOGLE ADS (STRICT MINIMUM)
+-keep class com.google.android.gms.ads.MobileAds { *; }
 -dontwarn com.google.android.gms.**
 
-# =====================================================================
-# 2) Media3 / ExoPlayer (STRICT KEEP)
-# =====================================================================
--keep class androidx.media3.** { *; }
--keep interface androidx.media3.** { *; }
+# 5. MEDIA3 / EXOPLAYER (TIGHTENED)
+-keep class androidx.media3.common.PlaybackException { *; }
+-keep class androidx.media3.exoplayer.ExoPlayer { *; }
 -dontwarn androidx.media3.**
 
-# =====================================================================
-# 3) Android Components (NAMES & CONSTRUCTORS ONLY)
-# =====================================================================
+# 6. ANDROID LIFECYCLE (CONSTRUCTORS ONLY)
 -keepnames class * extends android.app.Activity
 -keepnames class * extends androidx.appcompat.app.AppCompatActivity
 -keepnames class * extends androidx.fragment.app.Fragment
@@ -55,21 +57,11 @@
 -keepclassmembers class * extends android.content.BroadcastReceiver { public <init>(); }
 -keepclassmembers class * extends android.app.Application { public <init>(); }
 
-# =====================================================================
-# 4) ViewModels
-# =====================================================================
 -keepclassmembers class * extends androidx.lifecycle.ViewModel {
     <init>(...);
 }
 
-# =====================================================================
-# 5) Gson & Generics (BALANCED SECURITY & STABILITY)
-# =====================================================================
-# [STABILITY FIX]: Keep names so nested models and reflection don't crash
--keepnames class com.apix.app.data.**
--keepclassmembers class com.apix.app.data.** {
-    <fields>;
-}
+# 7. GSON & DATA MODELS (INVISIBLE MODELS)
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
@@ -77,66 +69,32 @@
 -keep class * implements com.google.gson.JsonSerializer
 -keep class * implements com.google.gson.JsonDeserializer
 
--keep class com.google.gson.reflect.TypeToken { *; }
--keep class * extends com.google.gson.reflect.TypeToken
+# 8. ROOM & SQLCIPHER (EXPERT RESTRICTION)
+-keep @androidx.room.Database class *
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Dao class *
+-keep class net.sqlcipher.database.SQLiteDatabase { *; }
+-dontwarn net.sqlcipher.**
 
-# =====================================================================
-# 6) Retrofit & OkHttp
-# =====================================================================
+# 9. RETROFIT & OKHTTP
 -keepclassmembers class * {
     @retrofit2.http.* <methods>;
 }
--dontwarn retrofit2.**
--dontwarn okhttp3.**
--dontwarn okio.**
 
-# =====================================================================
-# 7) Compose & Coroutines
-# =====================================================================
-# [STABILITY FIX]: Prevent silent white screens in some Compose versions
+# 10. COMPOSE STABILITY
 -keep class androidx.compose.runtime.Composer { *; }
-
+-keep class kotlin.Metadata { *; }
 -dontwarn kotlinx.coroutines.**
 -dontwarn androidx.compose.**
 
--keepnames class kotlinx.coroutines.internal.MainDispatcherFactory
--keepnames class kotlinx.coroutines.CoroutineExceptionHandler
-
-# =====================================================================
-# 8) Security Layer (MILITARY GRADE)
-# =====================================================================
--keepclassmembers class com.apix.app.security.GuardRunner {
-    public static java.lang.String runAll(android.content.Context);
-}
--keepclassmembers class com.apix.app.security.HandshakeClient {
-    public static com.apix.app.security.HandshakeClient$Verdict handshake(...);
-}
--keepclassmembers class com.apix.app.security.DeviceIntegrity {
-    public static boolean runCheck(...); 
-}
--keepclassmembers class com.apix.app.util.StringObfuscator {
-    public static java.lang.String d(java.lang.String);
-    public static java.lang.String encode(java.lang.String);
-}
-
-# =====================================================================
-# 9) Android Security
-# =====================================================================
+# 11. ANDROID SECURITY CRYPTO
 -keep class androidx.security.crypto.EncryptedSharedPreferences { *; }
 -keep class androidx.security.crypto.MasterKey { *; }
 
-# =====================================================================
-# 10) Anti Reverse Engineering
-# =====================================================================
+# 12. NDK JNI BRIDGE (THE LONE SURVIVOR)
 -adaptresourcefilenames
 -adaptresourcefilecontents
-# NDK JNI
--keepclasseswithmembernames class * { native <methods>; }
--keep class com.apix.app.security.g4 { *; }
--keep class com.apix.app.security.g5 { *; }
-
-# Room + SQLCipher
--keep class androidx.room.** { *; }
--keep class net.sqlcipher.** { *; }
--dontwarn net.sqlcipher.**
--keep class com.apix.app.data.** { *; }
+# نحافظ على جسر C++ فقط لكي لا ينهار التطبيق
+-keep class com.apix.app.security.g4 { 
+    native <methods>; 
+}
