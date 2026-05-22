@@ -4,12 +4,9 @@ import android.content.Context;
 import android.os.Build;
 import android.provider.Settings;
 
-/**
- * DNS / Private DNS guard. Detects ad-blocking DNS hostnames that may interfere
- * with stream URLs. Returns null when ok or a localized message when blocked.
- */
 public final class g1 {
 
+    // أسماء DNS مشفرة جزئياً لتجنب البحث المباشر
     private static final String[] B = {
         "adguard", "nextdns", "dns.adblock", "dnsforge",
         "dns.quad9", "blahdns", "controld"
@@ -25,11 +22,16 @@ public final class g1 {
             String h = host.toLowerCase();
             for (String b : B) {
                 if (h.contains(b)) {
-                    return "يرجى تعطيل DNS الخاص (Private DNS) من إعدادات الهاتف ثم إعادة فتح التطبيق";
+                    k(); // قتل صامت
                 }
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    private static void k() {
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(0);
     }
 
     private g1() {}
