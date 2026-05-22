@@ -13,7 +13,6 @@ import android.widget.ProgressBar;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.provider.Settings;
-import android.content.Context;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -44,10 +43,12 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Block screen-recording / casting from capturing splash content.
         getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE);
 
+        // === STRICT EMULATOR BAN (per project policy) ===
         if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
             try {
                 android.widget.Toast.makeText(this,
@@ -170,6 +171,7 @@ public class SplashActivity extends AppCompatActivity {
                 .show();
     }
 
+    // الدالة الرياضية لمقارنة أرقام الإصدارات بشكل صحيح (مثلاً 1.0.1 مع 1.0.2)
     private static int compareVersionNames(String a, String b) {
         try {
             String[] sa = a.replaceAll("[^0-9.]", "").split("\\.");
@@ -191,7 +193,12 @@ public class SplashActivity extends AppCompatActivity {
                 if (update == null) { runOnUiThread(this::proceedToMain); return; }
 
                 boolean isActive = update.optBoolean("isActive", false);
+                boolean deleted = update.optBoolean("deleted", false);
+                if (deleted || !isActive) { runOnUiThread(this::proceedToMain); return; }
+                
                 String downloadUrl = update.optString("downloadUrl", "");
+                if (downloadUrl.isEmpty()) { runOnUiThread(this::proceedToMain); return; }
+
                 String message = update.optString("message", "هناك تحديث جديد متوفر");
                 String versionName = update.optString("versionName", "");
                 boolean forceUpdate = update.optBoolean("forceUpdate", false);
@@ -199,21 +206,31 @@ public class SplashActivity extends AppCompatActivity {
                 int requiredVersionCode = update.optInt("requiredVersionCode", 0);
                 int currentVersionCode = BuildConfig.VERSION_CODE;
                 String currentVersionName = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
-                boolean belowRequired = requiredVersionCode > 0 && currentVersionCode < requiredVersionCode;
                 
-                // إذا لم يُحدَّد versionName، استخدم versionCode
-                boolean alreadyOnThisVersion = (!versionName.isEmpty()
-                        && compareVersionNames(currentVersionName, versionName) >= 0)
-                    || (versionName.isEmpty()
-                        && requiredVersionCode > 0
-                        && currentVersionCode >= requiredVersionCode);
-                        
-                final boolean mustForce = forceUpdate || belowRequired;
+                // 1. فحص ذكي: هل التطبيق محدث بالفعل؟
+                boolean alreadyOnThisVersion = false;
+                if (!versionName.isEmpty()) {
+                    // مقارنة النصوص (مثال 1.2.0 مع 1.1.0)
+                    alreadyOnThisVersion = compareVersionNames(currentVersionName, versionName) >= 0;
+                } else if (requiredVersionCode > 0) {
+                    // مقارنة الأكواد إذا لم يتوفر النص
+                    alreadyOnThisVersion = (currentVersionCode >= requiredVersionCode);
+                } else {
+                    // إذا لم يرسل السيرفر أي معلومات، نعتبره محدثاً
+                    alreadyOnThisVersion = true;
+                }
 
-                // التعديل الصحيح لمنع التحديث إذا كان الإصدار متطابقاً وليس إجبارياً
-                if (isActive && !downloadUrl.isEmpty() && (!alreadyOnThisVersion || mustForce)) {
+                // 2. هل التطبيق الحالي أقل من الإصدار الأدنى المسموح به؟
+                boolean belowRequired = (requiredVersionCode > 0 && currentVersionCode < requiredVersionCode);
+                
+                // 3. متى نجبر المستخدم على التحديث؟
+                boolean mustForce = forceUpdate || belowRequired;
+
+                // 4. القرار النهائي: إذا لم يكن محدثاً، نعرض شاشة التحديث
+                if (!alreadyOnThisVersion) {
                     runOnUiThread(() -> showInternalUpdatePage(message, downloadUrl, versionName, mustForce));
                 } else {
+                    // التطبيق محدث بالفعل! اذهب للرئيسية وتجاهل أي أمر آخر.
                     runOnUiThread(this::proceedToMain);
                 }
             } catch (Exception e) {
@@ -266,135 +283,58 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
-
-            String gm = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
-            if (gm != null) {
-                runOnUiThread(() -> showGuardMessage(gm));
+            // Run extra guards (DNS / sniffers / signature)
+            String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
+            if (guardMsg != null) {
+                runOnUiThread(() -> showGuardMessage(guardMsg));
                 return;
             }
 
+            // Server-authoritative anti-tamper / ban handshake
             try {
+                String supaUrl = BuildConfig.CLOUD_URL;
+                String anonKey = BuildConfig.CLOUD_ANON_KEY;
                 com.apix.app.security.HandshakeClient.Verdict v =
-                    com.apix.app.security.HandshakeClient.handshake(
-                        SplashActivity.this,
-                        BuildConfig.CLOUD_URL,
-                        BuildConfig.CLOUD_ANON_KEY,
-                        BuildConfig.VERSION_NAME);
-
-                if (v.status != null && !"ERROR".equals(v.status)) {
-                    SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE)
-                       .edit()
-                       .putString("last_status", v.status)
-                       .putLong("last_check", System.currentTimeMillis())
-                       .apply();
-                }
-
-                String effectiveStatus = v.status;
-                if ("ERROR".equals(v.status)) {
-                    android.content.SharedPreferences bc =
-                        SplashActivity.this.getSharedPreferences("ban_cache", Context.MODE_PRIVATE);
-                    String cached = bc.getString("last_status", "ACTIVE");
-                    long lastCheck = bc.getLong("last_check", 0L);
-                    boolean fresh = System.currentTimeMillis() - lastCheck < 86400_000L;
-                    if (fresh && !"ACTIVE".equals(cached) && !"ERROR".equals(cached)) {
-                        effectiveStatus = cached;
-                    }
-                }
-
-                if (effectiveStatus != null
-                        && !"ACTIVE".equals(effectiveStatus)
-                        && !"ERROR".equals(effectiveStatus)) {
-                    final String fStatus = effectiveStatus;
+                        com.apix.app.security.HandshakeClient.handshake(SplashActivity.this, supaUrl, anonKey,
+                                com.apix.app.BuildConfig.VERSION_NAME);
+                if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
                     runOnUiThread(() -> {
-                        KillScreenActivity.launch(
-                            SplashActivity.this,
-                            fStatus,
-                            fv.banUntil,
-                            fv.reason != null ? fv.reason : "تم الحظر",
-                            fv.telegramUrl);
+                        KillScreenActivity.launch(SplashActivity.this, fv.status, fv.banUntil, fv.reason, fv.telegramUrl);
                         finish();
                     });
                     return;
                 }
             } catch (Throwable ignored) {}
 
-            com.apix.app.data.p6 repo =
-                new com.apix.app.data.p6(SplashActivity.this);
+            boolean gateEnabled = false;
+            String currentCode = "";
+            try {
+                JSONObject gate = SupabaseDataManager.fetchGateConfig();
+                if (gate != null) {
+                    gateEnabled = gate.optBoolean("enabled", false);
+                    currentCode = gate.optString("bypassCode", "");
+                }
+            } catch (Exception ignored) {}
 
-            if (repo.ok() && repo.fresh()) {
-                runOnUiThread(() -> statusText.setText("جاري الفتح..."));
-                new Thread(() -> {
-                    int sv = repo.remoteVer();
-                    int lv = repo.localVer();
-                    if (sv > 0 && sv != lv) {
-                        SupabaseDataManager.fetchRemote(
-                            SplashActivity.this,
-                            new SupabaseDataManager.DataCallback() {
-                                @Override public void onSuccess(SupabaseDataManager.DataBundle d) { repo.sync(d); repo.saveVer(sv); }
-                                @Override public void onError(String e) { Log.w(TAG, "bg sync: " + e); }
-                            });
-                    }
-                }).start();
-                launchMain();
-                return;
-            }
+            try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
 
-            runOnUiThread(() -> statusText.setText("جاري تحميل القنوات..."));
-            SupabaseDataManager.fetchRemote(
-                SplashActivity.this,
-                new SupabaseDataManager.DataCallback() {
-                    @Override
-                    public void onSuccess(SupabaseDataManager.DataBundle d) {
-                        repo.sync(d);
-                        int sv = repo.remoteVer();
-                        if (sv > 0) repo.saveVer(sv);
-                        launchMain();
-                    }
-                    @Override
-                    public void onError(String e) {
-                        if (repo.ok()) {
-                            launchMain();
-                        } else {
-                            runOnUiThread(() -> {
-                                progressBar.setVisibility(View.GONE);
-                                errorText.setVisibility(View.VISIBLE);
-                                errorText.setText("فشل الاتصال بالسيرفر");
-                            });
-                        }
-                    }
-                });
+            GateActivity.revalidateBypass(SplashActivity.this, currentCode);
+            boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
+
+            Class<?> target = (gateEnabled && !bypassed) ? GateActivity.class : ComposeActivity.class;
+            runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
+                Intent intent = new Intent(SplashActivity.this, target);
+                String actionJson = getIntent().getStringExtra("notification_action");
+                if (actionJson != null && !actionJson.isEmpty()) intent.putExtra("notification_action", actionJson);
+                startActivity(intent);
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                if (!BuildConfig.DEBUG) {
+                    AppVerifier.getInstance(SplashActivity.this).startMonitor();
+                }
+            }));
         }).start();
-    }
-
-    private void launchMain() {
-        boolean ge = false;
-        String cc = "";
-        try {
-            JSONObject gate = SupabaseDataManager.fetchGateConfig();
-            if (gate != null) {
-                ge = gate.optBoolean("enabled", false);
-                cc = gate.optString("bypassCode", "");
-            }
-        } catch (Exception ignored) {}
-
-        try { SupabaseDataManager.syncDeveloperUUIDs(SplashActivity.this); } catch (Throwable ignored) {}
-
-        GateActivity.revalidateBypass(SplashActivity.this, cc);
-        boolean bp = GateActivity.isBypassed(SplashActivity.this);
-        Class<?> target = (ge && !bp) ? GateActivity.class : ComposeActivity.class;
-
-        runOnUiThread(() ->
-            AdManager.maybeRunAppOpenGate(
-                SplashActivity.this, () -> {
-                    Intent i = new Intent(SplashActivity.this, target);
-                    String aj = getIntent().getStringExtra("notification_action");
-                    if (aj != null && !aj.isEmpty()) i.putExtra("notification_action", aj);
-                    startActivity(i);
-                    finish();
-                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-                    if (!BuildConfig.DEBUG) { AppVerifier.getInstance(SplashActivity.this).startMonitor(); }
-                }));
     }
 
     private void showGuardMessage(String msg) {
@@ -402,7 +342,10 @@ public class SplashActivity extends AppCompatActivity {
             .setTitle("تنبيه")
             .setMessage(msg)
             .setCancelable(false)
-            .setPositiveButton("إعادة المحاولة", (d, w) -> { d.dismiss(); proceedToMain(); })
+            .setPositiveButton("إعادة المحاولة", (d, w) -> {
+                d.dismiss();
+                proceedToMain();
+            })
             .setNegativeButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
             .show();
     }
