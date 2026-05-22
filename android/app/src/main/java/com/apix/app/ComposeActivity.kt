@@ -14,12 +14,21 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
+
+// --- الاستدعاءات (Imports) التي كانت ناقصة وتسببت في الخطأ ---
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.unit.dp
+// -------------------------------------------------------------
+
 import com.apix.app.data.*
 import com.apix.app.ui.screens.*
 import com.apix.app.data.SupabaseRepository
 import com.apix.app.ui.theme.APiXTheme
 import com.apix.app.viewmodel.MainViewModel
-
 
 class ComposeActivity : ComponentActivity() {
 
@@ -135,7 +144,7 @@ fun AppNavigation(
         if (screen is Screen.SubChannels && !isNavigationLoading) {
             isNavigationLoading = true
             navScope.launch {
-                kotlinx.coroutines.delay(700L)
+                delay(700L)
                 isNavigationLoading = false
                 navigateTo(screen)
             }
