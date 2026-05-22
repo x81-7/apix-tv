@@ -15,14 +15,12 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
 
-// --- الاستدعاءات (Imports) التي كانت ناقصة وتسببت في الخطأ ---
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.ui.unit.dp
-// -------------------------------------------------------------
 
 import com.apix.app.data.*
 import com.apix.app.ui.screens.*
@@ -35,22 +33,13 @@ class ComposeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Init Supabase repository
         SupabaseRepository.init(application)
-
-        // Show system bars normally
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
             var isDarkMode by remember { mutableStateOf(true) }
             var isInPlayer by remember { mutableStateOf(false) }
 
-            // Orientation policy:
-            //  - Player screens → forced landscape
-            //  - Everything else → UNSPECIFIED, which honors the system
-            //    auto-rotate lock. When the user has disabled rotation in
-            //    Android settings, the screen stays in its current orientation
-            //    and won't flip when leaving the player.
             LaunchedEffect(isInPlayer) {
                 if (isInPlayer) {
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -79,17 +68,9 @@ class ComposeActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Capture new external links (apix://, https://apix-panal.vercel.app/watch.html, intent://)
-     * while the activity is already running in the background.
-     * We swap the activity's current intent and re-launch ourselves so the
-     * Compose tree picks it up via DataProcessor.extract() on next composition.
-     */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Force-restart the activity to re-trigger the LaunchedEffect that handles
-        // external payloads. SINGLE_TOP semantics keep this cheap.
         val restart = Intent(this, ComposeActivity::class.java).apply {
             data = intent.data
             action = intent.action
@@ -126,7 +107,6 @@ fun AppNavigation(
     val uiState by viewModel.uiState.collectAsState()
     val sideMenus by viewModel.sideMenus.collectAsState()
 
-    // Navigation stack for proper back behavior
     val navigationStack = remember { mutableStateListOf<Screen>() }
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
     var isSettings by remember { mutableStateOf(false) }
@@ -134,7 +114,7 @@ fun AppNavigation(
     var isNavigatingBack by remember { mutableStateOf(false) }
 
     val navigateTo: (Screen) -> Unit = { screen ->
-        isNavigatingBack = false // نعلم التطبيق أننا نتقدم للأمام
+        isNavigatingBack = false 
         navigationStack.add(currentScreen)
         currentScreen = screen
     }
@@ -166,7 +146,6 @@ fun AppNavigation(
                     val pin = menu.pinCode
                     if (!pin.isNullOrBlank()) {
                         navigateTo(Screen.PinLock(menu.name, pin) {
-                            // pop the lock screen and open menu
                             if (navigationStack.isNotEmpty()) currentScreen = navigationStack.removeAt(navigationStack.lastIndex)
                             openMenu()
                         })
@@ -207,8 +186,6 @@ fun AppNavigation(
                 openChannelAfterGate(channel)
             }
         }
-        // Per-channel PIN (panel `pin_code` column) — prompts before opening
-        // the player or sub-menu, mirroring iOS behaviour.
         val channelPin = channel.pinCode
         if (!channelPin.isNullOrBlank()) {
             navigateTo(Screen.PinLock(channel.name, channelPin) {
@@ -250,8 +227,7 @@ fun AppNavigation(
                             keyId = it.keyId,
                             key = it.key
                         )
-                    },
-                    audioSources = stream.audioSources?.map { src -> AudioSource(src.name, src.url) }
+                    }
                 )
                 currentScreen = when {
                     stream.isHybridAction() -> Screen.HybridPlayer(config)
@@ -262,9 +238,6 @@ fun AppNavigation(
         }
     }
 
-    // External encrypted payload handler (apix:// or intent://)
-    // FORCED AD GATE: If admin enabled "force ads on external links" we run an
-    // ad even when ads are globally disabled, BEFORE decrypting the payload.
     var externalHandled by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (externalHandled) return@LaunchedEffect
@@ -322,48 +295,6 @@ fun AppNavigation(
         return@LaunchedEffect
     }
 
-    // Legacy block kept for compatibility — replaced by gated handler above
-    LaunchedEffect("noop_ext") {
-        runCatching {
-            val obj: org.json.JSONObject? = null
-            if (obj == null) return@runCatching
-            val url = obj.optString("url")
-            if (url.isBlank()) return@runCatching
-            val title = obj.optString("name", "External")
-            val playerKind = obj.optString("player", "exoplayer")
-            val h = obj.optJSONObject("headers")
-            val ch = obj.optJSONObject("customHeaders")
-            val drm = obj.optJSONObject("drm")
-            val customMap = if (ch != null) {
-                val m = mutableMapOf<String, String>()
-                ch.keys().forEach { k -> m[k] = ch.optString(k) }
-                m
-            } else null
-            val cfg = PlayerConfig(
-                url = url,
-                title = title,
-                actionType = if (playerKind == "webview") "shaka_web" else "native",
-                hybridPlayerType = "shaka",
-                headers = PlayerHeaders(
-                    userAgent = h?.optString("userAgent")?.takeIf { it.isNotBlank() },
-                    referer = h?.optString("referer")?.takeIf { it.isNotBlank() },
-                    cookie = null,
-                    origin = null
-                ),
-                customHeaders = customMap,
-                drm = drm?.let {
-                    PlayerDrm(
-                        licenseUrl = null,
-                        scheme = it.optString("scheme", "clearkey"),
-                        keyId = it.optString("keyId").takeIf { s -> s.isNotBlank() },
-                        key = it.optString("key").takeIf { s -> s.isNotBlank() }
-                    )
-                }
-            )
-            currentScreen = if (playerKind == "webview") Screen.HybridPlayer(cfg) else Screen.Player(cfg)
-        }
-    }
-
     LaunchedEffect(uiState.showSettingsSection) {
         if (!uiState.showSettingsSection && isSettings) {
             isSettings = false
@@ -406,7 +337,6 @@ fun AppNavigation(
         }
     }
 
-    // Notify activity about player state (native + hybrid force landscape)
     LaunchedEffect(currentScreen) {
         onPlayerStateChanged(currentScreen is Screen.Player || currentScreen is Screen.HybridPlayer)
     }
@@ -423,13 +353,12 @@ fun AppNavigation(
     }
 
     fun goBack(): Boolean {
-        // External link entry → exit the app on back instead of showing main menu
         if (isCurrentExternal() && navigationStack.isEmpty()) {
             activity?.finishAffinity()
             return true
         }
         if (navigationStack.isNotEmpty()) {
-            isNavigatingBack = true // ⬅️ هذا هو السطر السحري الذي يمنع شاشة التحميل عند العودة
+            isNavigatingBack = true 
             currentScreen = navigationStack.removeAt(navigationStack.lastIndex)
             return true
         }
@@ -445,7 +374,6 @@ fun AppNavigation(
         }
     }
 
-    // Back handling
     androidx.activity.compose.BackHandler(currentScreen !is Screen.Main || isSettings || isCurrentExternal()) {
         if (isSettings) {
             isSettings = false
@@ -454,7 +382,6 @@ fun AppNavigation(
         }
     }
 
-    // تأثير انتقال سلس بين الشاشات
     androidx.compose.animation.AnimatedContent(
         targetState = currentScreen,
         transitionSpec = {
@@ -471,117 +398,116 @@ fun AppNavigation(
         },
         label = "screenTransition"
     ) { screen ->
-    when (screen) {
-        is Screen.Main -> {
-            MainScreen(
-                uiState = uiState,
-                onCategorySelected = { handleCategorySelect(it) },
-                onChannelClick = { handleChannelClick(it) },
-                onSearchClick = { navigateTo(Screen.Search) },
-                channels = channels,
-                isSettings = isSettings,
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = onToggleDarkMode
-            )
-        }
-        is Screen.SubChannels -> {
-            // التحميل يظهر فقط إذا لم نكن عائدين من المشغل
-            var showLoading by remember { mutableStateOf(!isNavigatingBack) }
-
-            LaunchedEffect(showLoading) {
-                if (showLoading) {
-                    delay(1300L) // 1.3 ثانية بالضبط كما طلبت
-                    showLoading = false
-                }
+        when (screen) {
+            is Screen.Main -> {
+                MainScreen(
+                    uiState = uiState,
+                    onCategorySelected = { handleCategorySelect(it) },
+                    onChannelClick = { handleChannelClick(it) },
+                    onSearchClick = { navigateTo(Screen.Search) },
+                    channels = channels,
+                    isSettings = isSettings,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = onToggleDarkMode
+                )
             }
+            is Screen.SubChannels -> {
+                var showLoading by remember { mutableStateOf(!isNavigatingBack) }
 
-            // Crossfade يجعل اختفاء دائرة التحميل وظهور القنوات ناعماً وسلساً جداً
-            androidx.compose.animation.Crossfade(targetState = showLoading, label = "subLoad") { loading ->
-                if (loading) {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = androidx.compose.ui.Modifier
-                            .fillMaxSize()
-                            .background(androidx.compose.ui.graphics.Color.Black),
-                        contentAlignment = androidx.compose.ui.Alignment.Center
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            color = com.apix.app.ui.theme.Gold,
-                            strokeWidth = 4.dp,
-                            modifier = androidx.compose.ui.Modifier.size(56.dp)
+                LaunchedEffect(showLoading) {
+                    if (showLoading) {
+                        delay(1300L) 
+                        showLoading = false
+                    }
+                }
+
+                androidx.compose.animation.Crossfade(targetState = showLoading, label = "subLoad") { loading ->
+                    if (loading) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = androidx.compose.ui.Modifier
+                                .fillMaxSize()
+                                .background(androidx.compose.ui.graphics.Color.Black),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = com.apix.app.ui.theme.Gold,
+                                strokeWidth = 4.dp,
+                                modifier = androidx.compose.ui.Modifier.size(56.dp)
+                            )
+                        }
+                    } else {
+                        SubChannelScreen(
+                            menuName = screen.menuName,
+                            channels = screen.channels,
+                            onChannelClick = { handleChannelClick(it) },
+                            onBack = { goBack() }
                         )
                     }
-                } else {
-                    SubChannelScreen(
-                        menuName = screen.menuName,
-                        channels = screen.channels,
-                        onChannelClick = { handleChannelClick(it) },
-                        onBack = { goBack() }
-                    )
                 }
             }
-        }
-        is Screen.Search -> {
-            SearchScreen(
-                onSearch = { viewModel.searchChannels(it) },
-                onChannelClick = { ch ->
-                    val config = viewModel.buildPlayerConfig(ch)
-                    if (config != null) {
-                        val actionType = ch.androidActionType ?: "native"
-                        when (actionType) {
-                            "shaka_web", "jw_web" -> {
-                                navigateTo(Screen.HybridPlayer(config))
+            is Screen.Search -> {
+                SearchScreen(
+                    onSearch = { viewModel.searchChannels(it) },
+                    onChannelClick = { ch ->
+                        val config = viewModel.buildPlayerConfig(ch)
+                        if (config != null) {
+                            val actionType = ch.androidActionType ?: "native"
+                            when (actionType) {
+                                "shaka_web", "jw_web" -> {
+                                    navigateTo(Screen.HybridPlayer(config))
+                                }
+                                "webview" -> {
+                                    val url = ch.androidStream?.url ?: ch.stream?.url ?: return@SearchScreen
+                                    navigateTo(Screen.WebViewPlayer(url, ch.name, config.webViewOrientation))
+                                }
+                                "youtube" -> {
+                                    val url = ch.androidStream?.url ?: ch.stream?.url ?: return@SearchScreen
+                                    navigateTo(Screen.YouTubeSniffer(url, config))
+                                }
+                                else -> navigateTo(Screen.Player(config))
                             }
-                            "webview" -> {
-                                val url = ch.androidStream?.url ?: ch.stream?.url ?: return@SearchScreen
-                                navigateTo(Screen.WebViewPlayer(url, ch.name, config.webViewOrientation))
-                            }
-                            "youtube" -> {
-                                val url = ch.androidStream?.url ?: ch.stream?.url ?: return@SearchScreen
-                                navigateTo(Screen.YouTubeSniffer(url, config))
-                            }
-                            else -> navigateTo(Screen.Player(config))
                         }
-                    }
-                },
-                onClose = { goBack() }
-            )
+                    },
+                    onClose = { goBack() }
+                )
+            }
+            is Screen.Player -> {
+                PlayerScreen(
+                    config = screen.config,
+                    onBack = { goBack() }
+                )
+            }
+            is Screen.HybridPlayer -> {
+                HybridPlayerScreen(
+                    config = screen.config,
+                    onBack = { goBack() }
+                )
+            }
+            is Screen.WebViewPlayer -> {
+                WebViewScreen(url = screen.url, title = screen.title, orientation = screen.orientation, onBack = { goBack() })
+            }
+            is Screen.YouTubeSniffer -> {
+                YouTubeSnifferScreen(
+                    youtubeUrl = screen.youtubeUrl,
+                    config = screen.config,
+                    onStreamReady = { sniffedUrl ->
+                        val ytHeaders = com.apix.app.data.PlayerHeaders(
+                            userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                        )
+                        navigationStack.add(Screen.Main)
+                        currentScreen = Screen.Player(screen.config.copy(url = sniffedUrl, headers = ytHeaders))
+                    },
+                    onBack = { goBack() }
+                )
+            }
+            is Screen.PinLock -> {
+                PinLockScreen(
+                    menuName = screen.menuName,
+                    expectedPin = screen.pin,
+                    onCancel = { goBack() },
+                    onUnlocked = { screen.onUnlocked() }
+                )
+            }
         }
-        is Screen.Player -> {
-            PlayerScreen(
-                config = screen.config,
-                onBack = { goBack() }
-            )
-        }
-        is Screen.HybridPlayer -> {
-            HybridPlayerScreen(
-                config = screen.config,
-                onBack = { goBack() }
-            )
-        }
-        is Screen.WebViewPlayer -> {
-            WebViewScreen(url = screen.url, title = screen.title, orientation = screen.orientation, onBack = { goBack() })
-        }
-        is Screen.YouTubeSniffer -> {
-            YouTubeSnifferScreen(
-                youtubeUrl = screen.youtubeUrl,
-                config = screen.config,
-                onStreamReady = { sniffedUrl ->
-                    val ytHeaders = com.apix.app.data.PlayerHeaders(
-                        userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                    )
-                    navigationStack.add(Screen.Main)
-                    currentScreen = Screen.Player(screen.config.copy(url = sniffedUrl, headers = ytHeaders))
-                },
-                onBack = { goBack() }
-            )
-        }
-        is Screen.PinLock -> {
-            PinLockScreen(
-                menuName = screen.menuName,
-                expectedPin = screen.pin,
-                onCancel = { goBack() },
-                onUnlocked = { screen.onUnlocked() }
-            )
-        }
-    }
-    } 
+    } // إغلاق AnimatedContent
+} // إغلاق AppNavigation
