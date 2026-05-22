@@ -131,26 +131,12 @@ fun AppNavigation(
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
     var isSettings by remember { mutableStateOf(false) }
     var notificationHandled by remember { mutableStateOf(false) }
-    var isNavigationLoading by remember { mutableStateOf(false) }
-    val navScope = rememberCoroutineScope()
+    var isNavigatingBack by remember { mutableStateOf(false) }
 
     val navigateTo: (Screen) -> Unit = { screen ->
+        isNavigatingBack = false // نعلم التطبيق أننا نتقدم للأمام
         navigationStack.add(currentScreen)
         currentScreen = screen
-    }
-
-    // تنقل مع شاشة تحميل لـ SubChannels
-    val navigateWithLoading: (Screen) -> Unit = { screen ->
-        if (screen is Screen.SubChannels && !isNavigationLoading) {
-            isNavigationLoading = true
-            navScope.launch {
-                delay(700L)
-                isNavigationLoading = false
-                navigateTo(screen)
-            }
-        } else {
-            navigateTo(screen)
-        }
     }
 
     val openChannelAfterGate: (Channel) -> Unit = { channel ->
@@ -175,7 +161,7 @@ fun AppNavigation(
                                     lockAspectRatio = sc.lockAspectRatio
                                 )
                             } ?: emptyList()
-                        navigateWithLoading(Screen.SubChannels(channel.name, subChannels))
+                        navigateTo(Screen.SubChannels(channel.name, subChannels))
                     }
                     val pin = menu.pinCode
                     if (!pin.isNullOrBlank()) {
@@ -443,6 +429,7 @@ fun AppNavigation(
             return true
         }
         if (navigationStack.isNotEmpty()) {
+            isNavigatingBack = true // ⬅️ هذا هو السطر السحري الذي يمنع شاشة التحميل عند العودة
             currentScreen = navigationStack.removeAt(navigationStack.lastIndex)
             return true
         }
@@ -498,12 +485,40 @@ fun AppNavigation(
             )
         }
         is Screen.SubChannels -> {
-            SubChannelScreen(
-                menuName = screen.menuName,
-                channels = screen.channels,
-                onChannelClick = { handleChannelClick(it) },
-                onBack = { goBack() }
-            )
+            // التحميل يظهر فقط إذا لم نكن عائدين من المشغل
+            var showLoading by remember { mutableStateOf(!isNavigatingBack) }
+
+            LaunchedEffect(showLoading) {
+                if (showLoading) {
+                    delay(1300L) // 1.3 ثانية بالضبط كما طلبت
+                    showLoading = false
+                }
+            }
+
+            // Crossfade يجعل اختفاء دائرة التحميل وظهور القنوات ناعماً وسلساً جداً
+            androidx.compose.animation.Crossfade(targetState = showLoading, label = "subLoad") { loading ->
+                if (loading) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = androidx.compose.ui.Modifier
+                            .fillMaxSize()
+                            .background(androidx.compose.ui.graphics.Color.Black),
+                        contentAlignment = androidx.compose.ui.Alignment.Center
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = com.apix.app.ui.theme.Gold,
+                            strokeWidth = 4.dp,
+                            modifier = androidx.compose.ui.Modifier.size(56.dp)
+                        )
+                    }
+                } else {
+                    SubChannelScreen(
+                        menuName = screen.menuName,
+                        channels = screen.channels,
+                        onChannelClick = { handleChannelClick(it) },
+                        onBack = { goBack() }
+                    )
+                }
+            }
         }
         is Screen.Search -> {
             SearchScreen(
@@ -569,21 +584,4 @@ fun AppNavigation(
             )
         }
     }
-    } // إغلاق AnimatedContent
-
-    // شاشة التحميل عند الانتقال لـ SubChannels
-    if (isNavigationLoading) {
-        androidx.compose.foundation.layout.Box(
-            modifier = androidx.compose.ui.Modifier
-                .fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color.Black),
-            contentAlignment = androidx.compose.ui.Alignment.Center
-        ) {
-            androidx.compose.material3.CircularProgressIndicator(
-                color = com.apix.app.ui.theme.Gold,
-                strokeWidth = 4.dp,
-                modifier = androidx.compose.ui.Modifier.size(56.dp)
-            )
-        }
-    }
-}
+    } 
