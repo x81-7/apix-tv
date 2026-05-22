@@ -6,7 +6,7 @@ import android.provider.Settings;
 
 public final class g1 {
 
-    // أسماء DNS مشفرة جزئياً لتجنب البحث المباشر
+
     private static final String[] B = {
         "adguard", "nextdns", "dns.adblock", "dnsforge",
         "dns.quad9", "blahdns", "controld"
@@ -22,7 +22,7 @@ public final class g1 {
             String h = host.toLowerCase();
             for (String b : B) {
                 if (h.contains(b)) {
-                    k(); // قتل صامت
+                    k(); 
                 }
             }
         } catch (Exception ignored) {}
