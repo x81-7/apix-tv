@@ -122,10 +122,26 @@ fun AppNavigation(
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
     var isSettings by remember { mutableStateOf(false) }
     var notificationHandled by remember { mutableStateOf(false) }
+    var isNavigationLoading by remember { mutableStateOf(false) }
+    val navScope = rememberCoroutineScope()
 
     val navigateTo: (Screen) -> Unit = { screen ->
         navigationStack.add(currentScreen)
         currentScreen = screen
+    }
+
+    // تنقل مع شاشة تحميل لـ SubChannels
+    val navigateWithLoading: (Screen) -> Unit = { screen ->
+        if (screen is Screen.SubChannels && !isNavigationLoading) {
+            isNavigationLoading = true
+            navScope.launch {
+                kotlinx.coroutines.delay(700L)
+                isNavigationLoading = false
+                navigateTo(screen)
+            }
+        } else {
+            navigateTo(screen)
+        }
     }
 
     val openChannelAfterGate: (Channel) -> Unit = { channel ->
@@ -150,7 +166,7 @@ fun AppNavigation(
                                     lockAspectRatio = sc.lockAspectRatio
                                 )
                             } ?: emptyList()
-                        navigateTo(Screen.SubChannels(channel.name, subChannels))
+                        navigateWithLoading(Screen.SubChannels(channel.name, subChannels))
                     }
                     val pin = menu.pinCode
                     if (!pin.isNullOrBlank()) {
@@ -442,7 +458,24 @@ fun AppNavigation(
         }
     }
 
-    when (val screen = currentScreen) {
+    // تأثير انتقال سلس بين الشاشات
+    androidx.compose.animation.AnimatedContent(
+        targetState = currentScreen,
+        transitionSpec = {
+            val enter = androidx.compose.animation.fadeIn(
+                androidx.compose.animation.core.tween(220)
+            ) + androidx.compose.animation.slideInHorizontally(
+                animationSpec = androidx.compose.animation.core.tween(220),
+                initialOffsetX = { it / 12 }
+            )
+            val exit = androidx.compose.animation.fadeOut(
+                androidx.compose.animation.core.tween(120)
+            )
+            enter togetherWith exit
+        },
+        label = "screenTransition"
+    ) { screen ->
+    when (screen) {
         is Screen.Main -> {
             MainScreen(
                 uiState = uiState,
@@ -524,6 +557,23 @@ fun AppNavigation(
                 expectedPin = screen.pin,
                 onCancel = { goBack() },
                 onUnlocked = { screen.onUnlocked() }
+            )
+        }
+    }
+    } // إغلاق AnimatedContent
+
+    // شاشة التحميل عند الانتقال لـ SubChannels
+    if (isNavigationLoading) {
+        androidx.compose.foundation.layout.Box(
+            modifier = androidx.compose.ui.Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color.Black),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = com.apix.app.ui.theme.Gold,
+                strokeWidth = 4.dp,
+                modifier = androidx.compose.ui.Modifier.size(56.dp)
             )
         }
     }
