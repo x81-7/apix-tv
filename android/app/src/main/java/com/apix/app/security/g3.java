@@ -23,11 +23,27 @@ public final class g3 {
                 return "يرجى إغلاق برامج مراقبة الشبكة (مثل HTTP Canary) قبل فتح التطبيق";
             } catch (PackageManager.NameNotFoundException ignored) {}
         }
+        
         // System proxy
         String h = System.getProperty("http.proxyHost");
         if (h != null && !h.isEmpty()) {
             return "يرجى تعطيل البروكسي من إعدادات الشبكة";
         }
+
+        // فحص C++ - VPN
+        try {
+            if (com.apix.app.security.g4.hasVpn()) {
+                return "يرجى إيقاف تشغيل الـ VPN ثم إعادة فتح التطبيق";
+            }
+        } catch (Throwable ignored) {}
+
+        // فحص C++ - بيئة خطرة
+        try {
+            if (com.apix.app.security.g4.hasDanger()) {
+                return "تم اكتشاف أداة تجسس — أغلق التطبيق وأعد تشغيل الهاتف";
+            }
+        } catch (Throwable ignored) {}
+
         return null;
     }
 
