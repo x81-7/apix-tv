@@ -201,8 +201,13 @@ public class SplashActivity extends AppCompatActivity {
                 String currentVersionName = BuildConfig.VERSION_NAME == null ? "" : BuildConfig.VERSION_NAME;
                 boolean belowRequired = requiredVersionCode > 0 && currentVersionCode < requiredVersionCode;
                 
-                boolean alreadyOnThisVersion = !versionName.isEmpty()
-                        && compareVersionNames(currentVersionName, versionName) >= 0;
+                // إذا لم يُحدَّد versionName، استخدم versionCode
+                boolean alreadyOnThisVersion = (!versionName.isEmpty()
+                        && compareVersionNames(currentVersionName, versionName) >= 0)
+                    || (versionName.isEmpty()
+                        && requiredVersionCode > 0
+                        && currentVersionCode >= requiredVersionCode);
+                        
                 final boolean mustForce = forceUpdate || belowRequired;
 
                 // التعديل الصحيح لمنع التحديث إذا كان الإصدار متطابقاً وليس إجبارياً
