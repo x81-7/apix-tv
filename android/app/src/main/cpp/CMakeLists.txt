@@ -45,6 +45,7 @@ target_compile_definitions(v PRIVATE
     V_E="${CLOUD_URL}"
     V_F="${CLOUD_ANON_KEY}"
     V_H="${SIGNATURE_HASH}"
+    V_W="${WORKER_URL}"
 )
 
 # ── n1.cpp يحصل على: جزء 2 من ENC + HMAC_P2
