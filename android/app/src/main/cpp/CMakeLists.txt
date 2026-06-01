@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22.1)
 project("v")
 
 # ── استقبال المفاتيح من Gradle ────────────────────────────────────
-foreach(K ENC_KEY HMAC_SECRET KEY_SALT EXT_KEY CLOUD_URL CLOUD_ANON_KEY SIGNATURE_HASH)
+foreach(K ENC_KEY HMAC_SECRET KEY_SALT EXT_KEY CLOUD_URL CLOUD_ANON_KEY SIGNATURE_HASH WORKER_URL)
     if(NOT DEFINED ${K})
         if(K STREQUAL "ENC_KEY")
             set(${K} "0000000000000000000000000000000000000000000000000000000000000000")
@@ -45,6 +45,7 @@ target_compile_definitions(v PRIVATE
     V_E="${CLOUD_URL}"
     V_F="${CLOUD_ANON_KEY}"
     V_H="${SIGNATURE_HASH}"
+    V_W="${WORKER_URL}"
 )
 
 # ── n1.cpp يحصل على: جزء 2 من ENC + HMAC_P2

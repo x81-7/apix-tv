@@ -41,9 +41,14 @@ android {
         def extKey   = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY")
                      ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
         def sigHash  = System.getenv("SIGNATURE_HASH") ?: "__HASH__"
+        // White-label gateway: when WORKER_URL is provided the app talks ONLY to
+        // the Cloudflare Worker, which hides Supabase. Falls back to direct cloud.
+        def workerUrl = System.getenv("WORKER_URL")
+                    ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
 
         buildConfigField "String", "CLOUD_URL",      "\"${cloudUrl}\""
         buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
+        buildConfigField "String", "WORKER_URL",     "\"${workerUrl}\""
 
         externalNativeBuild {
             cmake {
@@ -53,7 +58,8 @@ android {
                           "-DKEY_SALT=${keySalt}",
                           "-DEXT_KEY=${extKey}",
                           "-DCLOUD_URL=${cloudUrl}",
-                          "-DCLOUD_ANON_KEY=${cloudKey}"
+                          "-DCLOUD_ANON_KEY=${cloudKey}",
+                          "-DWORKER_URL=${workerUrl}"
             }
         }
 

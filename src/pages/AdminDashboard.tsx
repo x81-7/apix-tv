@@ -16,12 +16,13 @@ import SystemSettingsManager from '@/components/admin/SystemSettingsManager';
 import AppInfoManager from '@/components/admin/AppInfoManager';
 import AppAssetsManager from '@/components/admin/AppAssetsManager';
 import VipManager from '@/components/admin/VipManager';
+import CloudflareManager from '@/components/admin/CloudflareManager';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { adminDb } from '@/lib/adminDb';
-import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown } from 'lucide-react';
+import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown, Cloud } from 'lucide-react';
 
 const updateAdminManifest = () => {
   const existingManifest = document.querySelector('link[rel="manifest"]');
@@ -130,6 +131,9 @@ const AdminDashboard: React.FC = () => {
             <TabsTrigger value="vip" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Crown className="w-4 h-4 mr-2" />اشتراكات VIP
             </TabsTrigger>
+            <TabsTrigger value="cloudflare" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Cloud className="w-4 h-4 mr-2" />Cloudflare
+            </TabsTrigger>
             <TabsTrigger value="settings" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Settings className="w-4 h-4 mr-2" />الإعدادات
             </TabsTrigger>
@@ -181,6 +185,8 @@ const AdminDashboard: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="vip"><div className="max-w-4xl"><VipManager /></div></TabsContent>
+
+          <TabsContent value="cloudflare"><div className="max-w-2xl"><CloudflareManager /></div></TabsContent>
 
           <TabsContent value="settings">
             <div className="max-w-2xl space-y-6">
