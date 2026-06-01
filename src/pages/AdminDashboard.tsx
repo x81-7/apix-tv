@@ -186,6 +186,8 @@ const AdminDashboard: React.FC = () => {
 
           <TabsContent value="vip"><div className="max-w-4xl"><VipManager /></div></TabsContent>
 
+          <TabsContent value="cloudflare"><div className="max-w-2xl"><CloudflareManager /></div></TabsContent>
+
           <TabsContent value="settings">
             <div className="max-w-2xl space-y-6">
               {/* Full system settings: Import JSON + Bulk offline cache + Encrypt + GitHub + behavior */}
