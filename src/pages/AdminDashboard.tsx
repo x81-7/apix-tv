@@ -16,12 +16,13 @@ import SystemSettingsManager from '@/components/admin/SystemSettingsManager';
 import AppInfoManager from '@/components/admin/AppInfoManager';
 import AppAssetsManager from '@/components/admin/AppAssetsManager';
 import VipManager from '@/components/admin/VipManager';
+import CloudflareManager from '@/components/admin/CloudflareManager';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { adminDb } from '@/lib/adminDb';
-import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown } from 'lucide-react';
+import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown, Cloud } from 'lucide-react';
 
 const updateAdminManifest = () => {
   const existingManifest = document.querySelector('link[rel="manifest"]');
