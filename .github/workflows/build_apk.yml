@@ -76,6 +76,9 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
           ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          CLOUD_URL: ${{ secrets.CLOUD_URL }}
+          CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         working-directory: ./android
         shell: bash
         run: |
