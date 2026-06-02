@@ -292,8 +292,8 @@ public class SplashActivity extends AppCompatActivity {
 
             // Server-authoritative anti-tamper / ban handshake
             try {
-                String supaUrl = BuildConfig.CLOUD_URL;
-                String anonKey = BuildConfig.CLOUD_ANON_KEY;
+                String supaUrl = com.apix.app.Net.base();
+                String anonKey = com.apix.app.Net.anon();
                 com.apix.app.security.HandshakeClient.Verdict v =
                         com.apix.app.security.HandshakeClient.handshake(SplashActivity.this, supaUrl, anonKey,
                                 com.apix.app.BuildConfig.VERSION_NAME);
