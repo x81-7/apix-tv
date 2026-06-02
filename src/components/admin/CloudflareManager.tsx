@@ -238,10 +238,15 @@ const CloudflareManager: React.FC = () => {
             <Label>رابط الـ Worker (Worker URL)</Label>
             <Input value={cfg.workerUrl} onChange={e => field('workerUrl', e.target.value)} placeholder="https://apix-gateway.xxx.workers.dev" className="bg-secondary border-border font-mono text-xs" dir="ltr" />
           </div>
+          <div className="space-y-2">
+            <Label>SSL Pins (اختياري — تثبيت الشهادة)</Label>
+            <Input value={cfg.workerPins} onChange={e => field('workerPins', e.target.value)} placeholder="base64 SHA-256 SPKI، مفصولة بفواصل" className="bg-secondary border-border font-mono text-xs" dir="ltr" />
+            <p className="text-xs text-muted-foreground">بصمات المفتاح العام (SPKI) لمضيف الـ Worker. اتركه فارغاً لتعطيل التثبيت. يُحقن كـ WORKER_PINS.</p>
+          </div>
           <Button onClick={syncGitHub} disabled={busy.github} className="w-full bg-primary text-primary-foreground">
             {busy.github ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />جاري الرفع...</> : <><Github className="w-4 h-4 mr-2" />رفع WORKER_URL + المفاتيح إلى GitHub</>}
           </Button>
-          <p className="text-xs text-muted-foreground">يرفع: WORKER_URL، CLOUD_URL، CLOUD_ANON_KEY، ENCRYPTION_SECRET_KEY. تأكد من ضبط المستودع و GitHub Token في قسم الحماية.</p>
+          <p className="text-xs text-muted-foreground">يرفع: WORKER_URL، WORKER_PINS، CLOUD_URL، CLOUD_ANON_KEY، ENCRYPTION_SECRET_KEY. تأكد من ضبط المستودع و GitHub Token في قسم الحماية.</p>
         </CardContent>
       </Card>
     </div>
