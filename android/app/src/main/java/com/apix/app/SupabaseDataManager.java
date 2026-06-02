@@ -39,8 +39,10 @@ public class SupabaseDataManager {
     private static final String KEY_BUNDLE_ETAG = "bundle_etag";
     private static final String KEY_CLOUD_URL = "cloud_url";
 
-    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    // Routed through the Cloudflare Worker gateway when WORKER_URL is set,
+    // otherwise falls back to Lovable Cloud directly. See Net.
+    private static final String SUPABASE_URL = Net.base();
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     public interface DataCallback {
         void onSuccess(DataBundle data);
