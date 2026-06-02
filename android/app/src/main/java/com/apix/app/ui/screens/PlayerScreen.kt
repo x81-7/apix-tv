@@ -375,11 +375,11 @@ fun PlayerScreen(
                 val cached = sp.getBoolean("show_servers_button", false)
                 showServersButtonEnabled = cached
                 try {
-                    val url = java.net.URL(com.apix.app.BuildConfig.CLOUD_URL +
+                    val url = java.net.URL(com.apix.app.Net.base() +
                         "/rest/v1/system_settings?key=eq.playerUiConfig&select=value")
                     val c = url.openConnection() as java.net.HttpURLConnection
-                    c.setRequestProperty("apikey", com.apix.app.BuildConfig.CLOUD_ANON_KEY)
-                    c.setRequestProperty("Authorization", "Bearer " + com.apix.app.BuildConfig.CLOUD_ANON_KEY)
+                    c.setRequestProperty("apikey", com.apix.app.Net.anon())
+                    c.setRequestProperty("Authorization", "Bearer " + com.apix.app.Net.anon())
                     c.connectTimeout = 5000; c.readTimeout = 5000
                     if (c.responseCode == 200) {
                         val body = c.inputStream.bufferedReader().use { it.readText() }
