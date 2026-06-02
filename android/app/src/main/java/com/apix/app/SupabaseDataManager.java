@@ -163,6 +163,7 @@ public class SupabaseDataManager {
           try { com.apix.app.security.g5.h(conn, "{}"); } catch (Throwable ignored) {}
             if (prevEtag != null) conn.setRequestProperty("If-None-Match", prevEtag);
 
+            Net.verifyPins(conn);
             int code = conn.getResponseCode();
             String etag = conn.getHeaderField("ETag");
             if (etag != null) resp.etag = etag;
