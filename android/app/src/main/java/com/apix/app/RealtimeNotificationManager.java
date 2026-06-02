@@ -35,8 +35,7 @@ import java.util.concurrent.TimeUnit;
 public class RealtimeNotificationManager {
 
     private static final String TAG = "RealtimeNotif";
-    private static final String SUPABASE_PROJECT = BuildConfig.CLOUD_URL.replace("https://", "").replace(".supabase.co", "");
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     private static OkHttpClient client;
     private static WebSocket socket;
