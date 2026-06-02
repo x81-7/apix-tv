@@ -381,6 +381,7 @@ fun PlayerScreen(
                     c.setRequestProperty("apikey", com.apix.app.Net.anon())
                     c.setRequestProperty("Authorization", "Bearer " + com.apix.app.Net.anon())
                     c.connectTimeout = 5000; c.readTimeout = 5000
+                    com.apix.app.Net.verifyPins(c)
                     if (c.responseCode == 200) {
                         val body = c.inputStream.bufferedReader().use { it.readText() }
                         val arr = com.google.gson.JsonParser.parseString(body).asJsonArray
