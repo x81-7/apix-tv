@@ -35,7 +35,7 @@ public final class AdManager {
     private static boolean isVip(Context ctx) {
         try {
             return new com.apix.app.vip.VipChecker(
-                ctx, BuildConfig.CLOUD_URL, BuildConfig.CLOUD_ANON_KEY
+                ctx, Net.base(), Net.anon()
             ).isActiveLocally();
         } catch (Throwable t) { return false; }
     }

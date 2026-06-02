@@ -39,8 +39,10 @@ public class SupabaseDataManager {
     private static final String KEY_BUNDLE_ETAG = "bundle_etag";
     private static final String KEY_CLOUD_URL = "cloud_url";
 
-    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    // Routed through the Cloudflare Worker gateway when WORKER_URL is set,
+    // otherwise falls back to Lovable Cloud directly. See Net.
+    private static final String SUPABASE_URL = Net.base();
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     public interface DataCallback {
         void onSuccess(DataBundle data);
@@ -161,6 +163,7 @@ public class SupabaseDataManager {
           try { com.apix.app.security.g5.h(conn, "{}"); } catch (Throwable ignored) {}
             if (prevEtag != null) conn.setRequestProperty("If-None-Match", prevEtag);
 
+            Net.verifyPins(conn);
             int code = conn.getResponseCode();
             String etag = conn.getHeaderField("ETag");
             if (etag != null) resp.etag = etag;
@@ -394,6 +397,7 @@ public class SupabaseDataManager {
         conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
         conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
         conn.setRequestProperty("Accept", "application/json");
+        Net.verifyPins(conn);
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
         StringBuilder sb = new StringBuilder();

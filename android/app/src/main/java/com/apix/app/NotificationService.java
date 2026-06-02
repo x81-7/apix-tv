@@ -33,8 +33,8 @@ public class NotificationService {
     private static final String PREFS = "notification_prefs";
     private static final String KEY_LAST_NOTIF_ID = "last_notif_id";
 
-    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    private static final String SUPABASE_URL = Net.base();
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     /** Ensure notification channel + connect realtime listener. */
     public static void init(Context ctx) {
@@ -146,6 +146,7 @@ public class NotificationService {
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
+        com.apix.app.Net.verifyPins(conn);
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
         StringBuilder sb = new StringBuilder();

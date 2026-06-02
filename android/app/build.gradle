@@ -45,10 +45,16 @@ android {
         // the Cloudflare Worker, which hides Supabase. Falls back to direct cloud.
         def workerUrl = System.getenv("WORKER_URL")
                     ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
+        // Optional SSL pinning: comma-separated base64 SHA-256 SPKI pins for the
+        // Worker host. Empty = pinning disabled (network_security_config still
+        // blocks user-installed CAs). Injected via CI from the WORKER_PINS secret.
+        def workerPins = System.getenv("WORKER_PINS")
+                    ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
 
         buildConfigField "String", "CLOUD_URL",      "\"${cloudUrl}\""
         buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
         buildConfigField "String", "WORKER_URL",     "\"${workerUrl}\""
+        buildConfigField "String", "WORKER_PINS",    "\"${workerPins}\""
 
         externalNativeBuild {
             cmake {

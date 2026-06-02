@@ -54,6 +54,7 @@ jobs:
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
           ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         working-directory: ./android
@@ -77,6 +78,7 @@ jobs:
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
           ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
+          WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         working-directory: ./android

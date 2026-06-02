@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  APiX TV network hardening.
+
+  Release builds trust ONLY the system CA store, so user-installed certificates
+  (Charles / mitmproxy / Frida MITM proxies used to rip IPTV streams) are
+  rejected for every HTTPS connection in the app. Cleartext stays enabled so
+  legacy HTTP IPTV streams keep working. The Cloudflare Worker control channel
+  additionally gets runtime SHA-256 SPKI pinning in Net.java when WORKER_PINS
+  is provided.
+
+  Debug builds also trust user CAs so the team can inspect traffic locally.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

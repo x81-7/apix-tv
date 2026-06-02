@@ -35,8 +35,7 @@ import java.util.concurrent.TimeUnit;
 public class RealtimeNotificationManager {
 
     private static final String TAG = "RealtimeNotif";
-    private static final String SUPABASE_PROJECT = BuildConfig.CLOUD_URL.replace("https://", "").replace(".supabase.co", "");
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     private static OkHttpClient client;
     private static WebSocket socket;
@@ -58,8 +57,9 @@ public class RealtimeNotificationManager {
     }
 
     private static void connect() {
-        String url = "wss://" + SUPABASE_PROJECT + ".supabase.co/realtime/v1/websocket"
-                + "?apikey=" + SUPABASE_ANON_KEY + "&vsn=1.0.0";
+        // Routed through the Cloudflare Worker gateway (wss) when WORKER_URL is
+        // set; the Worker proxies the realtime websocket to Supabase.
+        String url = Net.realtimeWsUrl();
         Request req = new Request.Builder().url(url).build();
         socket = client.newWebSocket(req, new Listener());
     }

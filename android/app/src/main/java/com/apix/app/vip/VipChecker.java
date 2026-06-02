@@ -90,6 +90,7 @@ public final class VipChecker {
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(body.getBytes(StandardCharsets.UTF_8));
             }
+            com.apix.app.Net.verifyPins(conn);
             int code = conn.getResponseCode();
             if (code < 200 || code >= 300) {
                 Log.w(TAG, "server " + code);
