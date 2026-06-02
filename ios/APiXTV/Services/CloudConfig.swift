@@ -4,7 +4,13 @@ enum CloudConfig {
     // Lovable Cloud (NEW project, post-migration 2026-04-29).
     // Keep in sync with android/app/build.gradle CLOUD_URL / CLOUD_ANON_KEY.
     // CI/Xcode can override via Info.plist keys APIX_CLOUD_URL / APIX_CLOUD_ANON_KEY.
+    //
+    // White-label gateway: when APIX_WORKER_URL is provided the app talks ONLY
+    // to the Cloudflare Worker (which hides Supabase). It proxies the identical
+    // /rest/v1 and /functions/v1 paths, so only the base origin changes.
     static let baseURL: URL = {
+        if let w = Bundle.main.object(forInfoDictionaryKey: "APIX_WORKER_URL") as? String,
+           !w.isEmpty, let u = URL(string: w) { return u }
         if let v = Bundle.main.object(forInfoDictionaryKey: "APIX_CLOUD_URL") as? String,
            let u = URL(string: v) { return u }
         return URL(string: "https://fefrptfgqkiiwfqcjxbg.supabase.co")!
