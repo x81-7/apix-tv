@@ -33,8 +33,8 @@ public class NotificationService {
     private static final String PREFS = "notification_prefs";
     private static final String KEY_LAST_NOTIF_ID = "last_notif_id";
 
-    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    private static final String SUPABASE_URL = Net.base();
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     /** Ensure notification channel + connect realtime listener. */
     public static void init(Context ctx) {
