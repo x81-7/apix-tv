@@ -57,6 +57,7 @@ public final class HandshakeClient {
                 os.write(body.toString().getBytes("UTF-8"));
             }
 
+            com.apix.app.Net.verifyPins(c);
             int code = c.getResponseCode();
             java.io.InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
