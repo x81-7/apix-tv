@@ -133,6 +133,7 @@ public class CloudDataManager {
         conn.setReadTimeout(20000);
         if (headerName != null) conn.setRequestProperty(headerName, headerValue);
         conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+        Net.verifyPins(conn);
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
             throw new Exception("HTTP " + code + " for " + urlStr);
