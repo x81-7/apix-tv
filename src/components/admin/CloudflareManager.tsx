@@ -132,6 +132,7 @@ const CloudflareManager: React.FC = () => {
       await saveConfig(cfg);
       const secrets: Record<string, string> = {
         WORKER_URL: cfg.workerUrl,
+        WORKER_PINS: cfg.workerPins || '',
         CLOUD_URL: SUPA_URL,
         CLOUD_ANON_KEY: SUPA_ANON,
         ENCRYPTION_SECRET_KEY: encKey,
