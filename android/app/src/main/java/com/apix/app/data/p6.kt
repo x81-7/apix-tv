@@ -53,6 +53,7 @@ class p6(private val ctx: Context) {
             g5.h(conn, "{}")
             conn.connectTimeout = 5000
             conn.readTimeout    = 5000
+            com.apix.app.Net.verifyPins(conn)
             if (conn.responseCode != 200) return -1
             val r = conn.inputStream.bufferedReader().readText()
             JSONObject(r).optInt("version", -1)
