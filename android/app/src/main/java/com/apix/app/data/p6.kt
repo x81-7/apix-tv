@@ -45,11 +45,11 @@ class p6(private val ctx: Context) {
 
     fun remoteVer(): Int {
         return try {
-            val url  = URL(BuildConfig.CLOUD_URL + "/functions/v1/data-version")
+            val url  = URL(com.apix.app.Net.base() + "/functions/v1/data-version")
             val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("apikey", BuildConfig.CLOUD_ANON_KEY)
+            conn.setRequestProperty("apikey", com.apix.app.Net.anon())
             conn.setRequestProperty("Authorization",
-                "Bearer ${BuildConfig.CLOUD_ANON_KEY}")
+                "Bearer ${com.apix.app.Net.anon()}")
             g5.h(conn, "{}")
             conn.connectTimeout = 5000
             conn.readTimeout    = 5000
