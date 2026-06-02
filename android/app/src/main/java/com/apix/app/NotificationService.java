@@ -146,6 +146,7 @@ public class NotificationService {
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
+        com.apix.app.Net.verifyPins(conn);
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
         StringBuilder sb = new StringBuilder();
