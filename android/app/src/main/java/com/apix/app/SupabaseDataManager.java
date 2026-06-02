@@ -397,6 +397,7 @@ public class SupabaseDataManager {
         conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
         conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
         conn.setRequestProperty("Accept", "application/json");
+        Net.verifyPins(conn);
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
         StringBuilder sb = new StringBuilder();
