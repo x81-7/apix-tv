@@ -13,9 +13,10 @@ interface CfConfig {
   zoneId: string;
   scriptName: string;
   workerUrl: string;
+  workerPins: string;
 }
 
-const EMPTY: CfConfig = { accountId: '', zoneId: '', scriptName: 'apix-gateway', workerUrl: '' };
+const EMPTY: CfConfig = { accountId: '', zoneId: '', scriptName: 'apix-gateway', workerUrl: '', workerPins: '' };
 const TOKEN_KEY = 'apix_cf_api_token'; // kept locally — never written to a public table
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
