@@ -36,8 +36,8 @@ public class CloudDataManager {
     private static final String KEY_CACHED_KEY_VERSION = "cached_key_version";
 
     // ==== CONFIGURE THESE TWO FROM YOUR SUPABASE PROJECT ====
-    private static final String SUPABASE_URL = BuildConfig.CLOUD_URL;
-    private static final String SUPABASE_ANON_KEY = BuildConfig.CLOUD_ANON_KEY;
+    private static final String SUPABASE_URL = Net.base();
+    private static final String SUPABASE_ANON_KEY = Net.anon();
 
     public interface Callback {
         void onSuccess(String decryptedJson);
