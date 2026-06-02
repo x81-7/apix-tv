@@ -131,6 +131,23 @@ export default {
       return res;
     }
 
+    // 2b) Realtime websocket passthrough — keeps Supabase hidden behind the edge.
+    if (url.pathname.startsWith("/realtime/v1/")) {
+      const upgrade = request.headers.get("Upgrade") || "";
+      const target = env.SUPA_URL + url.pathname + url.search;
+      if (upgrade.toLowerCase() === "websocket") {
+        // Pass the upgrade through untouched so CF tunnels the WS frames.
+        return fetch(target, request);
+      }
+      // Non-upgrade realtime calls (rare) fall back to a normal proxy.
+      const h = new Headers(request.headers);
+      h.set("apikey", env.SUPA_ANON);
+      h.set("Authorization", "Bearer " + env.SUPA_ANON);
+      h.delete("host");
+      return fetch(target, { method: request.method, headers: h });
+    }
+
+
     // 3) Proxy /rest/v1/* and /functions/v1/* to Supabase with hidden keys
     if (url.pathname.startsWith("/rest/v1/") || url.pathname.startsWith("/functions/v1/")) {
       const target = env.SUPA_URL + url.pathname + url.search;
