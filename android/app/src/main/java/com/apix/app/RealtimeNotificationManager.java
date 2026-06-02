@@ -57,8 +57,9 @@ public class RealtimeNotificationManager {
     }
 
     private static void connect() {
-        String url = "wss://" + SUPABASE_PROJECT + ".supabase.co/realtime/v1/websocket"
-                + "?apikey=" + SUPABASE_ANON_KEY + "&vsn=1.0.0";
+        // Routed through the Cloudflare Worker gateway (wss) when WORKER_URL is
+        // set; the Worker proxies the realtime websocket to Supabase.
+        String url = Net.realtimeWsUrl();
         Request req = new Request.Builder().url(url).build();
         socket = client.newWebSocket(req, new Listener());
     }
