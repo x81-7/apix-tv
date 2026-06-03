@@ -151,7 +151,8 @@ data class SubChannel(
     var androidActionType: String? = null,
     var pinCode: String? = null,
     var forcedAspectRatio: String? = null,
-    var lockAspectRatio: Boolean = false
+    var lockAspectRatio: Boolean = false,
+    var useLocalProxy: Boolean = false
 )
 
 /**
