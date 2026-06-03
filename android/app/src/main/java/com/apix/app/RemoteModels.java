@@ -41,6 +41,8 @@ public class RemoteModels {
 
         // Panel integration: offline cache toggle (per-channel).
         public boolean offlineCacheEnabled;
+        // Panel integration: route playback through the on-device local proxy.
+        public boolean useLocalProxy;
         // Per-channel PIN — when set, app prompts the user before playing.
         public String pinCode;
         // Panel integration: forced aspect ratio + lock (applied in PlayerActivity).
@@ -172,6 +174,7 @@ public class RemoteModels {
         public IosStreamConfig iosStream;
         public String iosActionType;
         public boolean offlineCacheEnabled;
+        public boolean useLocalProxy;
         public String forcedAspectRatio;
         public boolean lockAspectRatio;
         public long cacheVersion;
