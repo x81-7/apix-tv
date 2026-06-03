@@ -23,7 +23,8 @@ data class Channel(
     var androidActionType: String? = null,
     var pinCode: String? = null,
     var forcedAspectRatio: String? = null,
-    var lockAspectRatio: Boolean = false
+    var lockAspectRatio: Boolean = false,
+    var useLocalProxy: Boolean = false
 )
 
 data class StreamConfig(
@@ -174,6 +175,7 @@ data class PlayerConfig(
     var dynamicApi: DynamicApiConfig? = null,
     var forcedAspectRatio: String? = null,
     var lockAspectRatio: Boolean = false,
+    var useLocalProxy: Boolean = false,
     var logoOverlay: LogoOverlay? = null
 )
 
