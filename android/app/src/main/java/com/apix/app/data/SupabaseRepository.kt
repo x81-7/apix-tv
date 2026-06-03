@@ -45,6 +45,7 @@ object SupabaseRepository {
                             pinCode = rCh.pinCode,
                              forcedAspectRatio = rCh.forcedAspectRatio,
                              lockAspectRatio = rCh.lockAspectRatio,
+                             useLocalProxy = rCh.useLocalProxy,
                             stream = rCh.stream?.let { s -> StreamConfig(s.url, s.userAgent, s.referrer, s.cookies) },
                             androidStream = convertAndroidStream(rCh.androidStream))
                     }, hidden = rCat.hidden)
@@ -89,6 +90,7 @@ object SupabaseRepository {
                             androidActionType = sc.androidActionType,
                              forcedAspectRatio = sc.forcedAspectRatio,
                              lockAspectRatio = sc.lockAspectRatio,
+                             useLocalProxy = sc.useLocalProxy,
                             stream = sc.stream?.let { s -> StreamConfig(s.url, s.userAgent, s.referrer, s.cookies) },
                             androidStream = convertAndroidStream(sc.androidStream))
                     })

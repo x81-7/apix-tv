@@ -145,7 +145,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         androidStream = sc.androidStream,
                         androidActionType = sc.androidActionType,
                         forcedAspectRatio = sc.forcedAspectRatio,
-                        lockAspectRatio = sc.lockAspectRatio
+                        lockAspectRatio = sc.lockAspectRatio,
+                        useLocalProxy = sc.useLocalProxy
                     ))
                 }
             }
