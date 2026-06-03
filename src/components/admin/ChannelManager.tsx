@@ -303,6 +303,19 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
                     onChange={(e) => setFormData((p: any) => ({ ...p, offlineCacheEnabled: e.target.checked }))}
                   />
                 </div>
+
+                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary border border-border">
+                  <div>
+                    <Label className="text-foreground font-medium">تفعيل الحماية القصوى (Local Proxy)</Label>
+                    <p className="text-xs text-muted-foreground mt-1">يمرر البث عبر بروكسي محلي داخل التطبيق ويعيد كتابة روابط القوائم لإخفاء المصدر الأصلي (m3u8/mpd). ملفات mp4/mkv تُستثنى تلقائياً.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5 accent-primary"
+                    checked={!!formData.useLocalProxy}
+                    onChange={(e) => setFormData((p: any) => ({ ...p, useLocalProxy: e.target.checked }))}
+                  />
+                </div>
               </div>
 
               <div className="space-y-3">
