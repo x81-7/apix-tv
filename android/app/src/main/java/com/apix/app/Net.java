@@ -45,14 +45,28 @@ public final class Net {
 
     /** True when the app is routing through the Cloudflare Worker gateway. */
     public static boolean usingWorker() {
-        String w = BuildConfig.WORKER_URL;
-        return w != null && !w.trim().isEmpty();
+        // The gateway origin is produced by native code (x.ke()). When a Worker
+        // URL was baked in, ke() returns it; otherwise it falls back to the
+        // legacy cloud origin. We treat any value that differs from the legacy
+        // cloud origin as "worker mode".
+        String gw = stripSlash(nativeGateway());
+        String cloud = stripSlash(BuildConfig.CLOUD_URL);
+        return !gw.isEmpty() && !gw.equalsIgnoreCase(cloud);
     }
 
-    /** The base HTTPS origin every request is built on (Worker first, else Cloud). */
+    /** Resolve the gateway origin from the native vault (never from BuildConfig). */
+    private static String nativeGateway() {
+        try {
+            String u = com.apix.app.x.ke();
+            if (u != null && !u.trim().isEmpty()) return u.trim();
+        } catch (Throwable ignored) {}
+        // Last-resort legacy fallback so the app still boots if native fails.
+        return BuildConfig.CLOUD_URL;
+    }
+
+    /** The base HTTPS origin every request is built on, sourced from native. */
     public static String base() {
-        if (usingWorker()) return stripSlash(BuildConfig.WORKER_URL);
-        return stripSlash(BuildConfig.CLOUD_URL);
+        return stripSlash(nativeGateway());
     }
 
     /** The anon/publishable key. The Worker overrides it server-side anyway. */
@@ -60,12 +74,21 @@ public final class Net {
         return BuildConfig.CLOUD_ANON_KEY;
     }
 
-    /** Build a realtime websocket URL routed through the gateway when possible. */
+    /**
+     * Build a realtime websocket URL routed through the gateway. When the Worker
+     * gateway is in use the apikey is NOT sent from the client — the Worker
+     * injects it server-side, so the Supabase origin/key never leaks from the
+     * APK. In legacy direct mode the apikey is required and appended.
+     */
     public static String realtimeWsUrl() {
         String b = base()
                 .replaceFirst("^https://", "wss://")
                 .replaceFirst("^http://", "ws://");
-        return b + "/realtime/v1/websocket?apikey=" + anon() + "&vsn=1.0.0";
+        String url = b + "/realtime/v1/websocket?vsn=1.0.0";
+        if (!usingWorker()) {
+            url += "&apikey=" + anon();
+        }
+        return url;
     }
 
     /**
