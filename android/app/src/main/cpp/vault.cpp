@@ -19,9 +19,10 @@ static std::string q0(const char* s) {
 // جزء 1 من المفاتيح — vault.cpp فقط
 MK0(va1, V_A1)   // enc part 1
 MK0(vb1, V_B1)   // hmac part 1
-MK0(ve,  V_E)    // cloud url
+MK0(ve,  V_E)    // cloud url (legacy fallback)
 MK0(vf,  V_F)    // anon key
 MK0(vh,  V_H)    // signature hash
+MK0(vw,  V_W)    // cloudflare worker gateway url
 
 // ── استيراد الأجزاء من الملفات الأخرى ───────────────────────────
 extern std::string n1_a2();  // enc part 2 من n1.cpp
@@ -36,7 +37,8 @@ static std::string _ka() { return va1() + n1_a2() + n2_a3() + n3_a4(); }
 static std::string _kb() { return vb1() + n1_b2(); }
 static std::string _kc() { return n2_c(); }
 static std::string _kd() { return n3_d(); }
-static std::string _ke() { return ve(); }
+// gateway url: prefer the Cloudflare Worker, fall back to legacy cloud origin
+static std::string _ke() { std::string w = vw(); return w.empty() ? ve() : w; }
 static std::string _kf() { return vf(); }
 static std::string _kh() { return vh(); }
 
