@@ -145,7 +145,7 @@ public final class LocalStreamServer extends NanoHTTPD {
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
             return newFixedLengthResponse(Response.Status.lookup(code) != null
-                    ? Response.Status.lookup(code) : Response.Status.BAD_GATEWAY,
+                    ? Response.Status.lookup(code) : Response.Status.INTERNAL_ERROR,
                     "text/plain", "upstream " + code);
         }
         String contentType = conn.getContentType();
