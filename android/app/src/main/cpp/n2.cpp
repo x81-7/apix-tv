@@ -46,7 +46,7 @@ extern "C" {
 
 // يُعيد 1 إذا بيئة خطرة مكتشفة
 JNIEXPORT jint JNICALL
-Java_com_apix_app_security_g4_ne(JNIEnv*, jobject) {
+Java_com_apix_app_x_ne(JNIEnv*, jobject) {
     return (n2_check_env() || n2_check_frida_files()) ? 1 : 0;
 }
 

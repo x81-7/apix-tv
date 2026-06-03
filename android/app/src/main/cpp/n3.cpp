@@ -54,7 +54,7 @@ extern "C" {
 
 // يُعيد 1 إذا root أو Frida مكتشف
 JNIEXPORT jint JNICALL
-Java_com_apix_app_security_g4_nr(JNIEnv*, jobject) {
+Java_com_apix_app_x_nr(JNIEnv*, jobject) {
     return (n3_check_root() || n3_check_frida_port()) ? 1 : 0;
 }
 

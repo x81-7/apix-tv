@@ -48,13 +48,13 @@ static std::string _kg() {
 
 extern "C" {
 
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_a(JNIEnv* e, jobject) { return e->NewStringUTF(_ka().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_b(JNIEnv* e, jobject) { return e->NewStringUTF(_kb().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_c(JNIEnv* e, jobject) { return e->NewStringUTF(_kc().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_d(JNIEnv* e, jobject) { return e->NewStringUTF(_kd().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_e(JNIEnv* e, jobject) { return e->NewStringUTF(_ke().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_f(JNIEnv* e, jobject) { return e->NewStringUTF(_kf().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_g(JNIEnv* e, jobject) { return e->NewStringUTF(_kg().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_h(JNIEnv* e, jobject) { return e->NewStringUTF(_kh().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_a(JNIEnv* e, jobject) { return e->NewStringUTF(_ka().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_b(JNIEnv* e, jobject) { return e->NewStringUTF(_kb().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_c(JNIEnv* e, jobject) { return e->NewStringUTF(_kc().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_d(JNIEnv* e, jobject) { return e->NewStringUTF(_kd().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_e(JNIEnv* e, jobject) { return e->NewStringUTF(_ke().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_f(JNIEnv* e, jobject) { return e->NewStringUTF(_kf().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_g(JNIEnv* e, jobject) { return e->NewStringUTF(_kg().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_h(JNIEnv* e, jobject) { return e->NewStringUTF(_kh().c_str()); }
 
 } // extern "C"
