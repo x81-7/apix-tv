@@ -40,6 +40,7 @@ interface ChannelRow {
   windows_stream?: any;
   windows_action_type?: string | null;
   offline_cache_enabled?: boolean;
+  use_local_proxy?: boolean;
 }
 
 interface MenuRow {
@@ -68,6 +69,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
     windowsActionType: 'native',
     iosStream: { playerType: 'native', externalApp: 'none' } as IOSStreamConfig,
     offlineCacheEnabled: false,
+    useLocalProxy: false,
   });
 
   const loadChannels = async () => {
@@ -105,6 +107,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       iosPlayerType: 'native',
       iosStream: { playerType: 'native', externalApp: 'none' } as IOSStreamConfig,
       offlineCacheEnabled: false,
+      useLocalProxy: false,
     });
     setEditingChannel(null);
   };
@@ -129,6 +132,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       windowsStream: ch.windows_stream || { url: '' },
       windowsActionType: ch.windows_action_type || 'native',
       offlineCacheEnabled: !!ch.offline_cache_enabled,
+      useLocalProxy: !!ch.use_local_proxy,
     });
     setIsDialogOpen(true);
   };
@@ -144,6 +148,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       action_type: formData.actionType || 'direct_play',
       hidden: false,
       offline_cache_enabled: !!formData.offlineCacheEnabled,
+      use_local_proxy: !!formData.useLocalProxy,
     };
 
     if (formData.actionType === 'direct_play') {
