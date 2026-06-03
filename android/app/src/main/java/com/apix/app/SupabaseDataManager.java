@@ -496,6 +496,7 @@ public class SupabaseDataManager {
 
         // Panel → per-channel offline cache toggle + forced aspect ratio.
         c.offlineCacheEnabled = ch.optBoolean("offline_cache_enabled", false);
+        c.useLocalProxy = ch.optBoolean("use_local_proxy", false);
         c.cacheVersion = ch.optLong("cache_version", 1L);
         // Per-channel PIN (panel `pin_code` column on channels table).
         c.pinCode = ch.optString("pin_code", null);
@@ -557,6 +558,7 @@ public class SupabaseDataManager {
 
         // Panel → per-channel offline cache toggle + forced aspect ratio.
         s.offlineCacheEnabled = sc.optBoolean("offline_cache_enabled", false);
+        s.useLocalProxy = sc.optBoolean("use_local_proxy", false);
         s.cacheVersion = sc.optLong("cache_version", 1L);
         if (!sc.isNull("android_stream")) {
             JSONObject _as = sc.optJSONObject("android_stream");

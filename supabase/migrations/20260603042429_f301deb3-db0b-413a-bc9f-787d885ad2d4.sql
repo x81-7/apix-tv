@@ -1,0 +1,2 @@
+ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS use_local_proxy boolean NOT NULL DEFAULT false;
+ALTER TABLE public.sub_channels ADD COLUMN IF NOT EXISTS use_local_proxy boolean NOT NULL DEFAULT false;

@@ -145,7 +145,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         androidStream = sc.androidStream,
                         androidActionType = sc.androidActionType,
                         forcedAspectRatio = sc.forcedAspectRatio,
-                        lockAspectRatio = sc.lockAspectRatio
+                        lockAspectRatio = sc.lockAspectRatio,
+                        useLocalProxy = sc.useLocalProxy
                     ))
                 }
             }
@@ -158,6 +159,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val config = PlayerConfig(title = channel.name)
         config.forcedAspectRatio = channel.forcedAspectRatio
         config.lockAspectRatio = channel.lockAspectRatio
+        config.useLocalProxy = channel.useLocalProxy
 
         if (channel.androidStream?.url != null) {
             config.url = channel.androidStream!!.url!!

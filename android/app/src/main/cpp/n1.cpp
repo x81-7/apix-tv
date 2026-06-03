@@ -63,7 +63,7 @@ extern "C" {
 
 // يُعيد 1 إذا VPN مكتشف
 JNIEXPORT jint JNICALL
-Java_com_apix_app_security_g4_nv(JNIEnv*, jobject) {
+Java_com_apix_app_x_nv(JNIEnv*, jobject) {
     return (n1_has_vpn() || n1_has_vpn6()) ? 1 : 0;
 }
 

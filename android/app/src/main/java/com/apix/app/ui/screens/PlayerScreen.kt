@@ -512,10 +512,29 @@ fun PlayerScreen(
                 return
             }
 
+            // ── الحماية القصوى (Local Proxy) ──────────────────────────────
+            // عند تفعيلها، نمرر روابط القوائم (m3u8/mpd) عبر سيرفر محلي
+            // 127.0.0.1:8080 يعيد كتابة الروابط الداخلية لإخفاء المصدر الأصلي.
+            // الملفات الثنائية (.mp4/.mkv) تتجاوز البروكسي تلقائياً (Bypass).
+            var playUrl = streamUrl
+            if (cfg.useLocalProxy && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val hdrs = HashMap<String, String>()
+                    cfg.headers?.userAgent?.let { hdrs["User-Agent"] = it }
+                    cfg.headers?.referer?.let { hdrs["Referer"] = it }
+                    cfg.headers?.cookie?.let { hdrs["Cookie"] = it }
+                    cfg.headers?.origin?.let { hdrs["Origin"] = it }
+                    cfg.customHeaders?.forEach { (k, v) -> hdrs[k] = v }
+                    com.apix.app.LocalStreamServer.setHeaders(hdrs)
+                    com.apix.app.LocalStreamServer.ensureStarted()
+                    playUrl = com.apix.app.LocalStreamServer.wrap(streamUrl)
+                }
+            }
+
             player.stop()
             player.clearMediaItems()
-            val effectiveConfig = cfg.copy(url = streamUrl)
-            val mediaSource = buildMediaSourceWithDrm(context, effectiveConfig, streamUrl)
+            val effectiveConfig = cfg.copy(url = playUrl)
+            val mediaSource = buildMediaSourceWithDrm(context, effectiveConfig, playUrl)
 
             player.setMediaSource(mediaSource)
             player.prepare()

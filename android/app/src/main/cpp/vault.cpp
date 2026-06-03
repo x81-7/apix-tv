@@ -19,9 +19,10 @@ static std::string q0(const char* s) {
 // جزء 1 من المفاتيح — vault.cpp فقط
 MK0(va1, V_A1)   // enc part 1
 MK0(vb1, V_B1)   // hmac part 1
-MK0(ve,  V_E)    // cloud url
+MK0(ve,  V_E)    // cloud url (legacy fallback)
 MK0(vf,  V_F)    // anon key
 MK0(vh,  V_H)    // signature hash
+MK0(vw,  V_W)    // cloudflare worker gateway url
 
 // ── استيراد الأجزاء من الملفات الأخرى ───────────────────────────
 extern std::string n1_a2();  // enc part 2 من n1.cpp
@@ -36,7 +37,8 @@ static std::string _ka() { return va1() + n1_a2() + n2_a3() + n3_a4(); }
 static std::string _kb() { return vb1() + n1_b2(); }
 static std::string _kc() { return n2_c(); }
 static std::string _kd() { return n3_d(); }
-static std::string _ke() { return ve(); }
+// gateway url: prefer the Cloudflare Worker, fall back to legacy cloud origin
+static std::string _ke() { std::string w = vw(); return w.empty() ? ve() : w; }
 static std::string _kf() { return vf(); }
 static std::string _kh() { return vh(); }
 
@@ -48,13 +50,13 @@ static std::string _kg() {
 
 extern "C" {
 
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_a(JNIEnv* e, jobject) { return e->NewStringUTF(_ka().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_b(JNIEnv* e, jobject) { return e->NewStringUTF(_kb().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_c(JNIEnv* e, jobject) { return e->NewStringUTF(_kc().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_d(JNIEnv* e, jobject) { return e->NewStringUTF(_kd().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_e(JNIEnv* e, jobject) { return e->NewStringUTF(_ke().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_f(JNIEnv* e, jobject) { return e->NewStringUTF(_kf().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_g(JNIEnv* e, jobject) { return e->NewStringUTF(_kg().c_str()); }
-JNIEXPORT jstring JNICALL Java_com_apix_app_security_g4_h(JNIEnv* e, jobject) { return e->NewStringUTF(_kh().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_a(JNIEnv* e, jobject) { return e->NewStringUTF(_ka().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_b(JNIEnv* e, jobject) { return e->NewStringUTF(_kb().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_c(JNIEnv* e, jobject) { return e->NewStringUTF(_kc().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_d(JNIEnv* e, jobject) { return e->NewStringUTF(_kd().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_e(JNIEnv* e, jobject) { return e->NewStringUTF(_ke().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_f(JNIEnv* e, jobject) { return e->NewStringUTF(_kf().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_g(JNIEnv* e, jobject) { return e->NewStringUTF(_kg().c_str()); }
+JNIEXPORT jstring JNICALL Java_com_apix_app_x_h(JNIEnv* e, jobject) { return e->NewStringUTF(_kh().c_str()); }
 
 } // extern "C"

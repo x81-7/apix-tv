@@ -31,13 +31,13 @@ public final class PayloadCipher {
 
     // فك تشفير بيانات السيرفر (ENCRYPTION_SECRET_KEY)
     public static String decryptEnvelope(String envelopeJson) throws Exception {
-        String raw = com.apix.app.security.g4.ka();
+        String raw = com.apix.app.x.ka();
         return decrypt(envelopeJson, toKeyBytes(raw));
     }
 
     // فك تشفير روابط apix.png (EXTERNAL_PANEL_DECRYPTION_KEY)
     public static String decryptExternal(String envelopeJson) throws Exception {
-        String raw = com.apix.app.security.g4.kd();
+        String raw = com.apix.app.x.kd();
         return decrypt(envelopeJson, toKeyBytes(raw));
     }
 

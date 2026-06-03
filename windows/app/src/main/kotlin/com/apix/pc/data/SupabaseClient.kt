@@ -15,7 +15,7 @@ object SupabaseClient {
     // Keep in sync with android/app/build.gradle CLOUD_URL/CLOUD_ANON_KEY and
     // ios/APiXTV/Services/CloudConfig.swift. Points to the Lovable Cloud
     // project the admin panel writes to.
-    private const val DEFAULT_URL = "https://xfrcjwybxftxspvpegfb.supabase.co"
+    private const val DEFAULT_URL = "" // Gateway-only: provide via CLOUD_URL / WORKER_URL env
     private const val DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmcmNqd3lieGZ0eHNwdnBlZ2ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzkyMzksImV4cCI6MjA5Mjk1NTIzOX0.xtoVGdA1zNJBRKerY16azg8NQSMXwK6Xmid7TERKAR0"
 
     val baseUrl: String = (System.getenv("CLOUD_URL") ?: DEFAULT_URL).trimEnd('/')

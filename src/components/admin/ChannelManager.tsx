@@ -40,6 +40,7 @@ interface ChannelRow {
   windows_stream?: any;
   windows_action_type?: string | null;
   offline_cache_enabled?: boolean;
+  use_local_proxy?: boolean;
 }
 
 interface MenuRow {
@@ -68,6 +69,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
     windowsActionType: 'native',
     iosStream: { playerType: 'native', externalApp: 'none' } as IOSStreamConfig,
     offlineCacheEnabled: false,
+    useLocalProxy: false,
   });
 
   const loadChannels = async () => {
@@ -105,6 +107,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       iosPlayerType: 'native',
       iosStream: { playerType: 'native', externalApp: 'none' } as IOSStreamConfig,
       offlineCacheEnabled: false,
+      useLocalProxy: false,
     });
     setEditingChannel(null);
   };
@@ -129,6 +132,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       windowsStream: ch.windows_stream || { url: '' },
       windowsActionType: ch.windows_action_type || 'native',
       offlineCacheEnabled: !!ch.offline_cache_enabled,
+      useLocalProxy: !!ch.use_local_proxy,
     });
     setIsDialogOpen(true);
   };
@@ -144,6 +148,7 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
       action_type: formData.actionType || 'direct_play',
       hidden: false,
       offline_cache_enabled: !!formData.offlineCacheEnabled,
+      use_local_proxy: !!formData.useLocalProxy,
     };
 
     if (formData.actionType === 'direct_play') {
@@ -296,6 +301,19 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
                     className="w-5 h-5 accent-primary"
                     checked={!!formData.offlineCacheEnabled}
                     onChange={(e) => setFormData((p: any) => ({ ...p, offlineCacheEnabled: e.target.checked }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary border border-border">
+                  <div>
+                    <Label className="text-foreground font-medium">تفعيل الحماية القصوى (Local Proxy)</Label>
+                    <p className="text-xs text-muted-foreground mt-1">يمرر البث عبر بروكسي محلي داخل التطبيق ويعيد كتابة روابط القوائم لإخفاء المصدر الأصلي (m3u8/mpd). ملفات mp4/mkv تُستثنى تلقائياً.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5 accent-primary"
+                    checked={!!formData.useLocalProxy}
+                    onChange={(e) => setFormData((p: any) => ({ ...p, useLocalProxy: e.target.checked }))}
                   />
                 </div>
               </div>
