@@ -13,7 +13,8 @@ enum CloudConfig {
            !w.isEmpty, let u = URL(string: w) { return u }
         if let v = Bundle.main.object(forInfoDictionaryKey: "APIX_CLOUD_URL") as? String,
            let u = URL(string: v) { return u }
-        return URL(string: "https://fefrptfgqkiiwfqcjxbg.supabase.co")!
+        // Gateway-only: no hardcoded origin. Configure APIX_WORKER_URL / APIX_CLOUD_URL.
+        return URL(string: "https://127.0.0.1")!
     }()
     static let anonKey: String = {
         if let v = Bundle.main.object(forInfoDictionaryKey: "APIX_CLOUD_ANON_KEY") as? String,
