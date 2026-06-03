@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.apix.app.security.g4
+import com.apix.app.x
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 
@@ -29,7 +29,7 @@ abstract class p1 : RoomDatabase() {
 
         private fun bld(ctx: Context): p1 {
             val pass = SQLiteDatabase.getBytes(
-                g4.kg().toCharArray()
+                x.kg().toCharArray()
             )
             return Room.databaseBuilder(
                 ctx.applicationContext,

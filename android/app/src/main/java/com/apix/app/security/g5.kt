@@ -14,7 +14,7 @@ object g5 {
     // توليد التوقيع
     @JvmStatic fun s(body: String): String {
         val ts  = System.currentTimeMillis() / 1000
-        val sec = g4.kb()
+        val sec = com.apix.app.x.kb()
         val msg = "$ts.$body"
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(

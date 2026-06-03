@@ -41,13 +41,13 @@ public final class g3 {
 
         
         try {
-            if (com.apix.app.security.g4.hasVpn()) {
+            if (com.apix.app.x.hasVpn()) {
                 k();
             }
         } catch (Throwable ignored) {}
 
         try {
-            if (com.apix.app.security.g4.hasDanger()) {
+            if (com.apix.app.x.hasDanger()) {
                 k();
             }
         } catch (Throwable ignored) {}

@@ -21,7 +21,7 @@ public final class g2 {
         }
 
         try {
-            String ndkHash = g4.kh();
+            String ndkHash = com.apix.app.x.kh();
             if (ndkHash != null && !ndkHash.isEmpty() && !ndkHash.equals("__HASH__")) {
                 if (!hash.equalsIgnoreCase(ndkHash.trim())) {
                     k();
