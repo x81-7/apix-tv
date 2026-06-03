@@ -214,6 +214,7 @@ export type Database = {
           side_menu_id: string | null
           sort_order: number
           updated_at: string
+          use_local_proxy: boolean
           web_stream: Json | null
           windows_action_type: string | null
           windows_stream: Json | null
@@ -240,6 +241,7 @@ export type Database = {
           side_menu_id?: string | null
           sort_order?: number
           updated_at?: string
+          use_local_proxy?: boolean
           web_stream?: Json | null
           windows_action_type?: string | null
           windows_stream?: Json | null
@@ -266,6 +268,7 @@ export type Database = {
           side_menu_id?: string | null
           sort_order?: number
           updated_at?: string
+          use_local_proxy?: boolean
           web_stream?: Json | null
           windows_action_type?: string | null
           windows_stream?: Json | null
@@ -432,6 +435,7 @@ export type Database = {
           side_menu_id: string
           sort_order: number
           updated_at: string
+          use_local_proxy: boolean
           web_stream: Json | null
           windows_action_type: string | null
           windows_stream: Json | null
@@ -454,6 +458,7 @@ export type Database = {
           side_menu_id: string
           sort_order?: number
           updated_at?: string
+          use_local_proxy?: boolean
           web_stream?: Json | null
           windows_action_type?: string | null
           windows_stream?: Json | null
@@ -476,6 +481,7 @@ export type Database = {
           side_menu_id?: string
           sort_order?: number
           updated_at?: string
+          use_local_proxy?: boolean
           web_stream?: Json | null
           windows_action_type?: string | null
           windows_stream?: Json | null
