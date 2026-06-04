@@ -59,13 +59,31 @@ object SupabaseRepository {
         var show = true
         try {
             if (ctx != null) {
-                val obj = SupabaseDataManager.fetchAppSettings()
-                if (obj != null && obj.has("showSettingsSection")) {
-                    show = obj.optBoolean("showSettingsSection", true)
+                // Single source of truth: read from the same worker-cached bundle
+                // that powers the rest of the app (cached-data via the Cloudflare
+                // Worker). This avoids an extra direct /rest/v1 call (which would
+                // leak the origin) and guarantees the hide/show flag is consistent
+                // with the categories actually rendered.
+                val data = suspendCoroutine<SupabaseDataManager.DataBundle?> { cont ->
+                    SupabaseDataManager.fetchRemote(ctx, object : SupabaseDataManager.DataCallback {
+                        override fun onSuccess(data: SupabaseDataManager.DataBundle) { cont.resume(data) }
+                        override fun onError(error: String) { cont.resume(null) }
+                    })
+                }
+                val raw = data?.settings?.get("appSettings")
+                if (!raw.isNullOrBlank()) {
+                    try {
+                        val obj = org.json.JSONObject(raw)
+                        if (obj.has("showSettingsSection")) {
+                            show = obj.optBoolean("showSettingsSection", true)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "appSettings parse failed", e)
+                    }
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "fetchAppSettings failed", e)
+            Log.w(TAG, "observeAppSettings failed", e)
         }
         emit(AppSettings(showSettingsSection = show))
     }.flowOn(Dispatchers.IO)
