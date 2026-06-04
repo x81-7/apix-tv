@@ -230,6 +230,9 @@ const CloudflareManager: React.FC = () => {
             <Button variant="outline" onClick={handlePurge} disabled={busy.purge} className="hover:text-destructive">
               {busy.purge ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}مسح الكاش
             </Button>
+            <Button variant="outline" onClick={handleDeployCinema} disabled={busy.cinema}>
+              {busy.cinema ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Rocket className="w-4 h-4 mr-2" />}نشر وركر السينما (منفصل)
+            </Button>
           </div>
           {cfg.workerUrl && (
             <div className="space-y-2">
