@@ -51,8 +51,16 @@ android {
         def workerPins = System.getenv("WORKER_PINS")
                     ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
 
-        buildConfigField "String", "CLOUD_URL",      "\"${cloudUrl}\""
-        buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
+        // SECURITY: when a Worker is configured, NEVER bake the Supabase origin or
+        // anon key into the APK. A static-strings scan of the APK must not reveal
+        // *.supabase.co or the apikey. The Worker injects the real key server-side,
+        // so the client values can be empty in worker mode.
+        def workerActive = (workerUrl != null && !workerUrl.trim().isEmpty())
+        def bakedCloudUrl = workerActive ? "" : cloudUrl
+        def bakedCloudKey = workerActive ? "" : cloudKey
+
+        buildConfigField "String", "CLOUD_URL",      "\"${bakedCloudUrl}\""
+        buildConfigField "String", "CLOUD_ANON_KEY", "\"${bakedCloudKey}\""
         buildConfigField "String", "WORKER_URL",     "\"${workerUrl}\""
         buildConfigField "String", "WORKER_PINS",    "\"${workerPins}\""
 
@@ -63,8 +71,8 @@ android {
                           "-DHMAC_SECRET=${hmacSec}",
                           "-DKEY_SALT=${keySalt}",
                           "-DEXT_KEY=${extKey}",
-                          "-DCLOUD_URL=${cloudUrl}",
-                          "-DCLOUD_ANON_KEY=${cloudKey}",
+                          "-DCLOUD_URL=${bakedCloudUrl}",
+                          "-DCLOUD_ANON_KEY=${bakedCloudKey}",
                           "-DWORKER_URL=${workerUrl}"
             }
         }
