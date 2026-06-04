@@ -132,6 +132,9 @@ const AdminDashboard: React.FC = () => {
             <TabsTrigger value="vip" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Crown className="w-4 h-4 mr-2" />اشتراكات VIP
             </TabsTrigger>
+            <TabsTrigger value="cinema" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Film className="w-4 h-4 mr-2" />السينما والبث
+            </TabsTrigger>
             <TabsTrigger value="cloudflare" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Cloud className="w-4 h-4 mr-2" />Cloudflare
             </TabsTrigger>
