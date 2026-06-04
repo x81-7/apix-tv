@@ -150,6 +150,14 @@ Deno.serve(async (req) => {
       const result = await deployWorker(apiToken, accountId, name, injected);
       return json({ success: true, ...result });
     }
+    if (action === "deploy-cinema") {
+      // Dedicated movies/series Worker — separate script, only needs the
+      // backend origin + anon key (it proxies the cinema-gateway function).
+      const cinemaName = (scriptName && String(scriptName).trim()) || "apix-cinema";
+      const cinemaSecrets = { SUPA_URL: injected.SUPA_URL, SUPA_ANON: injected.SUPA_ANON };
+      const result = await deployWorker(apiToken, accountId, cinemaName, cinemaSecrets, buildCinemaWorkerScript());
+      return json({ success: true, ...result });
+    }
     if (action === "update-secrets") {
       const result = await updateSecrets(apiToken, accountId, name, injected);
       return json({ success: true, ...result });
