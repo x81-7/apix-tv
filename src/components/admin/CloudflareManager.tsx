@@ -106,6 +106,21 @@ const CloudflareManager: React.FC = () => {
     finally { setBusyKey('deploy', false); }
   };
 
+  const handleDeployCinema = async () => {
+    if (!cfg.accountId.trim() || !apiToken.trim()) { toast.error('أدخل Account ID و API Token'); return; }
+    setBusyKey('cinema', true);
+    try {
+      const d = await callManager('deploy-cinema');
+      if (d.workerUrl) {
+        try { await navigator.clipboard.writeText(d.workerUrl); } catch { /* ignore */ }
+        toast.success(`تم نشر وركر السينما: ${d.workerUrl} (تم نسخه)`);
+      } else {
+        toast.success('تم نشر وركر السينما');
+      }
+    } catch (e: any) { toast.error(`فشل نشر وركر السينما: ${e?.message}`); }
+    finally { setBusyKey('cinema', false); }
+  };
+
   const handleUpdateSecrets = async () => {
     if (!cfg.accountId.trim() || !apiToken.trim()) { toast.error('أدخل Account ID و API Token'); return; }
     setBusyKey('secrets', true);
