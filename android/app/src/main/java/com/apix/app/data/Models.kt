@@ -136,7 +136,10 @@ data class SideMenu(
 )
 
 data class AppSettings(
-    var showSettingsSection: Boolean = true
+    var showSettingsSection: Boolean = true,
+    // App mode delivered from the Cloudflare Worker / cached-data bundle.
+    // HYBRID = movies/series + live, CINEMA_ONLY = VOD only, SPORTS_ONLY = live only.
+    var appMode: String = "HYBRID"
 )
 
 data class SubChannel(

@@ -290,6 +290,57 @@ export type Database = {
           },
         ]
       }
+      cinema_providers: {
+        Row: {
+          active: boolean
+          created_at: string
+          host: string | null
+          id: string
+          kind: string
+          live_enabled: boolean
+          name: string
+          password: string | null
+          port: number | null
+          series_enabled: boolean
+          tmdb_api_key: string | null
+          updated_at: string
+          username: string | null
+          vod_enabled: boolean
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          host?: string | null
+          id?: string
+          kind?: string
+          live_enabled?: boolean
+          name?: string
+          password?: string | null
+          port?: number | null
+          series_enabled?: boolean
+          tmdb_api_key?: string | null
+          updated_at?: string
+          username?: string | null
+          vod_enabled?: boolean
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          host?: string | null
+          id?: string
+          kind?: string
+          live_enabled?: boolean
+          name?: string
+          password?: string | null
+          port?: number | null
+          series_enabled?: boolean
+          tmdb_api_key?: string | null
+          updated_at?: string
+          username?: string | null
+          vod_enabled?: boolean
+        }
+        Relationships: []
+      }
       custom_ads: {
         Row: {
           created_at: string

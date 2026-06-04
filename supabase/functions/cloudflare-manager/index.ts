@@ -14,6 +14,7 @@
 // HTTPS and are NEVER stored in a public table.
 
 import { buildWorkerScript } from "../_shared/worker-template.ts";
+import { buildCinemaWorkerScript } from "../_shared/cinema-worker-template.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,8 +57,8 @@ async function getSubdomain(token: string, accountId: string): Promise<string | 
   } catch { return null; }
 }
 
-async function deployWorker(token: string, accountId: string, scriptName: string, secrets: Record<string, string>) {
-  const script = buildWorkerScript();
+async function deployWorker(token: string, accountId: string, scriptName: string, secrets: Record<string, string>, scriptOverride?: string) {
+  const script = scriptOverride ?? buildWorkerScript();
   const bindings = Object.entries(secrets)
     .filter(([, v]) => typeof v === "string" && v.length > 0)
     .map(([name, text]) => ({ type: "secret_text", name, text }));
@@ -147,6 +148,14 @@ Deno.serve(async (req) => {
 
     if (action === "deploy") {
       const result = await deployWorker(apiToken, accountId, name, injected);
+      return json({ success: true, ...result });
+    }
+    if (action === "deploy-cinema") {
+      // Dedicated movies/series Worker — separate script, only needs the
+      // backend origin + anon key (it proxies the cinema-gateway function).
+      const cinemaName = (scriptName && String(scriptName).trim()) || "apix-cinema";
+      const cinemaSecrets = { SUPA_URL: injected.SUPA_URL, SUPA_ANON: injected.SUPA_ANON };
+      const result = await deployWorker(apiToken, accountId, cinemaName, cinemaSecrets, buildCinemaWorkerScript());
       return json({ success: true, ...result });
     }
     if (action === "update-secrets") {
