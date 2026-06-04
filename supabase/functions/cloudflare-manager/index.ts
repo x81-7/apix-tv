@@ -57,8 +57,8 @@ async function getSubdomain(token: string, accountId: string): Promise<string | 
   } catch { return null; }
 }
 
-async function deployWorker(token: string, accountId: string, scriptName: string, secrets: Record<string, string>) {
-  const script = buildWorkerScript();
+async function deployWorker(token: string, accountId: string, scriptName: string, secrets: Record<string, string>, scriptOverride?: string) {
+  const script = scriptOverride ?? buildWorkerScript();
   const bindings = Object.entries(secrets)
     .filter(([, v]) => typeof v === "string" && v.length > 0)
     .map(([name, text]) => ({ type: "secret_text", name, text }));
