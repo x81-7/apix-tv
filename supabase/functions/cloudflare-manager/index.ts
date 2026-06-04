@@ -14,6 +14,7 @@
 // HTTPS and are NEVER stored in a public table.
 
 import { buildWorkerScript } from "../_shared/worker-template.ts";
+import { buildCinemaWorkerScript } from "../_shared/cinema-worker-template.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
