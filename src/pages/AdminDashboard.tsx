@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { adminDb } from '@/lib/adminDb';
-import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown, Cloud } from 'lucide-react';
+import { LogOut, Settings, Tv, Menu, Folder, Shield, Bell, Megaphone, Lock, DoorOpen, Users, Smartphone, Crown, Cloud, Film } from 'lucide-react';
 
 const updateAdminManifest = () => {
   const existingManifest = document.querySelector('link[rel="manifest"]');
