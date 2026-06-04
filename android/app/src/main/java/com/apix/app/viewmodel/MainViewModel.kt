@@ -264,5 +264,6 @@ data class UiState(
     val selectedCategory: Category? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
-    val showSettingsSection: Boolean = true
+    val showSettingsSection: Boolean = true,
+    val appMode: String = "HYBRID"
 )
