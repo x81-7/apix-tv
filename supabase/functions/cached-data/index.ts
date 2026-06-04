@@ -160,7 +160,7 @@ async function buildBundle(): Promise<{ etag: string; encrypted: string }> {
 
   const plain = JSON.stringify(bundle);
   const enc = await encryptPayload(plain);
-  const etag = `W/"v${bundleVersion}-a${auxTs}-e1"`; // suffix bumped: payload format = encrypted v1
+  const etag = `W/"v${bundleVersion}-a${auxTs}-s${settingsHash}-e1"`; // suffix bumped: payload format = encrypted v1
   return { etag, encrypted: JSON.stringify(enc) };
 }
 
