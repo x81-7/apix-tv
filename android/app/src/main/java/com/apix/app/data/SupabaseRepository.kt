@@ -57,6 +57,7 @@ object SupabaseRepository {
     fun observeAppSettings(): Flow<AppSettings> = flow {
         val ctx = appContext
         var show = true
+        var mode = "HYBRID"
         try {
             if (ctx != null) {
                 // Single source of truth: read from the same worker-cached bundle
@@ -81,11 +82,21 @@ object SupabaseRepository {
                         Log.w(TAG, "appSettings parse failed", e)
                     }
                 }
+                // App mode (cinema / live / hybrid) — stored under the appMode key.
+                val rawMode = data?.settings?.get("appMode")
+                if (!rawMode.isNullOrBlank()) {
+                    try {
+                        mode = org.json.JSONObject(rawMode).optString("mode", "HYBRID")
+                            .uppercase()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "appMode parse failed", e)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "observeAppSettings failed", e)
         }
-        emit(AppSettings(showSettingsSection = show))
+        emit(AppSettings(showSettingsSection = show, appMode = mode))
     }.flowOn(Dispatchers.IO)
 
     fun observeSideMenus(): Flow<Map<String, SideMenu>> = flow {
