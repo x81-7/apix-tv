@@ -58,6 +58,7 @@ object SupabaseRepository {
         val ctx = appContext
         var show = true
         var mode = "HYBRID"
+        var externalUrl = ""
         try {
             if (ctx != null) {
                 // Single source of truth: read from the same worker-cached bundle
