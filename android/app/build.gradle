@@ -167,8 +167,8 @@ dependencies {
     implementation 'androidx.compose.material3:material3-window-size-class'
 
     // Android TV Compose — Hero Carousel + focus-aware rows for the Cinema Home.
-    implementation 'androidx.tv:tv-foundation:1.0.0-alpha11'
-    implementation 'androidx.tv:tv-material:1.0.0-alpha11'
+    implementation 'androidx.tv:tv-foundation:1.0.0-alpha10'
+    implementation 'androidx.tv:tv-material:1.0.0-alpha10'
 
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"
