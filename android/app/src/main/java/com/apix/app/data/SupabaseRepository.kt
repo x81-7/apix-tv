@@ -58,6 +58,7 @@ object SupabaseRepository {
         val ctx = appContext
         var show = true
         var mode = "HYBRID"
+        var externalUrl = ""
         try {
             if (ctx != null) {
                 // Single source of truth: read from the same worker-cached bundle
@@ -92,11 +93,20 @@ object SupabaseRepository {
                         Log.w(TAG, "appMode parse failed", e)
                     }
                 }
+                // External client JSON feed URL — stored under externalSources key.
+                val rawExt = data?.settings?.get("externalSources")
+                if (!rawExt.isNullOrBlank()) {
+                    try {
+                        externalUrl = org.json.JSONObject(rawExt).optString("url", "")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "externalSources parse failed", e)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "observeAppSettings failed", e)
         }
-        emit(AppSettings(showSettingsSection = show, appMode = mode))
+        emit(AppSettings(showSettingsSection = show, appMode = mode, externalSourceUrl = externalUrl))
     }.flowOn(Dispatchers.IO)
 
     fun observeSideMenus(): Flow<Map<String, SideMenu>> = flow {

@@ -139,7 +139,10 @@ data class AppSettings(
     var showSettingsSection: Boolean = true,
     // App mode delivered from the Cloudflare Worker / cached-data bundle.
     // HYBRID = movies/series + live, CINEMA_ONLY = VOD only, SPORTS_ONLY = live only.
-    var appMode: String = "HYBRID"
+    var appMode: String = "HYBRID",
+    // Optional client-provided external JSON feed URL (e.g. GitHub Raw) used to
+    // build the cinema Home rows without touching the source code (white-label).
+    var externalSourceUrl: String = ""
 )
 
 data class SubChannel(
