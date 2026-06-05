@@ -183,6 +183,7 @@ private fun PosterRow(row: HomeRow, onItemClick: (MediaItem) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun PosterCard(item: MediaItem, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
