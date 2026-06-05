@@ -151,10 +151,18 @@ Deno.serve(async (req) => {
       return json({ success: true, ...result });
     }
     if (action === "deploy-cinema") {
-      // Dedicated movies/series Worker — separate script, only needs the
-      // backend origin + anon key (it proxies the cinema-gateway function).
+      // Dedicated movies/series Worker — a SEPARATE script from the live gateway.
+      // It proxies the cinema-gateway function and carries ONLY cinema secrets
+      // (backend origin + anon key, plus optional TMDB key / source links),
+      // never the live-TV gateway's secrets.
       const cinemaName = (scriptName && String(scriptName).trim()) || "apix-cinema";
-      const cinemaSecrets = { SUPA_URL: injected.SUPA_URL, SUPA_ANON: injected.SUPA_ANON };
+      const cinemaSecrets: Record<string, string> = {
+        SUPA_URL: injected.SUPA_URL,
+        SUPA_ANON: injected.SUPA_ANON,
+      };
+      const cs = body?.cinemaSecrets ?? {};
+      if (cs.TMDB_KEY) cinemaSecrets.TMDB_KEY = String(cs.TMDB_KEY);
+      if (cs.CINEMA_SOURCES) cinemaSecrets.CINEMA_SOURCES = String(cs.CINEMA_SOURCES);
       const result = await deployWorker(apiToken, accountId, cinemaName, cinemaSecrets, buildCinemaWorkerScript());
       return json({ success: true, ...result });
     }
