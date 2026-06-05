@@ -162,6 +162,7 @@ private fun HeroCarousel(items: List<MediaItem>, onItemClick: (MediaItem) -> Uni
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun PosterRow(row: HomeRow, onItemClick: (MediaItem) -> Unit) {
     Column {
