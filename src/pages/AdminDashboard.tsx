@@ -192,7 +192,13 @@ const AdminDashboard: React.FC = () => {
 
           <TabsContent value="vip"><div className="max-w-4xl"><VipManager /></div></TabsContent>
 
-          <TabsContent value="cinema"><div className="max-w-3xl"><CinemaManager /></div></TabsContent>
+          <TabsContent value="cinema">
+            <div className="max-w-3xl space-y-6">
+              <CinemaManager />
+              <CinemaServerManager />
+              <ExternalSourcesManager />
+            </div>
+          </TabsContent>
 
           <TabsContent value="cloudflare"><div className="max-w-2xl"><CloudflareManager /></div></TabsContent>
 
