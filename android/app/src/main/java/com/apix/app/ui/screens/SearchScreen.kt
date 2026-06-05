@@ -27,11 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.MediaItem // <-- هذا هو السطر الجديد الذي أضفناه
 import com.apix.app.data.Channel
 import com.apix.app.ui.components.ChannelCard
 import com.apix.app.ui.theme.Gold
-
 
 @Composable
 fun SearchScreen(
