@@ -18,6 +18,8 @@ import AppAssetsManager from '@/components/admin/AppAssetsManager';
 import VipManager from '@/components/admin/VipManager';
 import CloudflareManager from '@/components/admin/CloudflareManager';
 import CinemaManager from '@/components/admin/CinemaManager';
+import CinemaServerManager from '@/components/admin/CinemaServerManager';
+import ExternalSourcesManager from '@/components/admin/ExternalSourcesManager';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
