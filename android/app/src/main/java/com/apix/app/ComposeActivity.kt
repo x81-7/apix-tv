@@ -447,16 +447,32 @@ fun AppNavigation(
     ) { screen ->
         when (screen) {
             is Screen.Main -> {
-                MainScreen(
-                    uiState = uiState,
-                    onCategorySelected = { handleCategorySelect(it) },
-                    onChannelClick = { handleChannelClick(it) },
-                    onSearchClick = { navigateTo(Screen.Search) },
-                    channels = channels,
-                    isSettings = isSettings,
-                    isDarkMode = isDarkMode,
-                    onToggleDarkMode = onToggleDarkMode
-                )
+                val mode = uiState.appMode.uppercase()
+                val liveScreen: @Composable () -> Unit = {
+                    MainScreen(
+                        uiState = uiState,
+                        onCategorySelected = { handleCategorySelect(it) },
+                        onChannelClick = { handleChannelClick(it) },
+                        onSearchClick = { navigateTo(Screen.Search) },
+                        channels = channels,
+                        isSettings = isSettings,
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = onToggleDarkMode
+                    )
+                }
+                when (mode) {
+                    // Live TV only → the classic APiX grid.
+                    "SPORTS_ONLY" -> liveScreen()
+                    // Cinema or Hybrid → the tabbed cinema shell. HYBRID keeps a
+                    // leading "مباشر" (Live) tab that hosts the classic grid.
+                    else -> CinemaShell(
+                        appMode = mode,
+                        externalSourceUrl = uiState.externalSourceUrl,
+                        onMediaClick = handleMediaClick,
+                        leadingTabs = if (mode == "HYBRID")
+                            listOf(CinemaTab("مباشر") { liveScreen() }) else emptyList()
+                    )
+                }
             }
             is Screen.SubChannels -> {
                 var showLoading by remember { mutableStateOf(!isNavigatingBack) }
