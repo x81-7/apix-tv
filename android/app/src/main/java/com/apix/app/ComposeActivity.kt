@@ -429,6 +429,7 @@ fun AppNavigation(
         }
     }
 
+    androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
     androidx.compose.animation.AnimatedContent(
         targetState = currentScreen,
         transitionSpec = {
