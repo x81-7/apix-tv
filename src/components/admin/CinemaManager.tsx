@@ -21,6 +21,9 @@ interface CinemaConfig {
   vod_enabled?: boolean;
   series_enabled?: boolean;
   live_enabled?: boolean;
+  anime_enabled?: boolean;
+  movie_link_template?: string | null;
+  series_link_template?: string | null;
 }
 
 const call = async (action: string, extra: Record<string, unknown> = {}) => {
