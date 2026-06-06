@@ -156,6 +156,108 @@ async function getAppMode(): Promise<string> {
   return (v?.mode ?? "HYBRID").toUpperCase();
 }
 
+const sectionTitle = (s: string) =>
+  s === "vod" ? "أفلام" : s === "series" ? "مسلسلات" : s === "anime" ? "أنمي" : s === "live" ? "بث مباشر" : s;
+
+/** Map a cinema_catalog row → canonical MediaItem. */
+function catalogToItem(r: any): MediaItem {
+  return {
+    id: `${r.section}_${r.tmdb_id}`,
+    title: r.title ?? "",
+    poster: r.poster ?? "",
+    backdrop: r.backdrop ?? "",
+    description: r.description ?? "",
+    rating: r.rating ?? "",
+    year: r.year ?? "",
+    section: r.section ?? "vod",
+    tmdb_id: String(r.tmdb_id ?? ""),
+    url: null,
+    useLocalProxy: false,
+    ext: "mp4",
+  };
+}
+
+/** Map an Xtream live stream → canonical MediaItem. */
+function liveToItem(o: any): MediaItem {
+  const id = String(o.stream_id ?? o.num ?? "");
+  return {
+    id: `live_${id}`,
+    title: o.name ?? "",
+    poster: o.stream_icon ?? "",
+    backdrop: "",
+    description: "",
+    rating: "",
+    year: "",
+    section: "live",
+    tmdb_id: "",
+    url: null,
+    useLocalProxy: false,
+    ext: "ts",
+  };
+}
+
+/**
+ * Build the unified HOME payload. app_mode decides which sections appear:
+ *   SPORTS_ONLY → live only
+ *   CINEMA_ONLY → vod/series/anime only
+ *   HYBRID      → everything
+ */
+async function buildHome(p: Provider | null, appMode: string): Promise<HomePayload> {
+  const mode = appMode.toUpperCase();
+  const wantCinema = mode !== "SPORTS_ONLY";
+  const wantLive = mode !== "CINEMA_ONLY";
+
+  const hero: MediaItem[] = [];
+  const rows: HomeRow[] = [];
+
+  // ── Cinema rows from the TMDB-synced catalog ──
+  if (wantCinema) {
+    const { data: cat } = await svc()
+      .from("cinema_catalog")
+      .select("*")
+      .order("section", { ascending: true })
+      .order("sort_order", { ascending: true });
+    const catalog: any[] = cat ?? [];
+
+    // Hero: a few flagged items.
+    for (const r of catalog) {
+      if (r.is_hero && hero.length < 6) hero.push(catalogToItem(r));
+    }
+
+    // Group rows by section + row_key, preserving discovery order.
+    const groups = new Map<string, { title: string; section: string; items: MediaItem[] }>();
+    for (const r of catalog) {
+      const key = `${r.section}::${r.row_key}`;
+      if (!groups.has(key)) {
+        const title = `${sectionTitle(r.section)} · ${r.row_title || r.row_key}`;
+        groups.set(key, { title, section: r.section, items: [] });
+      }
+      groups.get(key)!.items.push(catalogToItem(r));
+    }
+    for (const [key, g] of groups) {
+      if (g.items.length) rows.push({ id: key, title: g.title, items: g.items });
+    }
+  }
+
+  // ── Live rows from Xtream (movies-worker stays separate; live comes here) ──
+  if (wantLive && p && p.host) {
+    try {
+      const data = await xtream(p, { action: "get_live_streams" });
+      const arr: any[] = Array.isArray(data) ? data : [];
+      const items = arr.slice(0, 40).map(liveToItem).filter((i) => i.title);
+      if (items.length) {
+        rows.unshift({ id: "live::all", title: sectionTitle("live"), items });
+        if (hero.length === 0) hero.push(...items.filter((i) => i.poster).slice(0, 5));
+      }
+    } catch (e) {
+      console.warn("buildHome live failed", e);
+    }
+  }
+
+  return { hero, rows };
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
