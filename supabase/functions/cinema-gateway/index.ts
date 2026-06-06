@@ -246,9 +246,30 @@ Deno.serve(async (req) => {
       return json({ success: ok, info });
     }
 
+    if (action === "sync") {
+      // Trigger the TMDB → Supabase catalog sync (admin only).
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cinema-sync`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SERVICE_ROLE}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run" }),
+      });
+      const data = await res.json().catch(() => null);
+      return json({ success: res.ok && data?.success !== false, ...data }, res.ok ? 200 : 502);
+    }
+
     // ───────── Public content actions ─────────
+    const appMode = await getAppMode();
     const p = await getActiveProvider();
+
+    // home → the SINGLE unified payload the app renders. Shape matches the
+    // Android data classes exactly: { success, app_mode, hero, rows[] }.
+    if (action === "home") {
+      const payload = await buildHome(p, appMode);
+      return json({ success: true, app_mode: appMode, hero: payload.hero, rows: payload.rows });
+    }
+
     if (!p) return json({ success: false, error: "no provider" }, 503);
+
 
     if (action === "catalog") {
       const section = String(body.section ?? "vod");
