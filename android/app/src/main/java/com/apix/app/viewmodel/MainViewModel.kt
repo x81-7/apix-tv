@@ -266,5 +266,6 @@ data class UiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val showSettingsSection: Boolean = true,
-    val appMode: String = "HYBRID"
+    val appMode: String = "HYBRID",
+    val externalSourceUrl: String = ""
 )
