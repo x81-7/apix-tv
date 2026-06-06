@@ -95,6 +95,9 @@ const CinemaManager: React.FC = () => {
         vod_enabled: vodEnabled,
         series_enabled: seriesEnabled,
         live_enabled: liveEnabled,
+        anime_enabled: animeEnabled,
+        movie_link_template: movieTpl.trim(),
+        series_link_template: seriesTpl.trim(),
       });
       if (password) setHasPassword(true);
       if (tmdbKey) setHasTmdb(true);
@@ -107,6 +110,19 @@ const CinemaManager: React.FC = () => {
       setSaving(false);
     }
   };
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const res = await call('sync');
+      toast.success(`تمت مزامنة المحتوى من TMDB — ${res?.inserted ?? 0} عنصر`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'فشل سحب المحتوى من TMDB');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const saveMode = async (mode: AppMode) => {
     setAppMode(mode);
