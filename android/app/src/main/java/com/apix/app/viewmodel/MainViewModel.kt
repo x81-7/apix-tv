@@ -62,7 +62,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _uiState.update { state ->
                         state.copy(
                             showSettingsSection = settings.showSettingsSection,
-                            appMode = settings.appMode
+                            appMode = settings.appMode,
+                            externalSourceUrl = settings.externalSourceUrl
                         )
                     }
                 }
