@@ -215,7 +215,7 @@ const CinemaManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">الأفلام (VOD)</span>
             <Switch checked={vodEnabled} onCheckedChange={setVodEnabled} />
@@ -223,6 +223,10 @@ const CinemaManager: React.FC = () => {
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">المسلسلات</span>
             <Switch checked={seriesEnabled} onCheckedChange={setSeriesEnabled} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+            <span className="text-sm text-foreground">الأنمي</span>
+            <Switch checked={animeEnabled} onCheckedChange={setAnimeEnabled} />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">البث المباشر</span>
@@ -238,6 +242,39 @@ const CinemaManager: React.FC = () => {
           <Button variant="outline" onClick={test} disabled={testing}>
             {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PlugZap className="w-4 h-4 mr-2" />}
             اختبار الاتصال
+          </Button>
+        </div>
+      </div>
+
+      {/* Movie/Series scraper link templates + TMDB sync */}
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-2">
+          <Film className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-bold text-foreground">روابط سيرفرات الأفلام (محرك السحب)</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          بيانات الأفلام تأتي من TMDB، أما روابط التشغيل فيتم سحبها من قوالب الروابط التالية داخل التطبيق
+          عبر متصفح مخفي. المتغيرات المدعومة: <code dir="ltr">{'{tmdb_id}'}</code>، <code dir="ltr">{'{s}'}</code> (الموسم)،
+          <code dir="ltr">{'{e}'}</code> (الحلقة).
+        </p>
+        <div>
+          <Label className="text-foreground">قالب رابط الأفلام</Label>
+          <Input value={movieTpl} onChange={(e) => setMovieTpl(e.target.value)} dir="ltr"
+            placeholder="https://vidsrc-embed.ru/embed/movie?tmdb={tmdb_id}&ds_lang=ar" className="font-mono text-xs" />
+        </div>
+        <div>
+          <Label className="text-foreground">قالب رابط المسلسلات / الأنمي</Label>
+          <Input value={seriesTpl} onChange={(e) => setSeriesTpl(e.target.value)} dir="ltr"
+            placeholder="https://vidsrc-embed.ru/embed/tv?tmdb={tmdb_id}&season={s}&episode={e}" className="font-mono text-xs" />
+        </div>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Button onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+            حفظ القوالب
+          </Button>
+          <Button variant="outline" onClick={sync} disabled={syncing}>
+            {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Film className="w-4 h-4 mr-2" />}
+            سحب المحتوى من TMDB الآن
           </Button>
         </div>
       </div>
