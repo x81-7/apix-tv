@@ -294,13 +294,40 @@ Deno.serve(async (req) => {
     if (action === "resolve") {
       const section = String(body.section ?? "vod");
       const id = String(body.id ?? "");
-      if (!id) return json({ success: false, error: "id required" }, 400);
+      const tmdbId = String(body.tmdb_id ?? "");
+      if (!id && !tmdbId) return json({ success: false, error: "id required" }, 400);
+
+      // TMDB-backed titles (vod/series/anime) resolve to a scraper embed URL via
+      // the panel link template. The app then runs the Hidden WebView Scraper on
+      // this URL to extract the real .m3u8 + headers.
+      if (tmdbId && section !== "live") {
+        const season = String(body.season ?? body.s ?? "1");
+        const episode = String(body.episode ?? body.e ?? "1");
+        const tpl = section === "series" || section === "anime"
+          ? p.series_link_template
+          : p.movie_link_template;
+        if (tpl && tpl.trim()) {
+          const embed = tpl
+            .replace(/\{tmdb_id\}/g, tmdbId)
+            .replace(/\{tmdb\}/g, tmdbId)
+            .replace(/\{season\}/g, season).replace(/\{s\}/g, season)
+            .replace(/\{episode\}/g, episode).replace(/\{e\}/g, episode);
+          let referer = "";
+          try { referer = new URL(embed).origin + "/"; } catch { /* ignore */ }
+          return json({ success: true, url: embed, scrape: true, referer });
+        }
+        return json({ success: false, error: "no link template configured" }, 400);
+      }
+
+      // Xtream direct stream (no scraping needed).
+      if (!p) return json({ success: false, error: "no provider" }, 503);
       const ext = String(body.ext ?? (section === "live" ? "ts" : "mp4")).replace(/[^a-z0-9]/gi, "");
       const base = providerBase(p);
       const seg = section === "live" ? "live" : section === "series" ? "series" : "movie";
       const url = `${base}/${seg}/${encodeURIComponent(p.username ?? "")}/${encodeURIComponent(p.password ?? "")}/${id}.${ext}`;
-      return json({ success: true, url });
+      return json({ success: true, url, scrape: false });
     }
+
 
     if (action === "tmdb") {
       if (!p.tmdb_api_key) return json({ success: false, error: "tmdb not configured" }, 400);
