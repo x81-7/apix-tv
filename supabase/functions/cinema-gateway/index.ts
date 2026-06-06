@@ -51,8 +51,31 @@ interface Provider {
   vod_enabled: boolean;
   series_enabled: boolean;
   live_enabled: boolean;
+  anime_enabled: boolean;
+  movie_link_template: string | null;
+  series_link_template: string | null;
   active: boolean;
 }
+
+/** Canonical media item — MUST match Android com.apix.app.data.MediaItem. */
+interface MediaItem {
+  id: string;
+  title: string;
+  poster: string;
+  backdrop: string;
+  description: string;
+  rating: string;
+  year: string;
+  section: string;       // vod | series | anime | live
+  tmdb_id: string;
+  url: string | null;    // direct stream (Xtream) or null when scraping is needed
+  useLocalProxy: boolean;
+  ext: string;           // container extension
+}
+
+/** Canonical home payload — MUST match Android com.apix.app.data.HomeData. */
+interface HomeRow { id: string; title: string; items: MediaItem[]; }
+interface HomePayload { hero: MediaItem[]; rows: HomeRow[]; }
 
 async function getActiveProvider(): Promise<Provider | null> {
   const { data, error } = await svc()
@@ -119,6 +142,9 @@ function maskConfig(p: Provider | null, appMode: string) {
     vod_enabled: p.vod_enabled,
     series_enabled: p.series_enabled,
     live_enabled: p.live_enabled,
+    anime_enabled: p.anime_enabled,
+    movie_link_template: p.movie_link_template,
+    series_link_template: p.series_link_template,
     active: p.active,
   };
 }
@@ -129,6 +155,108 @@ async function getAppMode(): Promise<string> {
   const v = (data?.value as { mode?: string } | null) ?? null;
   return (v?.mode ?? "HYBRID").toUpperCase();
 }
+
+const sectionTitle = (s: string) =>
+  s === "vod" ? "أفلام" : s === "series" ? "مسلسلات" : s === "anime" ? "أنمي" : s === "live" ? "بث مباشر" : s;
+
+/** Map a cinema_catalog row → canonical MediaItem. */
+function catalogToItem(r: any): MediaItem {
+  return {
+    id: `${r.section}_${r.tmdb_id}`,
+    title: r.title ?? "",
+    poster: r.poster ?? "",
+    backdrop: r.backdrop ?? "",
+    description: r.description ?? "",
+    rating: r.rating ?? "",
+    year: r.year ?? "",
+    section: r.section ?? "vod",
+    tmdb_id: String(r.tmdb_id ?? ""),
+    url: null,
+    useLocalProxy: false,
+    ext: "mp4",
+  };
+}
+
+/** Map an Xtream live stream → canonical MediaItem. */
+function liveToItem(o: any): MediaItem {
+  const id = String(o.stream_id ?? o.num ?? "");
+  return {
+    id: `live_${id}`,
+    title: o.name ?? "",
+    poster: o.stream_icon ?? "",
+    backdrop: "",
+    description: "",
+    rating: "",
+    year: "",
+    section: "live",
+    tmdb_id: "",
+    url: null,
+    useLocalProxy: false,
+    ext: "ts",
+  };
+}
+
+/**
+ * Build the unified HOME payload. app_mode decides which sections appear:
+ *   SPORTS_ONLY → live only
+ *   CINEMA_ONLY → vod/series/anime only
+ *   HYBRID      → everything
+ */
+async function buildHome(p: Provider | null, appMode: string): Promise<HomePayload> {
+  const mode = appMode.toUpperCase();
+  const wantCinema = mode !== "SPORTS_ONLY";
+  const wantLive = mode !== "CINEMA_ONLY";
+
+  const hero: MediaItem[] = [];
+  const rows: HomeRow[] = [];
+
+  // ── Cinema rows from the TMDB-synced catalog ──
+  if (wantCinema) {
+    const { data: cat } = await svc()
+      .from("cinema_catalog")
+      .select("*")
+      .order("section", { ascending: true })
+      .order("sort_order", { ascending: true });
+    const catalog: any[] = cat ?? [];
+
+    // Hero: a few flagged items.
+    for (const r of catalog) {
+      if (r.is_hero && hero.length < 6) hero.push(catalogToItem(r));
+    }
+
+    // Group rows by section + row_key, preserving discovery order.
+    const groups = new Map<string, { title: string; section: string; items: MediaItem[] }>();
+    for (const r of catalog) {
+      const key = `${r.section}::${r.row_key}`;
+      if (!groups.has(key)) {
+        const title = `${sectionTitle(r.section)} · ${r.row_title || r.row_key}`;
+        groups.set(key, { title, section: r.section, items: [] });
+      }
+      groups.get(key)!.items.push(catalogToItem(r));
+    }
+    for (const [key, g] of groups) {
+      if (g.items.length) rows.push({ id: key, title: g.title, items: g.items });
+    }
+  }
+
+  // ── Live rows from Xtream (movies-worker stays separate; live comes here) ──
+  if (wantLive && p && p.host) {
+    try {
+      const data = await xtream(p, { action: "get_live_streams" });
+      const arr: any[] = Array.isArray(data) ? data : [];
+      const items = arr.slice(0, 40).map(liveToItem).filter((i) => i.title);
+      if (items.length) {
+        rows.unshift({ id: "live::all", title: sectionTitle("live"), items });
+        if (hero.length === 0) hero.push(...items.filter((i) => i.poster).slice(0, 5));
+      }
+    } catch (e) {
+      console.warn("buildHome live failed", e);
+    }
+  }
+
+  return { hero, rows };
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -164,6 +292,13 @@ Deno.serve(async (req) => {
         vod_enabled: body.vod_enabled ?? true,
         series_enabled: body.series_enabled ?? true,
         live_enabled: body.live_enabled ?? true,
+        anime_enabled: body.anime_enabled ?? true,
+        movie_link_template: body.movie_link_template !== undefined
+          ? (body.movie_link_template || null)
+          : existing?.movie_link_template ?? null,
+        series_link_template: body.series_link_template !== undefined
+          ? (body.series_link_template || null)
+          : existing?.series_link_template ?? null,
         active: true,
       };
       let res;
@@ -213,9 +348,30 @@ Deno.serve(async (req) => {
       return json({ success: ok, info });
     }
 
+    if (action === "sync") {
+      // Trigger the TMDB → Supabase catalog sync (admin only).
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cinema-sync`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SERVICE_ROLE}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run" }),
+      });
+      const data = await res.json().catch(() => null);
+      return json({ success: res.ok && data?.success !== false, ...data }, res.ok ? 200 : 502);
+    }
+
     // ───────── Public content actions ─────────
+    const appMode = await getAppMode();
     const p = await getActiveProvider();
+
+    // home → the SINGLE unified payload the app renders. Shape matches the
+    // Android data classes exactly: { success, app_mode, hero, rows[] }.
+    if (action === "home") {
+      const payload = await buildHome(p, appMode);
+      return json({ success: true, app_mode: appMode, hero: payload.hero, rows: payload.rows });
+    }
+
     if (!p) return json({ success: false, error: "no provider" }, 503);
+
 
     if (action === "catalog") {
       const section = String(body.section ?? "vod");
@@ -240,13 +396,40 @@ Deno.serve(async (req) => {
     if (action === "resolve") {
       const section = String(body.section ?? "vod");
       const id = String(body.id ?? "");
-      if (!id) return json({ success: false, error: "id required" }, 400);
+      const tmdbId = String(body.tmdb_id ?? "");
+      if (!id && !tmdbId) return json({ success: false, error: "id required" }, 400);
+
+      // TMDB-backed titles (vod/series/anime) resolve to a scraper embed URL via
+      // the panel link template. The app then runs the Hidden WebView Scraper on
+      // this URL to extract the real .m3u8 + headers.
+      if (tmdbId && section !== "live") {
+        const season = String(body.season ?? body.s ?? "1");
+        const episode = String(body.episode ?? body.e ?? "1");
+        const tpl = section === "series" || section === "anime"
+          ? p.series_link_template
+          : p.movie_link_template;
+        if (tpl && tpl.trim()) {
+          const embed = tpl
+            .replace(/\{tmdb_id\}/g, tmdbId)
+            .replace(/\{tmdb\}/g, tmdbId)
+            .replace(/\{season\}/g, season).replace(/\{s\}/g, season)
+            .replace(/\{episode\}/g, episode).replace(/\{e\}/g, episode);
+          let referer = "";
+          try { referer = new URL(embed).origin + "/"; } catch { /* ignore */ }
+          return json({ success: true, url: embed, scrape: true, referer });
+        }
+        return json({ success: false, error: "no link template configured" }, 400);
+      }
+
+      // Xtream direct stream (no scraping needed).
+      if (!p) return json({ success: false, error: "no provider" }, 503);
       const ext = String(body.ext ?? (section === "live" ? "ts" : "mp4")).replace(/[^a-z0-9]/gi, "");
       const base = providerBase(p);
       const seg = section === "live" ? "live" : section === "series" ? "series" : "movie";
       const url = `${base}/${seg}/${encodeURIComponent(p.username ?? "")}/${encodeURIComponent(p.password ?? "")}/${id}.${ext}`;
-      return json({ success: true, url });
+      return json({ success: true, url, scrape: false });
     }
+
 
     if (action === "tmdb") {
       if (!p.tmdb_api_key) return json({ success: false, error: "tmdb not configured" }, 400);

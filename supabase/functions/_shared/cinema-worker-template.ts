@@ -26,7 +26,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const PUBLIC_ACTIONS = new Set(["catalog", "resolve", "tmdb"]);
+const PUBLIC_ACTIONS = new Set(["home", "catalog", "resolve", "tmdb"]);
 
 function j(body, status) {
   return new Response(JSON.stringify(body), {

@@ -197,6 +197,53 @@ fun AppNavigation(
         }
     }
 
+    // ── Cinema (movies/series/anime) playback flow ──
+    // 1) resolve the catalog item via the worker → either a direct URL or a
+    //    scraper embed URL. 2) if scraping is needed, run HiddenWebViewScraper to
+    //    extract the real .m3u8 + headers. 3) hand the result to ExoPlayer.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var resolving by remember { mutableStateOf(false) }
+
+    val playResolved: (String, String, com.apix.app.data.PlayerHeaders?, String?) -> Unit =
+        { url, title, headers, subtitle ->
+            resolving = false
+            navigateTo(
+                Screen.Player(
+                    PlayerConfig(
+                        url = url,
+                        title = title,
+                        headers = headers,
+                        subtitleUrl = subtitle
+                    )
+                )
+            )
+        }
+
+    val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
+        resolving = true
+        scope.launch {
+            val r = com.apix.app.data.CinemaRepository.resolve(item)
+            if (r == null) {
+                resolving = false
+            } else if (!r.scrape) {
+                playResolved(r.url, item.title, null, null)
+            } else {
+                com.apix.app.HiddenWebViewScraper(context).extract(
+                    pageUrl = r.url,
+                    referer = r.referer,
+                    onResult = { res ->
+                        val h = com.apix.app.data.PlayerHeaders(
+                            userAgent = res.headers["User-Agent"] ?: res.headers["user-agent"],
+                            referer = res.headers["Referer"] ?: res.headers["referer"] ?: r.referer
+                        )
+                        playResolved(res.url, item.title, h, res.subtitleUrl)
+                    },
+                    onError = { resolving = false }
+                )
+            }
+        }
+    }
+
     LaunchedEffect(initialStreamConfigJson) {
         if (!initialStreamConfigJson.isNullOrEmpty()) {
             runCatching {
@@ -382,6 +429,7 @@ fun AppNavigation(
         }
     }
 
+    androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
     androidx.compose.animation.AnimatedContent(
         targetState = currentScreen,
         transitionSpec = {
@@ -400,16 +448,32 @@ fun AppNavigation(
     ) { screen ->
         when (screen) {
             is Screen.Main -> {
-                MainScreen(
-                    uiState = uiState,
-                    onCategorySelected = { handleCategorySelect(it) },
-                    onChannelClick = { handleChannelClick(it) },
-                    onSearchClick = { navigateTo(Screen.Search) },
-                    channels = channels,
-                    isSettings = isSettings,
-                    isDarkMode = isDarkMode,
-                    onToggleDarkMode = onToggleDarkMode
-                )
+                val mode = uiState.appMode.uppercase()
+                val liveScreen: @Composable () -> Unit = {
+                    MainScreen(
+                        uiState = uiState,
+                        onCategorySelected = { handleCategorySelect(it) },
+                        onChannelClick = { handleChannelClick(it) },
+                        onSearchClick = { navigateTo(Screen.Search) },
+                        channels = channels,
+                        isSettings = isSettings,
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = onToggleDarkMode
+                    )
+                }
+                when (mode) {
+                    // Live TV only → the classic APiX grid.
+                    "SPORTS_ONLY" -> liveScreen()
+                    // Cinema or Hybrid → the tabbed cinema shell. HYBRID keeps a
+                    // leading "مباشر" (Live) tab that hosts the classic grid.
+                    else -> CinemaShell(
+                        appMode = mode,
+                        externalSourceUrl = uiState.externalSourceUrl,
+                        onMediaClick = handleMediaClick,
+                        leadingTabs = if (mode == "HYBRID")
+                            listOf(CinemaTab("مباشر") { liveScreen() }) else emptyList()
+                    )
+                }
             }
             is Screen.SubChannels -> {
                 var showLoading by remember { mutableStateOf(!isNavigatingBack) }
@@ -510,4 +574,21 @@ fun AppNavigation(
             }
         }
     } // إغلاق AnimatedContent
+
+        // Full-screen loader while a movie/series link is being resolved/scraped.
+        if (resolving) {
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0xCC000000)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = com.apix.app.ui.theme.Gold,
+                    strokeWidth = 4.dp,
+                    modifier = androidx.compose.ui.Modifier.size(56.dp)
+                )
+            }
+        }
+    } // إغلاق Box
 } // إغلاق AppNavigation

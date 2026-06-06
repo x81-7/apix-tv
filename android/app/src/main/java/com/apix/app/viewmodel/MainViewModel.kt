@@ -62,7 +62,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _uiState.update { state ->
                         state.copy(
                             showSettingsSection = settings.showSettingsSection,
-                            appMode = settings.appMode
+                            appMode = settings.appMode,
+                            externalSourceUrl = settings.externalSourceUrl
                         )
                     }
                 }
@@ -265,5 +266,6 @@ data class UiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val showSettingsSection: Boolean = true,
-    val appMode: String = "HYBRID"
+    val appMode: String = "HYBRID",
+    val externalSourceUrl: String = ""
 )

@@ -21,6 +21,9 @@ interface CinemaConfig {
   vod_enabled?: boolean;
   series_enabled?: boolean;
   live_enabled?: boolean;
+  anime_enabled?: boolean;
+  movie_link_template?: string | null;
+  series_link_template?: string | null;
 }
 
 const call = async (action: string, extra: Record<string, unknown> = {}) => {
@@ -36,6 +39,7 @@ const CinemaManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [appMode, setAppMode] = useState<AppMode>('HYBRID');
   const [host, setHost] = useState('');
@@ -48,6 +52,9 @@ const CinemaManager: React.FC = () => {
   const [vodEnabled, setVodEnabled] = useState(true);
   const [seriesEnabled, setSeriesEnabled] = useState(true);
   const [liveEnabled, setLiveEnabled] = useState(true);
+  const [animeEnabled, setAnimeEnabled] = useState(true);
+  const [movieTpl, setMovieTpl] = useState('');
+  const [seriesTpl, setSeriesTpl] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -63,6 +70,9 @@ const CinemaManager: React.FC = () => {
           setVodEnabled(cfg.vod_enabled ?? true);
           setSeriesEnabled(cfg.series_enabled ?? true);
           setLiveEnabled(cfg.live_enabled ?? true);
+          setAnimeEnabled(cfg.anime_enabled ?? true);
+          setMovieTpl(cfg.movie_link_template ?? '');
+          setSeriesTpl(cfg.series_link_template ?? '');
         }
       } catch (e) {
         console.error(e);
@@ -85,6 +95,9 @@ const CinemaManager: React.FC = () => {
         vod_enabled: vodEnabled,
         series_enabled: seriesEnabled,
         live_enabled: liveEnabled,
+        anime_enabled: animeEnabled,
+        movie_link_template: movieTpl.trim(),
+        series_link_template: seriesTpl.trim(),
       });
       if (password) setHasPassword(true);
       if (tmdbKey) setHasTmdb(true);
@@ -97,6 +110,19 @@ const CinemaManager: React.FC = () => {
       setSaving(false);
     }
   };
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const res = await call('sync');
+      toast.success(`تمت مزامنة المحتوى من TMDB — ${res?.inserted ?? 0} عنصر`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'فشل سحب المحتوى من TMDB');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const saveMode = async (mode: AppMode) => {
     setAppMode(mode);
@@ -189,7 +215,7 @@ const CinemaManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">الأفلام (VOD)</span>
             <Switch checked={vodEnabled} onCheckedChange={setVodEnabled} />
@@ -197,6 +223,10 @@ const CinemaManager: React.FC = () => {
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">المسلسلات</span>
             <Switch checked={seriesEnabled} onCheckedChange={setSeriesEnabled} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+            <span className="text-sm text-foreground">الأنمي</span>
+            <Switch checked={animeEnabled} onCheckedChange={setAnimeEnabled} />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
             <span className="text-sm text-foreground">البث المباشر</span>
@@ -212,6 +242,39 @@ const CinemaManager: React.FC = () => {
           <Button variant="outline" onClick={test} disabled={testing}>
             {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PlugZap className="w-4 h-4 mr-2" />}
             اختبار الاتصال
+          </Button>
+        </div>
+      </div>
+
+      {/* Movie/Series scraper link templates + TMDB sync */}
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-2">
+          <Film className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-bold text-foreground">روابط سيرفرات الأفلام (محرك السحب)</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          بيانات الأفلام تأتي من TMDB، أما روابط التشغيل فيتم سحبها من قوالب الروابط التالية داخل التطبيق
+          عبر متصفح مخفي. المتغيرات المدعومة: <code dir="ltr">{'{tmdb_id}'}</code>، <code dir="ltr">{'{s}'}</code> (الموسم)،
+          <code dir="ltr">{'{e}'}</code> (الحلقة).
+        </p>
+        <div>
+          <Label className="text-foreground">قالب رابط الأفلام</Label>
+          <Input value={movieTpl} onChange={(e) => setMovieTpl(e.target.value)} dir="ltr"
+            placeholder="https://vidsrc-embed.ru/embed/movie?tmdb={tmdb_id}&ds_lang=ar" className="font-mono text-xs" />
+        </div>
+        <div>
+          <Label className="text-foreground">قالب رابط المسلسلات / الأنمي</Label>
+          <Input value={seriesTpl} onChange={(e) => setSeriesTpl(e.target.value)} dir="ltr"
+            placeholder="https://vidsrc-embed.ru/embed/tv?tmdb={tmdb_id}&season={s}&episode={e}" className="font-mono text-xs" />
+        </div>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Button onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+            حفظ القوالب
+          </Button>
+          <Button variant="outline" onClick={sync} disabled={syncing}>
+            {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Film className="w-4 h-4 mr-2" />}
+            سحب المحتوى من TMDB الآن
           </Button>
         </div>
       </div>
