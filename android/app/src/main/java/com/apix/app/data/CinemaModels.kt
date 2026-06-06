@@ -3,16 +3,18 @@ package com.apix.app.data
 /**
  * Cinema / VOD domain models.
  *
- * The app NEVER talks to Supabase or an IPTV origin directly. Everything is
- * fetched through the Cloudflare Worker(s):
+ * The app NEVER talks to Supabase, TMDB or an IPTV origin directly. Everything
+ * is fetched through the Cloudflare Worker(s):
  *   • the live-TV/data gateway (WORKER_URL)  → categories/channels
- *   • the dedicated cinema worker            → movies/series catalog & resolve
+ *   • the dedicated cinema worker            → movies/series/anime catalog & resolve
  *   • an optional client "external source"   → a raw JSON feed (e.g. GitHub Raw)
  *
- * All three converge into [HomeData], which the Compose Home screen renders.
+ * All converge into [HomeData], which the Compose Home screen renders. The JSON
+ * shape returned by the cinema worker (action: "home") matches these classes
+ * field-for-field so no translation layer is needed.
  */
 
-/** A single poster item (movie, series, or live entry presented as a poster). */
+/** A single poster item (movie, series, anime, or live entry). */
 data class MediaItem(
     val id: String = "",
     val title: String = "",
@@ -21,11 +23,13 @@ data class MediaItem(
     val description: String = "",
     val rating: String = "",
     val year: String = "",
-    // "vod" | "series" | "live"
+    // "vod" | "series" | "anime" | "live"
     val section: String = "vod",
+    // TMDB id (used by resolve to build the scraper embed URL).
+    val tmdbId: String = "",
     // Optional direct stream URL (when the feed already supplies one).
     val directUrl: String? = null,
-    // Optional pre-supplied headers/proxy hint for direct feeds.
+    // Optional pre-supplied proxy hint for direct feeds.
     val useLocalProxy: Boolean = false,
     val extension: String = "mp4"
 )
@@ -37,21 +41,39 @@ data class HomeRow(
     val items: List<MediaItem> = emptyList()
 )
 
-/** The whole Home payload: a hero carousel + ordered rows. */
+/** The whole Home payload: a hero carousel + ordered rows + the active app mode. */
 data class HomeData(
     val hero: List<MediaItem> = emptyList(),
-    val rows: List<HomeRow> = emptyList()
+    val rows: List<HomeRow> = emptyList(),
+    val appMode: String = "HYBRID"
 ) {
     val isEmpty: Boolean get() = hero.isEmpty() && rows.isEmpty()
+
+    /** Flatten + de-dupe all items of a given section (for Movies/Series/Anime tabs). */
+    fun itemsForSection(section: String): List<MediaItem> {
+        val seen = HashSet<String>()
+        val out = ArrayList<MediaItem>()
+        for (row in rows) for (item in row.items) {
+            if (item.section.equals(section, true) && seen.add(item.id)) out.add(item)
+        }
+        return out
+    }
 }
 
+/** Result of resolving a catalog item into something playable. */
+data class ResolveResult(
+    val url: String,
+    // true → the URL is a scraper embed page; run HiddenWebViewScraper on it.
+    val scrape: Boolean,
+    val referer: String? = null
+)
+
 /**
- * Parses a client-provided "external source" JSON feed into [HomeData].
- *
- * Supported shape (see template.json downloadable from the panel):
+ * Parses the cinema worker "home" response (or a client external JSON feed) into
+ * [HomeData]. Both share the same shape:
  * {
- *   "hero": [ { "id","title","poster","backdrop","description","rating","year",
- *               "section","url","useLocalProxy","ext" }, ... ],
+ *   "app_mode": "HYBRID",
+ *   "hero": [ {item}, ... ],
  *   "rows": [ { "id","title","items":[ {item}, ... ] }, ... ]
  * }
  */
@@ -75,7 +97,11 @@ object CinemaJson {
                     }
                 }
             }
-            HomeData(hero = hero, rows = rows)
+            HomeData(
+                hero = hero,
+                rows = rows,
+                appMode = root.optString("app_mode", "HYBRID").uppercase()
+            )
         } catch (_: Throwable) {
             HomeData()
         }
@@ -96,6 +122,7 @@ object CinemaJson {
                         rating = o.optString("rating", ""),
                         year = o.optString("year", o.optString("releaseDate", "")),
                         section = o.optString("section", "vod"),
+                        tmdbId = o.optString("tmdb_id", o.optString("tmdbId", "")),
                         directUrl = o.optString("url", o.optString("stream_url", "")).ifBlank { null },
                         useLocalProxy = o.optBoolean("useLocalProxy", false),
                         extension = o.optString("ext", o.optString("container_extension", "mp4"))
