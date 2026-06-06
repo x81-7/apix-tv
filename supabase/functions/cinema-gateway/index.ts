@@ -142,6 +142,9 @@ function maskConfig(p: Provider | null, appMode: string) {
     vod_enabled: p.vod_enabled,
     series_enabled: p.series_enabled,
     live_enabled: p.live_enabled,
+    anime_enabled: p.anime_enabled,
+    movie_link_template: p.movie_link_template,
+    series_link_template: p.series_link_template,
     active: p.active,
   };
 }
