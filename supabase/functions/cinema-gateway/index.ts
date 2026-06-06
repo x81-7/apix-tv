@@ -190,6 +190,13 @@ Deno.serve(async (req) => {
         vod_enabled: body.vod_enabled ?? true,
         series_enabled: body.series_enabled ?? true,
         live_enabled: body.live_enabled ?? true,
+        anime_enabled: body.anime_enabled ?? true,
+        movie_link_template: body.movie_link_template !== undefined
+          ? (body.movie_link_template || null)
+          : existing?.movie_link_template ?? null,
+        series_link_template: body.series_link_template !== undefined
+          ? (body.series_link_template || null)
+          : existing?.series_link_template ?? null,
         active: true,
       };
       let res;
