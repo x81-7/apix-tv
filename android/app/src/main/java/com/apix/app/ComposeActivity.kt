@@ -197,7 +197,53 @@ fun AppNavigation(
         }
     }
 
-    LaunchedEffect(initialStreamConfigJson) {
+    // ── Cinema (movies/series/anime) playback flow ──
+    // 1) resolve the catalog item via the worker → either a direct URL or a
+    //    scraper embed URL. 2) if scraping is needed, run HiddenWebViewScraper to
+    //    extract the real .m3u8 + headers. 3) hand the result to ExoPlayer.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var resolving by remember { mutableStateOf(false) }
+
+    val playResolved: (String, String, com.apix.app.data.PlayerHeaders?, String?) -> Unit =
+        { url, title, headers, subtitle ->
+            resolving = false
+            navigateTo(
+                Screen.Player(
+                    PlayerConfig(
+                        url = url,
+                        title = title,
+                        headers = headers,
+                        subtitleUrl = subtitle
+                    )
+                )
+            )
+        }
+
+    val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
+        resolving = true
+        scope.launch {
+            val r = com.apix.app.data.CinemaRepository.resolve(item)
+            if (r == null) {
+                resolving = false
+            } else if (!r.scrape) {
+                playResolved(r.url, item.title, null, null)
+            } else {
+                com.apix.app.HiddenWebViewScraper(context).extract(
+                    pageUrl = r.url,
+                    referer = r.referer,
+                    onResult = { res ->
+                        val h = com.apix.app.data.PlayerHeaders(
+                            userAgent = res.headers["User-Agent"] ?: res.headers["user-agent"],
+                            referer = res.headers["Referer"] ?: res.headers["referer"] ?: r.referer
+                        )
+                        playResolved(res.url, item.title, h, res.subtitleUrl)
+                    },
+                    onError = { resolving = false }
+                )
+            }
+        }
+    }
+
         if (!initialStreamConfigJson.isNullOrEmpty()) {
             runCatching {
                 val stream = com.google.gson.Gson().fromJson(initialStreamConfigJson, com.apix.app.StreamConfig::class.java)
