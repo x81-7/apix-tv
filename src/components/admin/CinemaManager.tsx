@@ -39,6 +39,7 @@ const CinemaManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [appMode, setAppMode] = useState<AppMode>('HYBRID');
   const [host, setHost] = useState('');
@@ -51,6 +52,9 @@ const CinemaManager: React.FC = () => {
   const [vodEnabled, setVodEnabled] = useState(true);
   const [seriesEnabled, setSeriesEnabled] = useState(true);
   const [liveEnabled, setLiveEnabled] = useState(true);
+  const [animeEnabled, setAnimeEnabled] = useState(true);
+  const [movieTpl, setMovieTpl] = useState('');
+  const [seriesTpl, setSeriesTpl] = useState('');
 
   useEffect(() => {
     (async () => {
