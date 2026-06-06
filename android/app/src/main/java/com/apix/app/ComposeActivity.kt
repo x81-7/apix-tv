@@ -574,4 +574,21 @@ fun AppNavigation(
             }
         }
     } // إغلاق AnimatedContent
+
+        // Full-screen loader while a movie/series link is being resolved/scraped.
+        if (resolving) {
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0xCC000000)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = com.apix.app.ui.theme.Gold,
+                    strokeWidth = 4.dp,
+                    modifier = androidx.compose.ui.Modifier.size(56.dp)
+                )
+            }
+        }
+    } // إغلاق Box
 } // إغلاق AppNavigation
