@@ -244,6 +244,7 @@ fun AppNavigation(
         }
     }
 
+    LaunchedEffect(initialStreamConfigJson) {
         if (!initialStreamConfigJson.isNullOrEmpty()) {
             runCatching {
                 val stream = com.google.gson.Gson().fromJson(initialStreamConfigJson, com.apix.app.StreamConfig::class.java)
