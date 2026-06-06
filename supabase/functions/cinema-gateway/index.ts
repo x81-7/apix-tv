@@ -51,8 +51,31 @@ interface Provider {
   vod_enabled: boolean;
   series_enabled: boolean;
   live_enabled: boolean;
+  anime_enabled: boolean;
+  movie_link_template: string | null;
+  series_link_template: string | null;
   active: boolean;
 }
+
+/** Canonical media item — MUST match Android com.apix.app.data.MediaItem. */
+interface MediaItem {
+  id: string;
+  title: string;
+  poster: string;
+  backdrop: string;
+  description: string;
+  rating: string;
+  year: string;
+  section: string;       // vod | series | anime | live
+  tmdb_id: string;
+  url: string | null;    // direct stream (Xtream) or null when scraping is needed
+  useLocalProxy: boolean;
+  ext: string;           // container extension
+}
+
+/** Canonical home payload — MUST match Android com.apix.app.data.HomeData. */
+interface HomeRow { id: string; title: string; items: MediaItem[]; }
+interface HomePayload { hero: MediaItem[]; rows: HomeRow[]; }
 
 async function getActiveProvider(): Promise<Provider | null> {
   const { data, error } = await svc()
