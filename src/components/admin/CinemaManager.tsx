@@ -70,6 +70,9 @@ const CinemaManager: React.FC = () => {
           setVodEnabled(cfg.vod_enabled ?? true);
           setSeriesEnabled(cfg.series_enabled ?? true);
           setLiveEnabled(cfg.live_enabled ?? true);
+          setAnimeEnabled(cfg.anime_enabled ?? true);
+          setMovieTpl(cfg.movie_link_template ?? '');
+          setSeriesTpl(cfg.series_link_template ?? '');
         }
       } catch (e) {
         console.error(e);
