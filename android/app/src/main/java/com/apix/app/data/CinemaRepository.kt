@@ -4,17 +4,20 @@ import android.util.Log
 import com.apix.app.Net
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * CinemaRepository — builds the cinema [HomeData] for the Home screen.
  *
- * Two converging sources, BOTH routed so Supabase/IPTV origins never leak:
- *  1) The dedicated cinema gateway (cinema-gateway edge function) reached via
- *     the Cloudflare Worker → /functions/v1/cinema-gateway (Xtream catalog).
- *  2) An optional client "external source" raw JSON feed ([AppSettings.externalSourceUrl]).
- *     When present it is merged ON TOP of the gateway rows.
+ * The whole catalog now comes from ONE unified endpoint that already returns the
+ * exact JSON shape the app understands (matches [HomeData] / [MediaItem]):
+ *
+ *     POST /functions/v1/cinema-gateway { action: "home" }
+ *       → { success, app_mode, hero[], rows[] }
+ *
+ * This is the "Cloudflare worker behaves like a real API" contract — no client
+ * side reshaping needed. An optional client "external source" raw JSON feed
+ * ([AppSettings.externalSourceUrl]) is merged on top when present.
  */
 object CinemaRepository {
 
@@ -23,7 +26,7 @@ object CinemaRepository {
 
     /** Fetch + merge the cinema home payload. Never throws. */
     suspend fun loadHome(settings: AppSettings): HomeData = withContext(Dispatchers.IO) {
-        val gateway = runCatching { loadFromGateway(settings.appMode) }.getOrDefault(HomeData())
+        val gateway = runCatching { loadFromGateway() }.getOrDefault(HomeData(appMode = settings.appMode))
         val external = if (settings.externalSourceUrl.isNotBlank()) {
             runCatching { loadFromExternal(settings.externalSourceUrl) }.getOrDefault(HomeData())
         } else HomeData()
@@ -31,78 +34,48 @@ object CinemaRepository {
         // External feed takes priority for the hero; rows are concatenated.
         val hero = external.hero.ifEmpty { gateway.hero }
         val rows = (external.rows + gateway.rows).filter { it.items.isNotEmpty() }
-        HomeData(hero = hero, rows = rows)
+        // app_mode always comes from the worker (single source of truth).
+        HomeData(hero = hero, rows = rows, appMode = gateway.appMode)
     }
 
-    /** Resolve a playable URL for a catalog item via the gateway. */
-    suspend fun resolve(item: MediaItem): String? = withContext(Dispatchers.IO) {
-        item.directUrl?.let { return@withContext it }
-        try {
-            val body = JSONObject()
-                .put("action", "resolve")
-                .put("section", item.section)
-                .put("id", item.id)
-                .put("ext", item.extension)
-                .toString()
-            val resp = JSONObject(Net.post(GATEWAY_PATH, body))
-            if (resp.optBoolean("success", false)) resp.optString("url", null) else null
-        } catch (e: Exception) {
-            Log.w(TAG, "resolve failed", e); null
-        }
-    }
-
-    // ── Gateway (Xtream via cinema-gateway) ─────────────────────────────────
-    private fun loadFromGateway(appMode: String): HomeData {
-        val sections = when (appMode.uppercase()) {
-            "SPORTS_ONLY" -> listOf("live")
-            "CINEMA_ONLY" -> listOf("vod", "series")
-            else -> listOf("vod", "series", "live")
-        }
-        val rows = mutableListOf<HomeRow>()
-        val hero = mutableListOf<MediaItem>()
-
-        for (section in sections) {
-            val items = runCatching { fetchStreams(section) }.getOrDefault(emptyList())
-            if (items.isEmpty()) continue
-            rows.add(HomeRow(id = section, title = sectionTitle(section), items = items.take(30)))
-            if (hero.size < 5) hero.addAll(items.filter { it.backdrop.isNotBlank() || it.poster.isNotBlank() }.take(5 - hero.size))
-        }
-        return HomeData(hero = hero, rows = rows)
-    }
-
-    private fun fetchStreams(section: String): List<MediaItem> {
-        val body = JSONObject()
-            .put("action", "catalog")
-            .put("section", section)
-            .put("kind", "streams")
-            .toString()
-        val resp = JSONObject(Net.post(GATEWAY_PATH, body))
-        if (!resp.optBoolean("success", false)) return emptyList()
-        val arr: JSONArray = resp.optJSONArray("data") ?: return emptyList()
-        return buildList {
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                val id = o.optString("stream_id", o.optString("series_id", o.optString("num", i.toString())))
-                add(
-                    MediaItem(
-                        id = id,
-                        title = o.optString("name", ""),
-                        poster = o.optString("stream_icon", o.optString("cover", "")),
-                        backdrop = o.optString("backdrop_path", ""),
-                        rating = o.optString("rating", ""),
-                        section = section,
-                        extension = o.optString("container_extension", if (section == "live") "ts" else "mp4")
-                    )
+    /**
+     * Resolve a catalog item into something playable.
+     *  • Xtream/direct items → returns the direct URL (scrape = false).
+     *  • TMDB items          → returns the scraper embed URL (scrape = true);
+     *                          the caller must run HiddenWebViewScraper on it.
+     */
+    suspend fun resolve(item: MediaItem, season: Int = 1, episode: Int = 1): ResolveResult? =
+        withContext(Dispatchers.IO) {
+            item.directUrl?.let { return@withContext ResolveResult(url = it, scrape = false) }
+            try {
+                val body = JSONObject()
+                    .put("action", "resolve")
+                    .put("section", item.section)
+                    .put("id", item.id.substringAfterLast('_'))
+                    .put("tmdb_id", item.tmdbId)
+                    .put("season", season)
+                    .put("episode", episode)
+                    .put("ext", item.extension)
+                    .toString()
+                val resp = JSONObject(Net.post(GATEWAY_PATH, body))
+                if (!resp.optBoolean("success", false)) return@withContext null
+                val url = resp.optString("url", "")
+                if (url.isBlank()) return@withContext null
+                ResolveResult(
+                    url = url,
+                    scrape = resp.optBoolean("scrape", false),
+                    referer = resp.optString("referer", "").ifBlank { null }
                 )
+            } catch (e: Exception) {
+                Log.w(TAG, "resolve failed", e); null
             }
         }
-    }
 
-    private fun sectionTitle(section: String): String = when (section) {
-        "vod" -> "أفلام"
-        "series" -> "مسلسلات"
-        "live" -> "بث مباشر"
-        else -> section
+    // ── Unified gateway home (matches HomeData exactly) ─────────────────────
+    private fun loadFromGateway(): HomeData {
+        val body = JSONObject().put("action", "home").toString()
+        val raw = Net.post(GATEWAY_PATH, body)
+        return CinemaJson.parseHome(raw)
     }
 
     // ── External client feed (raw JSON, e.g. GitHub Raw) ────────────────────
