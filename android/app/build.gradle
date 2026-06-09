@@ -16,7 +16,6 @@ android {
         versionCode 2
         versionName "1.6"
 
-        // حل خطأ DataProcessor.kt المفقود في السجلات
         buildConfigField "String", "X_DP_K", "\"7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a\""
 
         def envFile = rootProject.file("../.env")
@@ -27,6 +26,17 @@ android {
         def cleanEnv = { value ->
             value == null ? null : value.toString().trim().replaceAll('^"|"$', '')
         }
+
+        def localProperties = new Properties()
+        def localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.withInputStream { stream ->
+                localProperties.load(stream)
+            }
+        }
+        
+        def tmdbKey = System.getenv("TMDB_API_KEY") ?: localProperties.getProperty("TMDB_API_KEY", "")
+        buildConfigField "String", "TMDB_API_KEY", "\"${tmdbKey}\""
 
         def cloudUrl = System.getenv("CLOUD_URL")
                     ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
@@ -41,20 +51,12 @@ android {
         def extKey   = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY")
                      ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
         def sigHash  = System.getenv("SIGNATURE_HASH") ?: "__HASH__"
-        // White-label gateway: when WORKER_URL is provided the app talks ONLY to
-        // the Cloudflare Worker, which hides Supabase. Falls back to direct cloud.
+        
         def workerUrl = System.getenv("WORKER_URL")
                     ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
-        // Optional SSL pinning: comma-separated base64 SHA-256 SPKI pins for the
-        // Worker host. Empty = pinning disabled (network_security_config still
-        // blocks user-installed CAs). Injected via CI from the WORKER_PINS secret.
         def workerPins = System.getenv("WORKER_PINS")
                     ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
 
-        // SECURITY: when a Worker is configured, NEVER bake the Supabase origin or
-        // anon key into the APK. A static-strings scan of the APK must not reveal
-        // *.supabase.co or the apikey. The Worker injects the real key server-side,
-        // so the client values can be empty in worker mode.
         def workerActive = (workerUrl != null && !workerUrl.trim().isEmpty())
         def bakedCloudUrl = workerActive ? "" : cloudUrl
         def bakedCloudKey = workerActive ? "" : cloudKey
@@ -161,12 +163,10 @@ dependencies {
     implementation 'com.google.android.gms:play-services-ads:23.0.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
-    // Embedded local HTTP server for the on-device IPTV proxy (manifest rewriting).
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'androidx.leanback:leanback:1.0.0'
     implementation 'androidx.compose.material3:material3-window-size-class'
 
-    // Android TV Compose — Hero Carousel + focus-aware rows for the Cinema Home.
     implementation 'androidx.tv:tv-foundation:1.0.0-alpha10'
     implementation 'androidx.tv:tv-material:1.0.0-alpha10'
 
