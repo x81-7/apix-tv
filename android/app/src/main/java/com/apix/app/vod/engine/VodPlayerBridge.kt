@@ -36,7 +36,7 @@ data class AdaptedPlayerConfig(
 
 class VodPlayerBridge(private val sourceEngine: SourceEngine) {
 
-    async fun preparePlayerConfig(
+    suspend fun preparePlayerConfig(
         item: MediaItem,
         seasonNumber: Int? = null,
         episodeNumber: Int? = null
