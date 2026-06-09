@@ -57,6 +57,7 @@ jobs:
           WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         working-directory: ./android
         shell: bash
         run: |
@@ -81,6 +82,7 @@ jobs:
           WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         working-directory: ./android
         shell: bash
         run: |
