@@ -143,23 +143,26 @@ fun AppNavigation(
         currentScreen = screen
     }
 
-    // 👈 دالة التشغيل السحرية: تحاول الإضافات، وإذا فشلت تذهب لـ Cloudflare Worker للتشغيل الإجباري!
     val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
         Toast.makeText(context, "جاري جلب روابط المشاهدة...", Toast.LENGTH_SHORT).show()
         
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                // محاولة 1: الإضافات
                 val providerLoader = ProviderLoader(context)
-                val providers = providerLoader.loadProviders(emptyList()) // يمكن إضافة مسارات الـ apk لاحقاً
+                val providers = providerLoader.loadProviders(emptyList()) 
                 val sourceEngine = com.apix.app.vod.engine.SourceEngine(providers)
                 
+                // تم إضافة imdbId و originalTitle لتجنب خطأ الـ Build
                 val req = com.apix.app.vod.extractors.WatchRequest(
                     tmdbId = item.tmdbId.ifBlank { item.id },
-                    title = item.title, year = item.year.toIntOrNull() ?: 2026,
+                    imdbId = null,
+                    title = item.title,
+                    originalTitle = item.title,
+                    year = item.year.toIntOrNull() ?: 2026,
                     isSeries = item.section == "series" || item.section == "anime",
-                    season = season, episode = episode
+                    season = season, 
+                    episode = episode
                 )
                 
                 val streamsMap = try { sourceEngine.fetchStreams(req) } catch(e:Exception){ emptyMap() }
@@ -177,7 +180,6 @@ fun AppNavigation(
                         navigateTo(Screen.Player(cfg, false, streamsMap, subList))
                     }
                 } else {
-                    // محاولة 2: السيرفر المباشر (Cloudflare) - الحل الحاسم لعمل ExoPlayer!
                     val r = CinemaRepository.resolve(item, season ?: 1, episode ?: 1)
                     if (r != null) {
                         if (!r.scrape) {
@@ -239,8 +241,17 @@ fun AppNavigation(
             when (screen) {
                 is Screen.Main -> {
                     if (uiState.appMode.uppercase() == "SPORTS_ONLY" || uiState.appMode.uppercase() == "LIVE_ONLY") {
-                        // تم معالجة onClick بشكل آمن جداً
-                        MainScreen(uiState, {}, {}, {}, viewModel.getVisibleChannels(), false, isDarkMode, {})
+                        // تم استخدام Named Arguments لمنع خطأ ترتيب المتغيرات
+                        MainScreen(
+                            uiState = uiState,
+                            onCategorySelected = {},
+                            onChannelClick = {},
+                            onSearchClick = {},
+                            channels = viewModel.getVisibleChannels(),
+                            isSettings = false,
+                            isDarkMode = isDarkMode,
+                            onToggleDarkMode = {}
+                        )
                     } else {
                         CinemaShell(
                             homeData = cinemaState,
@@ -274,11 +285,14 @@ fun AppNavigation(
                         selectedSeason?.let { episodes = TMDBRepository.getEpisodes(screen.item.tmdbId, it.seasonNumber) }
                     }
 
+                    // تم إضافة similarItems و onSimilarItemClick لمنع خطأ الـ Build
                     DetailsScreen(
                         item = screen.item,
+                        similarItems = emptyList(),
                         seasons = seasons,
                         episodes = episodes,
                         onSeasonSelect = { selectedSeason = it },
+                        onSimilarItemClick = {},
                         onPlayClick = { playMediaItem(screen.item, null, null) },
                         onEpisodeClick = { episode -> playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) }
                     )
