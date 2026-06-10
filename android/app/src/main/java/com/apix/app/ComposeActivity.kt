@@ -42,21 +42,18 @@ class ComposeActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(true) }
             var isInPlayer by remember { mutableStateOf(false) }
 
-            // --- نظام حقن روابط الإضافات بالترتيب الجديد من GitHub Secrets تلقائياً ---
             LaunchedEffect(Unit) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
                         val existingRepos = secureStore.getRepositories()
                         
-                        // الإضافة الأولى
                         val myPluginRepoUrl1 = BuildConfig.PLUGIN_REPO_URL_1 
                         if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl1 }) {
                             secureStore.addRepository("سيرفر الإضافات 1", myPluginRepoUrl1)
                             android.util.Log.d("Plugins", "تم حقن رابط الإضافة 1 بنجاح!")
                         }
 
-                        // الإضافة الثانية
                         val myPluginRepoUrl2 = BuildConfig.PLUGIN_REPO_URL_2 
                         if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl2 }) {
                             secureStore.addRepository("سيرفر الإضافات 2", myPluginRepoUrl2)
@@ -67,7 +64,6 @@ class ComposeActivity : ComponentActivity() {
                     }
                 }
             }
-            // ---------------------------------------------------------------------
 
             LaunchedEffect(isInPlayer) {
                 if (isInPlayer) {
@@ -145,7 +141,6 @@ fun AppNavigation(
     val cinemaState by cinemaViewModel.homeState.collectAsState()
     val cinemaLoading by cinemaViewModel.isLoading.collectAsState()
 
-    // تشغيل جلب بيانات السينما التلقائي عند تبديل الأوضاع
     LaunchedEffect(uiState.appMode, uiState.externalSourceUrl) {
         cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl)
     }
@@ -441,7 +436,7 @@ fun AppNavigation(
 
         val host = activity
         if (host != null) {
-            com.apix.app.AdManager.maybeRunExternalGate(host, "external") {
+            com.apix.app.AdManager.maybeRunExternalGate(host) {
                 host.runOnUiThread { proceed() }
             }
         } else {
@@ -557,6 +552,7 @@ fun AppNavigation(
             when (screen) {
                 is Screen.Main -> {
                     val mode = uiState.appMode.uppercase()
+                    
                     val liveScreen: @Composable () -> Unit = {
                         MainScreen(
                             uiState = uiState,
@@ -569,17 +565,16 @@ fun AppNavigation(
                             onToggleDarkMode = onToggleDarkMode
                         )
                     }
+
                     when (mode) {
                         "SPORTS_ONLY", "LIVE_ONLY" -> liveScreen()
                         else -> {
-                            CinemaShell(
+                            com.apix.app.ui.screens.CinemaShell(
                                 data = cinemaState,
                                 isLoading = cinemaLoading,
-                                onItemClick = { handleMediaClick(it) },
+                                onItemClick = { item -> handleMediaClick(item) },
                                 onLiveChannelClick = { channel -> 
-                                    if (channel is Channel) {
-                                        handleChannelClick(channel)
-                                    }
+                                    if (channel is Channel) handleChannelClick(channel) 
                                 }
                             )
                         }
