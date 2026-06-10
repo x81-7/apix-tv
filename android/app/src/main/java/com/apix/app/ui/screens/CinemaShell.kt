@@ -1,13 +1,14 @@
 package com.apix.app.ui.screens
 
-import android.content.res.Configuration
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,235 +19,182 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apix.app.data.HomeData
 import com.apix.app.data.MediaItem
+import com.apix.app.data.HomeRow
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.DarkBackground
-import com.apix.app.ui.theme.CharcoalCard
 
-/**
- * البيانات المهيكلة للأقسام (Tabs)
- */
 data class NavItem(val title: String, val icon: ImageVector)
 
-val hybridNavItems = listOf(
-    NavItem("الرئيسية", Icons.Default.Home),
-    NavItem("أفلام", Icons.Default.Movie),
-    NavItem("مسلسلات", Icons.Default.Tv),
-    NavItem("أنمي", Icons.Default.Animation),
-    NavItem("مباشر", Icons.Default.LiveTv)
-)
-
-/**
- * الإطار الحاوي للتطبيق (Shell) المتوافق مع الجوال والتلفاز
- */
 @Composable
 fun CinemaShell(
-    data: HomeData?,
+    homeData: HomeData,
+    moviesRows: List<HomeRow>,
+    seriesRows: List<HomeRow>,
+    animeRows: List<HomeRow>,
+    liveChannels: List<MediaItem>,
     isLoading: Boolean,
     onItemClick: (MediaItem) -> Unit,
-    onLiveChannelClick: (Any) -> Unit, // Any مؤقتاً حتى نربط كلاس القنوات
-    modifier: Modifier = Modifier
+    onLiveChannelClick: (MediaItem) -> Unit,
+    onSeeMoreClick: (String) -> Unit
 ) {
-    // تحديد ما إذا كان الجهاز تلفاز أو في وضع أفقي (Landscape)
-    val configuration = LocalConfiguration.current
-    val isLandscapeOrTv = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
-            (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf(
+        NavItem("الرئيسية", Icons.Default.Home),
+        NavItem("أفلام", Icons.Default.Movie),
+        NavItem("مسلسلات", Icons.Default.Tv),
+        NavItem("أنمي", Icons.Default.Animation),
+        NavItem("بث مباشر", Icons.Default.LiveTv)
+    )
 
-    // قراءة وضع التطبيق (رياضة فقط أم هجين)
-    val appMode = data?.appMode?.uppercase() ?: "HYBRID"
-    val isLiveOnly = appMode == "LIVE_ONLY" || appMode == "SPORT_ONLY"
-
-    // إذا كان الوضع "مباشر فقط"، نعرض واجهة البث المباشر الأصلية مع إخفاء أي أشرطة تنقل VOD
-    if (isLiveOnly) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Box(modifier = modifier.fillMaxSize().background(DarkBackground)) {
-                // سيتم استدعاء تصميم MainScreen (البث المباشر) هنا لاحقاً
-                Text("شاشة البث المباشر الكلاسيكية", color = Color.White, modifier = Modifier.align(Alignment.Center))
-            }
-        }
-        return
-    }
-
-    // --- وضع الهجين (HYBRID) ---
-    var selectedTab by remember { mutableIntStateOf(0) }
-
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Box(modifier = modifier.fillMaxSize().background(DarkBackground)) {
-            
-            if (isLandscapeOrTv) {
-                // 📺 واجهة التلفاز (شريط جانبي - Navigation Rail)
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // الشريط الجانبي
-                    TvNavigationRail(
-                        items = hybridNavItems,
-                        selectedIndex = selectedTab,
-                        onItemSelected = { selectedTab = it },
-                        modifier = Modifier.width(90.dp).fillMaxHeight()
-                    )
-                    
-                    // المحتوى
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        ShellContent(
-                            selectedTab = selectedTab,
-                            data = data,
-                            isLoading = isLoading,
-                            onItemClick = onItemClick,
-                            onLiveChannelClick = onLiveChannelClick
-                        )
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Gold)
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.weight(1f)) {
+                    when (selectedTab) {
+                        0 -> HomeTabContent(homeData, onItemClick, onSeeMoreClick)
+                        1 -> CategorizedTabContent(moviesRows, onItemClick, onSeeMoreClick)
+                        2 -> CategorizedTabContent(seriesRows, onItemClick, onSeeMoreClick)
+                        3 -> CategorizedTabContent(animeRows, onItemClick, onSeeMoreClick)
+                        4 -> LiveTvTabContent(liveChannels, onLiveChannelClick)
                     }
                 }
-            } else {
-                // 📱 واجهة الجوال (شريط سفلي - Bottom Navigation)
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // المحتوى
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        ShellContent(
-                            selectedTab = selectedTab,
-                            data = data,
-                            isLoading = isLoading,
-                            onItemClick = onItemClick,
-                            onLiveChannelClick = onLiveChannelClick
-                        )
+                // شريط التنقل السفلي الاحترافي العائم
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(Color(0xE6121212)) // أسود شفاف أنيق
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(30.dp))
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        tabs.forEachIndexed { index, item ->
+                            val isSelected = index == selectedTab
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedTab = index },
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.title,
+                                    tint = if (isSelected) Gold else Color.Gray,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(modifier = Modifier.size(4.dp).clip(RoundedCornerShape(2.dp)).background(Gold))
+                                }
+                            }
+                        }
                     }
-                    
-                    // الشريط السفلي
-                    MobileBottomBar(
-                        items = hybridNavItems,
-                        selectedIndex = selectedTab,
-                        onItemSelected = { selectedTab = it }
-                    )
                 }
             }
         }
     }
 }
 
-/**
- * المحتوى المتغير بناءً على القسم المختار
- */
 @Composable
-private fun ShellContent(
-    selectedTab: Int,
-    data: HomeData?,
-    isLoading: Boolean,
-    onItemClick: (MediaItem) -> Unit,
-    onLiveChannelClick: (Any) -> Unit
-) {
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Gold)
+fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onSeeMoreClick: (String) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(bottom = 80.dp)) {
+        item {
+            if (data.hero.isNotEmpty()) {
+                // البانر العلوي (الهيرو)
+                Box(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                    CinemaPosterCard(item = data.hero[0], onClick = { onItemClick(data.hero[0]) }, modifier = Modifier.fillMaxSize())
+                }
+            }
         }
-        return
+        items(data.rows) { row ->
+            MediaRowSection(row, onItemClick, onSeeMoreClick)
+        }
     }
+}
 
-    when (selectedTab) {
-        0 -> HomeScreen(data = data, onItemClick = onItemClick)
-        1 -> MoviesScreen(data = data, onItemClick = onItemClick)
-        2 -> SeriesScreen(data = data, onItemClick = onItemClick)
-        3 -> AnimeScreen(data = data, onItemClick = onItemClick)
-        4 -> {
-            // واجهة البث المباشر المعزولة داخل الهجين
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("شاشة البث المباشر المخصصة للوضع الهجين", color = Gold)
+@Composable
+fun CategorizedTabContent(rows: List<HomeRow>, onItemClick: (MediaItem) -> Unit, onSeeMoreClick: (String) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 16.dp, bottom = 80.dp)) {
+        items(rows) { row ->
+            MediaRowSection(row, onItemClick, onSeeMoreClick)
+        }
+    }
+}
+
+@Composable
+fun MediaRowSection(row: HomeRow, onItemClick: (MediaItem) -> Unit, onSeeMoreClick: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(4.dp, 18.dp).background(Gold, RoundedCornerShape(2.dp)))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = row.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                text = "المزيد",
+                color = Gold,
+                fontSize = 14.sp,
+                modifier = Modifier.clickable { onSeeMoreClick(row.title) }
+            )
+        }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(row.items) { item ->
+                CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.width(120.dp).height(180.dp))
             }
         }
     }
 }
 
-/**
- * 📺 شريط التنقل الجانبي للتلفاز (مخصص بدقة لريموت التلفاز)
- */
+// تبويب البث المباشر (أبعاد 16:9 الاحترافية للقنوات الرياضية)
 @Composable
-private fun TvNavigationRail(
-    items: List<NavItem>,
-    selectedIndex: Int,
-    onItemSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .background(Color.Black) // أسود نقي كما طلبت
-            .padding(vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        items.forEachIndexed { index, item ->
-            val isSelected = index == selectedIndex
-            val interactionSource = remember { MutableInteractionSource() }
-            val isFocused by interactionSource.collectIsFocusedAsState()
-
-            // التأثير: إطار ذهبي فقط عند التركيز بدون تكبير الحجم
-            val borderColor = if (isFocused) Gold else Color.Transparent
-            val iconTint = if (isSelected || isFocused) Gold else Color.Gray
-
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSelected) CharcoalCard else Color.Transparent)
-                    .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        onClick = { onItemSelected(index) }
+fun LiveTvTabContent(channels: List<MediaItem>, onChannelClick: (MediaItem) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(top = 16.dp, bottom = 80.dp)) {
+        Text(
+            text = "قنوات البث المباشر",
+            color = Color.White,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(channels) { channel ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f) // 👈 السر هنا: شعارات 16:9 للقنوات!
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1E1E1E))
+                        .clickable { onChannelClick(channel) }
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                ) {
+                    coil.compose.AsyncImage(
+                        model = channel.poster,
+                        contentDescription = channel.title,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(12.dp)
                     )
-                    .focusable(interactionSource = interactionSource),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = item.title,
-                    tint = iconTint,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 📱 شريط التنقل السفلي للهاتف (بخلفية شفافة/ضبابية)
- */
-@Composable
-private fun MobileBottomBar(
-    items: List<NavItem>,
-    selectedIndex: Int,
-    onItemSelected: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xD9000000)) // أسود شفاف قليلاً
-            .padding(vertical = 12.dp, horizontal = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        items.forEachIndexed { index, item ->
-            val isSelected = index == selectedIndex
-            val iconTint = if (isSelected) Gold else Color.Gray
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable { onItemSelected(index) }
-                    .padding(12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = item.title,
-                    tint = iconTint,
-                    modifier = Modifier.size(26.dp)
-                )
+                }
             }
         }
     }
