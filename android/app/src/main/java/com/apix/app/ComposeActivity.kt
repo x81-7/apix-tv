@@ -486,13 +486,6 @@ fun AppNavigation(
         }
     }
 
-    // Helper function to map Category to HomeData structure if needed.
-    // This is a dummy implementation, replace it with your actual logic if HomeData exists
-    fun mapToHomeData(categories: List<Category>): com.apix.app.data.HomeData? {
-        // Implement logic to convert categories to HomeData if necessary
-        return null // Replace with actual HomeData object
-    }
-
     androidx.activity.compose.BackHandler(currentScreen !is Screen.Main || isSettings || isCurrentExternal()) {
         if (isSettings) {
             isSettings = false
@@ -536,10 +529,8 @@ fun AppNavigation(
                 when (mode) {
                     "SPORTS_ONLY" -> liveScreen()
                     else -> {
-                        // Assuming uiState.categories needs to be mapped to HomeData
-                        val homeData = mapToHomeData(uiState.categories)
                         com.apix.app.ui.screens.CinemaShell(
-                            data = homeData,
+                            data = null, // بيانات مؤقتة لتمرير الـ Build
                             isLoading = uiState.isLoading,
                             onItemClick = { item -> 
                                 if (item is com.apix.app.data.MediaItem) {
