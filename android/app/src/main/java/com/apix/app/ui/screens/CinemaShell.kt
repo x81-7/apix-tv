@@ -1,5 +1,6 @@
 package com.apix.app.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +12,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -18,9 +21,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +34,7 @@ import com.apix.app.data.MediaItem
 import com.apix.app.data.HomeRow
 import com.apix.app.data.Category
 import com.apix.app.ui.theme.Gold
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class NavItem(val title: String, val icon: ImageVector)
@@ -56,72 +62,97 @@ fun CinemaShell(
         NavItem("بث مباشر", Icons.Default.LiveTv)
     )
 
-    Scaffold(
-        bottomBar = {
-            if (viewingMoreRow == null) {
-                // 📱 تصميم شريط التنقل السفلي الاحترافي (Telegram/iOS Style) 📱
-                NavigationBar(
-                    containerColor = Color(0xFF141414),
-                    contentColor = Color.Gray,
-                    tonalElevation = 0.dp,
-                    modifier = Modifier.border(width = 0.5.dp, color = Color(0xFF2A2A2A))
-                ) {
-                    tabs.forEachIndexed { index, item ->
-                        NavigationBarItem(
-                            icon = { 
-                                Icon(
-                                    item.icon, 
-                                    contentDescription = item.title,
-                                    modifier = Modifier.size(24.dp)
-                                ) 
-                            },
-                            label = { Text(item.title, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Gold,
-                                selectedTextColor = Gold,
-                                unselectedIconColor = Color.Gray,
-                                unselectedTextColor = Color.Gray,
-                                indicatorColor = Color.Transparent // إزالة الدائرة الخلفية لجعله مثل iOS
-                            )
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    if (isLandscape) {
+        // 📺 تصميم شاشات التلفاز / الوضع العرضي (شريط جانبي) 📺
+        Row(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            NavigationRail(
+                containerColor = Color(0xFF141414),
+                contentColor = Color.Gray,
+                modifier = Modifier.width(90.dp).border(0.5.dp, Color(0xFF2A2A2A))
+            ) {
+                Spacer(modifier = Modifier.height(32.dp))
+                tabs.forEachIndexed { index, item ->
+                    NavigationRailItem(
+                        icon = { Icon(item.icon, contentDescription = item.title, modifier = Modifier.size(28.dp)) },
+                        label = { Text(item.title, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index; viewingMoreRow = null },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Gold, selectedTextColor = Gold,
+                            unselectedIconColor = Color.Gray, unselectedTextColor = Color.Gray,
+                            indicatorColor = Color.Transparent
                         )
-                    }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-        },
-        containerColor = Color.Black
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Gold)
-            } else if (viewingMoreRow != null) {
-                ExpandedCategoryScreen(
-                    row = viewingMoreRow!!,
-                    onItemClick = onItemClick,
-                    onBack = { viewingMoreRow = null },
-                    fetchMore = fetchMore
-                )
-            } else {
-                when (selectedTab) {
-                    0 -> HomeTabContent(homeData, onItemClick) { viewingMoreRow = it }
-                    1 -> CategorizedTabContent(moviesRows, onItemClick) { viewingMoreRow = it }
-                    2 -> CategorizedTabContent(seriesRows, onItemClick) { viewingMoreRow = it }
-                    3 -> CategorizedTabContent(animeRows, onItemClick) { viewingMoreRow = it }
-                    4 -> LiveTvTabContent(liveCategories, onLiveChannelClick)
+            
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                MainContentArea(isLoading, viewingMoreRow, selectedTab, homeData, moviesRows, seriesRows, animeRows, liveCategories, onItemClick, onLiveChannelClick, { viewingMoreRow = it }, fetchMore, { viewingMoreRow = null })
+            }
+        }
+    } else {
+        // 📱 تصميم الهواتف / الوضع الطولي (شريط سفلي) 📱
+        Scaffold(
+            bottomBar = {
+                if (viewingMoreRow == null) {
+                    NavigationBar(
+                        containerColor = Color(0xFF141414),
+                        contentColor = Color.Gray,
+                        tonalElevation = 0.dp,
+                        modifier = Modifier.border(width = 0.5.dp, color = Color(0xFF2A2A2A))
+                    ) {
+                        tabs.forEachIndexed { index, item ->
+                            NavigationBarItem(
+                                icon = { Icon(item.icon, contentDescription = item.title, modifier = Modifier.size(24.dp)) },
+                                label = { Text(item.title, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Gold, selectedTextColor = Gold,
+                                    unselectedIconColor = Color.Gray, unselectedTextColor = Color.Gray,
+                                    indicatorColor = Color.Transparent
+                                )
+                            )
+                        }
+                    }
                 }
+            },
+            containerColor = Color.Black
+        ) { paddingValues ->
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                MainContentArea(isLoading, viewingMoreRow, selectedTab, homeData, moviesRows, seriesRows, animeRows, liveCategories, onItemClick, onLiveChannelClick, { viewingMoreRow = it }, fetchMore, { viewingMoreRow = null })
             }
         }
     }
 }
 
 @Composable
-fun ExpandedCategoryScreen(
-    row: HomeRow, 
-    onItemClick: (MediaItem) -> Unit, 
-    onBack: () -> Unit,
-    fetchMore: suspend (String, String, Int) -> List<MediaItem>
+fun MainContentArea(
+    isLoading: Boolean, viewingMoreRow: HomeRow?, selectedTab: Int,
+    homeData: HomeData, moviesRows: List<HomeRow>, seriesRows: List<HomeRow>, animeRows: List<HomeRow>, liveCategories: List<Category>,
+    onItemClick: (MediaItem) -> Unit, onLiveChannelClick: (MediaItem) -> Unit, onSeeMore: (HomeRow) -> Unit, fetchMore: suspend (String, String, Int) -> List<MediaItem>, onBack: () -> Unit
 ) {
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Gold) }
+    } else if (viewingMoreRow != null) {
+        ExpandedCategoryScreen(row = viewingMoreRow, onItemClick = onItemClick, onBack = onBack, fetchMore = fetchMore)
+    } else {
+        when (selectedTab) {
+            0 -> HomeTabContent(homeData, onItemClick, onSeeMore)
+            1 -> CategorizedTabContent(moviesRows, onItemClick, onSeeMore)
+            2 -> CategorizedTabContent(seriesRows, onItemClick, onSeeMore)
+            3 -> CategorizedTabContent(animeRows, onItemClick, onSeeMore)
+            4 -> LiveTvTabContent(liveCategories, onLiveChannelClick)
+        }
+    }
+}
+
+@Composable
+fun ExpandedCategoryScreen(row: HomeRow, onItemClick: (MediaItem) -> Unit, onBack: () -> Unit, fetchMore: suspend (String, String, Int) -> List<MediaItem>) {
     var items by remember { mutableStateOf(row.items) }
     var page by remember { mutableStateOf(2) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -133,35 +164,23 @@ fun ExpandedCategoryScreen(
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = row.title, color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(8.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            items(items) { item ->
-                CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.padding(8.dp).aspectRatio(0.66f))
-            }
+        LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(8.dp), modifier = Modifier.weight(1f)) {
+            items(items) { item -> CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.padding(8.dp).aspectRatio(0.66f)) }
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    if (loadingMore) {
-                        CircularProgressIndicator(color = Gold)
-                    } else {
+                    if (loadingMore) { CircularProgressIndicator(color = Gold) } 
+                    else {
                         Button(
                             onClick = {
                                 loadingMore = true
                                 scope.launch {
                                     val newItems = fetchMore(row.id, items.firstOrNull()?.section ?: "vod", page)
-                                    if (newItems.isNotEmpty()) {
-                                        items = items + newItems
-                                        page++
-                                    }
+                                    if (newItems.isNotEmpty()) { items = items + newItems; page++ }
                                     loadingMore = false
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222))
-                        ) {
-                            Text("تحميل المزيد", color = Color.White)
-                        }
+                        ) { Text("تحميل المزيد", color = Color.White) }
                     }
                 }
             }
@@ -174,9 +193,35 @@ fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onSeeMore: 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             if (data.hero.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().height(450.dp)) {
-                    CinemaPosterCard(item = data.hero[0], onClick = { onItemClick(data.hero[0]) }, modifier = Modifier.fillMaxSize())
-                    Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black))))
+                val pagerState = rememberPagerState(pageCount = { data.hero.size })
+                // 👈 السلايدر التلقائي
+                LaunchedEffect(pagerState) {
+                    while(true) {
+                        delay(4000)
+                        if (pagerState.pageCount > 0) {
+                            pagerState.animateScrollToPage((pagerState.currentPage + 1) % pagerState.pageCount)
+                        }
+                    }
+                }
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(480.dp)) { page ->
+                    val item = data.hero[page]
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.fillMaxSize())
+                        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black))))
+                        
+                        // 👈 زر مشاهدة
+                        Box(modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 24.dp, vertical = 32.dp)) {
+                            Button(
+                                onClick = { onItemClick(item) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Play", modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("مشاهدة الآن", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -208,43 +253,45 @@ fun MediaRowSection(row: HomeRow, onItemClick: (MediaItem) -> Unit, onSeeMore: (
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(row.items) { item ->
-                CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.width(120.dp).height(180.dp))
+                CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.width(130.dp).height(195.dp))
             }
         }
     }
 }
 
+// 👈 قسم البث المباشر (تصميم 16:9 ضخم وإزالة كلمة بث مباشر)
 @Composable
 fun LiveTvTabContent(categories: List<Category>, onChannelClick: (MediaItem) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 16.dp)) {
         items(categories) { cat ->
             val channels = cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder } ?: emptyList()
             if (channels.isNotEmpty()) {
-                Text(
-                    text = "بث مباشر: ${cat.name}",
-                    color = Gold, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Box(modifier = Modifier.size(4.dp, 20.dp).background(Gold, RoundedCornerShape(2.dp)))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = cat.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(channels) { ch ->
                         Box(
                             modifier = Modifier
-                                .width(160.dp).aspectRatio(16f / 9f)
+                                .width(260.dp) // حجم كبير وواضح
+                                .aspectRatio(16f / 9f) // أبعاد 16:9 الدقيقة
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF161616))
-                                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                                .background(Color(0xFF1E1E1E))
+                                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(12.dp)) // إطار يحيط بها
                                 .clickable { 
                                     onChannelClick(MediaItem(id = ch.id, title = ch.name, poster = ch.imageUrl, section = "live", directUrl = ch.stream?.url, useLocalProxy = ch.useLocalProxy)) 
                                 }
                         ) {
                             coil.compose.AsyncImage(
                                 model = ch.imageUrl, contentDescription = ch.name,
-                                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(8.dp)
+                                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(12.dp)
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
