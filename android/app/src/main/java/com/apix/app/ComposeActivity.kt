@@ -35,6 +35,7 @@ import com.apix.app.viewmodel.CinemaViewModel
 
 import com.apix.app.vod.plugin.*
 import com.apix.app.vod.engine.TMDBRepository
+import java.io.File
 
 class ComposeActivity : ComponentActivity() {
 
@@ -143,26 +144,46 @@ fun AppNavigation(
         currentScreen = screen
     }
 
+    // 👈 الخطأ القديم كان هنا، تم حله الآن بتمرير قائمة الإضافات الفعلية!
     val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
-        Toast.makeText(context, "جاري جلب روابط المشاهدة...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "جاري البحث في السيرفرات...", Toast.LENGTH_SHORT).show()
         
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val secureStore = SecureRepositoryStore(context)
+                val repoManager = RepositoryManager(context)
                 val providerLoader = ProviderLoader(context)
-                val providers = providerLoader.loadProviders(emptyList()) 
+                
+                val pluginList = mutableListOf<Pair<File, String>>()
+                val repos = secureStore.getRepositories()
+                
+                for (repo in repos) {
+                    val manifest = try { repoManager.fetchManifest(repo) } catch (e: Exception) { null }
+                    manifest?.plugins?.forEach { entry ->
+                        val pluginDir = context.getDir("plugins", android.content.Context.MODE_PRIVATE)
+                        var file = File(pluginDir, "${entry.id}_${entry.version}.apk")
+                        if (!file.exists()) {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) { Toast.makeText(context, "تحديث الإضافة...", Toast.LENGTH_SHORT).show() }
+                            val downloaded = try { repoManager.downloadPlugin(repo, entry) } catch (e: Exception) { null }
+                            if (downloaded != null) file = downloaded
+                        }
+                        if (file.exists()) {
+                            pluginList.add(Pair(file, entry.className)) // 👈 هنا يكمن السر، أضفنا الإضافة للقائمة!
+                        }
+                    }
+                }
+                
+                // 👈 تم تمرير pluginList بدلاً من emptyList() الغبية القديمة!
+                val providers = providerLoader.loadProviders(pluginList) 
                 val sourceEngine = com.apix.app.vod.engine.SourceEngine(providers)
                 
-                // تم إضافة imdbId و originalTitle لتجنب خطأ الـ Build
                 val req = com.apix.app.vod.extractors.WatchRequest(
                     tmdbId = item.tmdbId.ifBlank { item.id },
-                    imdbId = null,
-                    title = item.title,
-                    originalTitle = item.title,
+                    imdbId = null, title = item.title, originalTitle = item.title,
                     year = item.year.toIntOrNull() ?: 2026,
                     isSeries = item.section == "series" || item.section == "anime",
-                    season = season, 
-                    episode = episode
+                    season = season, episode = episode
                 )
                 
                 val streamsMap = try { sourceEngine.fetchStreams(req) } catch(e:Exception){ emptyMap() }
@@ -241,16 +262,9 @@ fun AppNavigation(
             when (screen) {
                 is Screen.Main -> {
                     if (uiState.appMode.uppercase() == "SPORTS_ONLY" || uiState.appMode.uppercase() == "LIVE_ONLY") {
-                        // تم استخدام Named Arguments لمنع خطأ ترتيب المتغيرات
                         MainScreen(
-                            uiState = uiState,
-                            onCategorySelected = {},
-                            onChannelClick = {},
-                            onSearchClick = {},
-                            channels = viewModel.getVisibleChannels(),
-                            isSettings = false,
-                            isDarkMode = isDarkMode,
-                            onToggleDarkMode = {}
+                            uiState = uiState, onCategorySelected = {}, onChannelClick = {}, onSearchClick = {},
+                            channels = viewModel.getVisibleChannels(), isSettings = false, isDarkMode = isDarkMode, onToggleDarkMode = {}
                         )
                     } else {
                         CinemaShell(
@@ -285,7 +299,6 @@ fun AppNavigation(
                         selectedSeason?.let { episodes = TMDBRepository.getEpisodes(screen.item.tmdbId, it.seasonNumber) }
                     }
 
-                    // تم إضافة similarItems و onSimilarItemClick لمنع خطأ الـ Build
                     DetailsScreen(
                         item = screen.item,
                         similarItems = emptyList(),
