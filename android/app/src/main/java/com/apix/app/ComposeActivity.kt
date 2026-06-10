@@ -30,8 +30,9 @@ import com.apix.app.ui.theme.APiXTheme
 import com.apix.app.viewmodel.MainViewModel
 import com.apix.app.viewmodel.CinemaViewModel
 
-// الاستيراد الحاسم لتجنب خطأ manifestUrl الخاص بالإضافة
+// استيرادات حاسمة لحل مشاكل الـ Unresolved references للإضافات والمستودعات
 import com.apix.app.vod.plugin.*
+import com.apix.app.vod.engine.TMDBRepository
 
 class ComposeActivity : ComponentActivity() {
 
@@ -458,7 +459,7 @@ fun AppNavigation(
                 "sub_channel" -> {
                     val targetId = action.optString("targetId")
                     val channel = sideMenus.values.asSequence().flatMap { it.channels?.values?.asSequence() ?: emptySequence() }.firstOrNull { it.id == targetId }
-                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = channel.androidStream, androidActionType = channel.androidActionType, forcedAspectRatio = channel.forcedAspectRatio, lockAspectRatio = channel.lockAspectRatio))
+                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = androidStream, androidActionType = androidActionType, forcedAspectRatio = forcedAspectRatio, lockAspectRatio = lockAspectRatio))
                 }
                 "external_link" -> {
                     val externalUrl = action.optString("externalUrl")
@@ -559,13 +560,41 @@ fun AppNavigation(
                     }
                 }
                 
+                // تم تعديل شاشة التفاصيل هنا لتطابق كود DetailsScreen.kt الأصلي الخاص بك 100%
                 is Screen.Details -> {
+                    var similarItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+                    var seasons by remember { mutableStateOf<List<TvSeason>>(emptyList()) }
+                    var episodes by remember { mutableStateOf<List<TvEpisode>>(emptyList()) }
+                    var selectedSeason by remember { mutableStateOf<TvSeason?>(null) }
+
+                    LaunchedEffect(screen.item.id) {
+                        val isSeries = screen.item.section == "series"
+                        val details = TMDBRepository.getDetails(screen.item.tmdbId, isSeries)
+                        if (details != null) {
+                            similarItems = TMDBRepository.getSimilar(screen.item.tmdbId, isSeries)
+                            if (isSeries) {
+                                seasons = TMDBRepository.getSeasons(screen.item.tmdbId)
+                                selectedSeason = seasons.firstOrNull()
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(selectedSeason) {
+                        selectedSeason?.let { season ->
+                            episodes = TMDBRepository.getEpisodes(screen.item.tmdbId, season.seasonNumber)
+                        }
+                    }
+
                     DetailsScreen(
                         item = screen.item,
-                        onSimilarItemClick = { similar -> navigateTo(Screen.Details(similar)) },
+                        similarItems = similarItems,
+                        seasons = seasons,
+                        episodes = episodes,
+                        onSeasonSelect = { season -> selectedSeason = season },
                         onPlayClick = { playMediaItem(screen.item, null, null) },
-                        onEpisodeClick = { season, episode -> playMediaItem(screen.item, season.seasonNumber, episode.episodeNumber) },
-                        onBack = { goBack() }
+                        onEpisodeClick = { episode -> 
+                            playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) 
+                        }
                     )
                 }
 
