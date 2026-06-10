@@ -35,6 +35,9 @@ import androidx.compose.material3.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+// 👈 الاستيرادات التي كانت ناقصة وتسببت في فشل البناء:
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 import com.apix.app.data.*
 import com.apix.app.ui.screens.*
@@ -106,8 +109,9 @@ sealed class Screen {
     data class SubChannels(val menuName: String, val channels: List<Channel>) : Screen()
     data object Search : Screen()
     data class Details(val item: MediaItem) : Screen()
-    data class Studio(val config: StudioConfig) : Screen() // 👈 شاشة الشركات
-    data class Collection(val item: MediaItem) : Screen()  // 👈 شاشة أجزاء السلسلة
+    // 👈 تم تغيير الاسم لتجنب التعارض
+    data class Studio(val config: CinemaStudioConfig) : Screen() 
+    data class Collection(val item: MediaItem) : Screen()  
     data class Player(
         val config: PlayerConfig, 
         val isExternal: Boolean = false,
@@ -156,7 +160,6 @@ fun AppNavigation(
         currentScreen = screen
     }
 
-    // 👈 دالة التشغيل السحرية للإضافات وإشعار عدد السيرفرات الحقيقي
     val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
         Toast.makeText(context, "جاري البحث في السيرفرات...", Toast.LENGTH_SHORT).show()
@@ -321,7 +324,6 @@ fun AppNavigation(
                     }
                 }
                 
-                // 👈 شاشة تفاصيل السلسلة (مجموعة الأفلام)
                 is Screen.Collection -> {
                     var parts by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
                     var loading by remember { mutableStateOf(true) }
@@ -344,7 +346,6 @@ fun AppNavigation(
                                 items(parts) { part ->
                                     Box(modifier = Modifier.padding(8.dp).aspectRatio(0.66f)) {
                                         CinemaPosterCard(item = part, onClick = { navigateTo(Screen.Details(part)) }, modifier = Modifier.fillMaxSize())
-                                        // رقم الجزء
                                         Box(modifier = Modifier.align(Alignment.TopStart).background(Gold, RoundedCornerShape(bottomEnd = 8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                                             Text(text = "جزء ${parts.indexOf(part) + 1}", color = Color.Black, fontWeight = FontWeight.Bold)
                                         }
@@ -355,7 +356,6 @@ fun AppNavigation(
                     }
                 }
 
-                // 👈 شاشة محتوى الشركات (Netflix وغيرها)
                 is Screen.Studio -> {
                     var rows by remember { mutableStateOf<List<HomeRow>>(emptyList()) }
                     var loading by remember { mutableStateOf(true) }
@@ -418,8 +418,8 @@ fun AppNavigation(
         }
 
         if (resolving) {
-            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xCC000000)), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(color = Gold, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
+            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Gold, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
             }
         }
     } 
