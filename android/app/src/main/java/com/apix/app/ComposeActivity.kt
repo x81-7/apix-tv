@@ -21,15 +21,26 @@ import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 import com.apix.app.data.*
 import com.apix.app.ui.screens.*
 import com.apix.app.data.SupabaseRepository
 import com.apix.app.ui.theme.APiXTheme
+import com.apix.app.ui.theme.Gold
 import com.apix.app.viewmodel.MainViewModel
 import com.apix.app.viewmodel.CinemaViewModel
 
@@ -41,7 +52,6 @@ class ComposeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         SupabaseRepository.init(application)
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
@@ -96,6 +106,8 @@ sealed class Screen {
     data class SubChannels(val menuName: String, val channels: List<Channel>) : Screen()
     data object Search : Screen()
     data class Details(val item: MediaItem) : Screen()
+    data class Studio(val config: StudioConfig) : Screen() // 👈 شاشة الشركات
+    data class Collection(val item: MediaItem) : Screen()  // 👈 شاشة أجزاء السلسلة
     data class Player(
         val config: PlayerConfig, 
         val isExternal: Boolean = false,
@@ -144,7 +156,7 @@ fun AppNavigation(
         currentScreen = screen
     }
 
-    // 👈 الخطأ القديم كان هنا، تم حله الآن بتمرير قائمة الإضافات الفعلية!
+    // 👈 دالة التشغيل السحرية للإضافات وإشعار عدد السيرفرات الحقيقي
     val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
         Toast.makeText(context, "جاري البحث في السيرفرات...", Toast.LENGTH_SHORT).show()
@@ -157,6 +169,7 @@ fun AppNavigation(
                 
                 val pluginList = mutableListOf<Pair<File, String>>()
                 val repos = secureStore.getRepositories()
+                var totalLoaded = 0
                 
                 for (repo in repos) {
                     val manifest = try { repoManager.fetchManifest(repo) } catch (e: Exception) { null }
@@ -164,17 +177,21 @@ fun AppNavigation(
                         val pluginDir = context.getDir("plugins", android.content.Context.MODE_PRIVATE)
                         var file = File(pluginDir, "${entry.id}_${entry.version}.apk")
                         if (!file.exists()) {
-                            withContext(kotlinx.coroutines.Dispatchers.Main) { Toast.makeText(context, "تحديث الإضافة...", Toast.LENGTH_SHORT).show() }
+                            withContext(kotlinx.coroutines.Dispatchers.Main) { Toast.makeText(context, "تحميل إضافة جديدة...", Toast.LENGTH_SHORT).show() }
                             val downloaded = try { repoManager.downloadPlugin(repo, entry) } catch (e: Exception) { null }
                             if (downloaded != null) file = downloaded
                         }
                         if (file.exists()) {
-                            pluginList.add(Pair(file, entry.className)) // 👈 هنا يكمن السر، أضفنا الإضافة للقائمة!
+                            pluginList.add(Pair(file, entry.className))
+                            totalLoaded++
                         }
                     }
                 }
                 
-                // 👈 تم تمرير pluginList بدلاً من emptyList() الغبية القديمة!
+                withContext(kotlinx.coroutines.Dispatchers.Main) { 
+                    if(totalLoaded > 0) Toast.makeText(context, "تم تفعيل $totalLoaded إضافة بنجاح", Toast.LENGTH_SHORT).show() 
+                }
+
                 val providers = providerLoader.loadProviders(pluginList) 
                 val sourceEngine = com.apix.app.vod.engine.SourceEngine(providers)
                 
@@ -217,14 +234,14 @@ fun AppNavigation(
                                         val cfg = PlayerConfig(url = res.url, title = item.title, subtitleUrl = res.subtitleUrl)
                                         navigateTo(Screen.Player(cfg))
                                     },
-                                    onError = { resolving = false; Toast.makeText(context, "فشل الاستخراج", Toast.LENGTH_SHORT).show() }
+                                    onError = { resolving = false; Toast.makeText(context, "فشل استخراج الروابط", Toast.LENGTH_SHORT).show() }
                                 )
                             }
                         }
                     } else {
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
                             resolving = false
-                            Toast.makeText(context, "لا توجد روابط حالياً", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "لا توجد روابط لهذا المحتوى حالياً", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -239,13 +256,45 @@ fun AppNavigation(
         if (cfg != null) navigateTo(Screen.Player(cfg))
     }
 
+    val openChannelAfterGate: (Channel) -> Unit = { channel ->
+        when (channel.actionType) {
+            "open_submenu" -> {
+                val menu = channel.sideMenuId?.let { sideMenus[it] } ?: sideMenus.values.firstOrNull { it.name.trim() == channel.name.trim() }
+                if (menu != null) {
+                    val openMenu = {
+                        val subChannels = menu.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }?.map { sc ->
+                            Channel(id = sc.id, name = sc.name, imageUrl = sc.imageUrl, sortOrder = sc.sortOrder, actionType = "direct_play", stream = sc.stream, androidStream = sc.androidStream, androidActionType = sc.androidActionType, forcedAspectRatio = sc.forcedAspectRatio, lockAspectRatio = sc.lockAspectRatio)
+                        } ?: emptyList()
+                        navigateTo(Screen.SubChannels(channel.name, subChannels))
+                    }
+                    if (!menu.pinCode.isNullOrBlank()) navigateTo(Screen.PinLock(menu.name, menu.pinCode!!) { currentScreen = navigationStack.removeAt(navigationStack.lastIndex); openMenu() })
+                    else openMenu()
+                }
+            }
+            else -> handleChannelClick(channel)
+        }
+    }
+
+    val gateChannel: (Channel) -> Unit = { channel ->
+        val host = activity
+        val proceed = {
+            if (host != null) {
+                com.apix.app.AdManager.maybeRunUnlockGate(host, channel.id) { host.runOnUiThread { openChannelAfterGate(channel) } }
+            } else openChannelAfterGate(channel)
+        }
+        if (!channel.pinCode.isNullOrBlank()) navigateTo(Screen.PinLock(channel.name, channel.pinCode!!) { currentScreen = navigationStack.removeAt(navigationStack.lastIndex); proceed() })
+        else proceed()
+    }
+
     val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
-        if (item.section == "live") {
-            val ch = viewModel.getVisibleChannels().find { it.id == item.id } 
-                     ?: uiState.categories.flatMap { it.channels?.values ?: emptyList() }.find { it.id == item.id }
-            if (ch != null) handleChannelClick(ch)
-        } else {
-            navigateTo(Screen.Details(item))
+        when (item.section) {
+            "live" -> {
+                val ch = viewModel.getVisibleChannels().find { it.id == item.id } 
+                         ?: uiState.categories.flatMap { it.channels?.values ?: emptyList() }.find { it.id == item.id }
+                if (ch != null) gateChannel(ch)
+            }
+            "collection" -> navigateTo(Screen.Collection(item))
+            else -> navigateTo(Screen.Details(item))
         }
     }
 
@@ -262,24 +311,76 @@ fun AppNavigation(
             when (screen) {
                 is Screen.Main -> {
                     if (uiState.appMode.uppercase() == "SPORTS_ONLY" || uiState.appMode.uppercase() == "LIVE_ONLY") {
-                        MainScreen(
-                            uiState = uiState, onCategorySelected = {}, onChannelClick = {}, onSearchClick = {},
-                            channels = viewModel.getVisibleChannels(), isSettings = false, isDarkMode = isDarkMode, onToggleDarkMode = {}
-                        )
+                        MainScreen(uiState = uiState, onCategorySelected = {}, onChannelClick = { gateChannel(it) }, onSearchClick = {}, channels = viewModel.getVisibleChannels(), isSettings = false, isDarkMode = isDarkMode, onToggleDarkMode = {})
                     } else {
                         CinemaShell(
-                            homeData = cinemaState,
-                            moviesRows = moviesRows,
-                            seriesRows = seriesRows,
-                            animeRows = animeRows,
-                            liveCategories = uiState.categories,
-                            isLoading = cinemaLoading,
-                            onItemClick = handleMediaClick,
-                            onLiveChannelClick = handleMediaClick,
+                            homeData = cinemaState, moviesRows = moviesRows, seriesRows = seriesRows, animeRows = animeRows, liveCategories = uiState.categories, isLoading = cinemaLoading,
+                            onItemClick = handleMediaClick, onLiveChannelClick = { gateChannel(it) }, onStudioClick = { navigateTo(Screen.Studio(it)) },
                             fetchMore = { endpoint, section, page -> cinemaViewModel.fetchMore(endpoint, section, page) }
                         )
                     }
                 }
+                
+                // 👈 شاشة تفاصيل السلسلة (مجموعة الأفلام)
+                is Screen.Collection -> {
+                    var parts by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+                    var loading by remember { mutableStateOf(true) }
+
+                    LaunchedEffect(screen.item.tmdbId) {
+                        parts = cinemaViewModel.getCollectionParts(screen.item.tmdbId)
+                        loading = false
+                    }
+
+                    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "عودة", tint = Color.White, modifier = Modifier.clickable { goBack() }.size(30.dp))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(text = screen.item.title, color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        }
+                        if (loading) {
+                            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Gold) }
+                        } else {
+                            LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(8.dp), modifier = Modifier.weight(1f)) {
+                                items(parts) { part ->
+                                    Box(modifier = Modifier.padding(8.dp).aspectRatio(0.66f)) {
+                                        CinemaPosterCard(item = part, onClick = { navigateTo(Screen.Details(part)) }, modifier = Modifier.fillMaxSize())
+                                        // رقم الجزء
+                                        Box(modifier = Modifier.align(Alignment.TopStart).background(Gold, RoundedCornerShape(bottomEnd = 8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                            Text(text = "جزء ${parts.indexOf(part) + 1}", color = Color.Black, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 👈 شاشة محتوى الشركات (Netflix وغيرها)
+                is Screen.Studio -> {
+                    var rows by remember { mutableStateOf<List<HomeRow>>(emptyList()) }
+                    var loading by remember { mutableStateOf(true) }
+
+                    LaunchedEffect(screen.config.id) {
+                        rows = cinemaViewModel.getStudioData(screen.config.companyId, screen.config.networkId)
+                        loading = false
+                    }
+
+                    Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "عودة", tint = Color.White, modifier = Modifier.clickable { goBack() }.size(30.dp))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(text = "محتوى ${screen.config.name}", color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        }
+                        if (loading) {
+                            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Gold) }
+                        } else {
+                            LazyColumn(modifier = Modifier.weight(1f).padding(top = 16.dp)) {
+                                items(rows) { row -> MediaRowSection(row, { handleMediaClick(it) }, {}) }
+                            }
+                        }
+                    }
+                }
+
                 is Screen.Details -> {
                     var seasons by remember { mutableStateOf<List<TvSeason>>(emptyList()) }
                     var episodes by remember { mutableStateOf<List<TvEpisode>>(emptyList()) }
@@ -300,15 +401,14 @@ fun AppNavigation(
                     }
 
                     DetailsScreen(
-                        item = screen.item,
-                        similarItems = emptyList(),
-                        seasons = seasons,
-                        episodes = episodes,
-                        onSeasonSelect = { selectedSeason = it },
-                        onSimilarItemClick = {},
+                        item = screen.item, similarItems = emptyList(), seasons = seasons, episodes = episodes,
+                        onSeasonSelect = { selectedSeason = it }, onSimilarItemClick = {},
                         onPlayClick = { playMediaItem(screen.item, null, null) },
                         onEpisodeClick = { episode -> playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) }
                     )
+                }
+                is Screen.SubChannels -> {
+                    SubChannelScreen(menuName = screen.menuName, channels = screen.channels, onChannelClick = { gateChannel(it) }, onBack = { goBack() })
                 }
                 is Screen.Player -> PlayerScreen(screen.config, screen.vodStreams, screen.vodSubtitles, { goBack() })
                 is Screen.HybridPlayer -> HybridPlayerScreen(screen.config, { goBack() })
@@ -318,11 +418,8 @@ fun AppNavigation(
         }
 
         if (resolving) {
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xCC000000)),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.CircularProgressIndicator(color = com.apix.app.ui.theme.Gold, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
+            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xCC000000)), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = Gold, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
             }
         }
     } 
