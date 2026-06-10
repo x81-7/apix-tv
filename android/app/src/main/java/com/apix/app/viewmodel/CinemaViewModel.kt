@@ -34,7 +34,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             try {
-                // 1. جلب الأفلام والمسلسلات من TMDB مباشرة وحفظها بالذاكرة المؤقتة (لمنع التكرار)
                 if (cachedMovies.length() == 0) {
                     cachedMovies = fetchTmdbTrending("movie", "vod")
                 }
@@ -42,7 +41,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                     cachedSeries = fetchTmdbTrending("tv", "series")
                 }
 
-                // 2. تجهيز البانر العلوي (Hero)
                 val heroArray = JSONArray()
                 for (i in 0 until minOf(5, cachedMovies.length())) {
                     heroArray.put(cachedMovies.getJSONObject(i))
@@ -50,7 +48,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
 
                 val rowsArray = JSONArray()
 
-                // 3. دمج قنوات البث المباشر تلقائياً من Cloudflare كصفوف
                 for (cat in categories) {
                     if (cat.hidden) continue
                     val channels = cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }
@@ -74,7 +71,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                     rowsArray.put(catRow)
                 }
 
-                // 4. إضافة أفلام ومسلسلات TMDB
                 if (cachedMovies.length() > 0) {
                     val moviesRow = JSONObject()
                     moviesRow.put("title", "أفلام شائعة")
@@ -89,7 +85,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                     rowsArray.put(seriesRow)
                 }
 
-                // 5. تجميع الـ JSON وتمريره للمحلل الخاص بك (CinemaJson) لتجنب أخطاء الكلاسات المفقودة
                 val root = JSONObject()
                 root.put("success", true)
                 root.put("app_mode", appMode)
@@ -100,10 +95,9 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                 
                 withContext(Dispatchers.Main) {
                     _homeState.value = parsedData
-                    Log.d("CinemaViewModel", "تم بناء ودمج بيانات السينما بنجاح")
                 }
             } catch (e: Exception) {
-                Log.e("CinemaViewModel", "خطأ أثناء جلب أو دمج البيانات", e)
+                Log.e("CinemaViewModel", "Error joining VOD and Live data", e)
             } finally {
                 withContext(Dispatchers.Main) {
                     _isLoading.value = false
@@ -142,7 +136,7 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         } catch (e: Exception) {
-            Log.e("CinemaViewModel", "TMDB error: $type", e)
+            Log.e("CinemaViewModel", "TMDB fetch error", e)
         } finally {
             conn?.disconnect()
         }
