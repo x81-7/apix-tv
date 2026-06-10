@@ -1303,7 +1303,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
         mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManager }
     }
 
-    val mediaItemBuilder = MediaItem.Builder().setUri(Uri.parse(streamUrl))
+    val mediaItemBuilder = androidx.media3.common.MediaItem.Builder().setUri(Uri.parse(streamUrl))
     val format = detectStreamFormat(streamUrl)
 
     when (format) {
@@ -1313,7 +1313,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
 
     val drm = config.drm
     if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
-        val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+        val drmBuilder = androidx.media3.common.MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
             .setLicenseUri(drm.licenseUrl)
         if (!config.drmLicenseHeaders.isNullOrEmpty()) {
             drmBuilder.setLicenseRequestHeaders(config.drmLicenseHeaders!!)
@@ -1322,7 +1322,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
     }
 
     if (!config.subtitleUrl.isNullOrEmpty()) {
-        val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(Uri.parse(config.subtitleUrl!!))
+        val subtitleConfig = androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(Uri.parse(config.subtitleUrl!!))
             .setMimeType(if (config.subtitleUrl!!.contains(".srt")) MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
             .setLanguage("ar")
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
