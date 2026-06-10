@@ -41,6 +41,28 @@ class ComposeActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(true) }
             var isInPlayer by remember { mutableStateOf(false) }
 
+            // --- حقن رابط مستودع الإضافات من GitHub Secrets ---
+            LaunchedEffect(Unit) {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
+                        val existingRepos = secureStore.getRepositories()
+                        
+                        // سيتم جلب الرابط من BuildConfig الذي يتم توليده عبر GitHub Actions
+                        // تأكد من إضافة PLUGIN_REPO_URL في ملف build.gradle
+                        val myPluginRepoUrl = BuildConfig.PLUGIN_REPO_URL 
+                        
+                        if (myPluginRepoUrl.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl)) {
+                            secureStore.addRepository(myPluginRepoUrl)
+                            android.util.Log.d("Plugins", "تم حقن رابط الإضافات بنجاح!")
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            // ----------------------------------------------------
+
             LaunchedEffect(isInPlayer) {
                 if (isInPlayer) {
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -108,10 +130,17 @@ fun AppNavigation(
     initialStreamConfigJson: String? = null
 ) {
     val viewModel: MainViewModel = viewModel()
+    // استدعاء CinemaViewModel لجلب بيانات الأفلام (TMDB)
+    val cinemaViewModel: com.apix.app.viewmodel.CinemaViewModel = viewModel()
+    
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+    
     val uiState by viewModel.uiState.collectAsState()
     val sideMenus by viewModel.sideMenus.collectAsState()
+    
+    // مراقبة حالة بيانات السينما
+    val cinemaState by cinemaViewModel.homeState.collectAsState()
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
@@ -514,6 +543,8 @@ fun AppNavigation(
         when (screen) {
             is Screen.Main -> {
                 val mode = uiState.appMode.uppercase()
+                
+                // تعريف واجهة البث المباشر الكلاسيكية
                 val liveScreen: @Composable () -> Unit = {
                     MainScreen(
                         uiState = uiState,
@@ -526,21 +557,17 @@ fun AppNavigation(
                         onToggleDarkMode = onToggleDarkMode
                     )
                 }
+
+                // ربط واجهة السينما مع بيانات TMDB
                 when (mode) {
                     "SPORTS_ONLY" -> liveScreen()
                     else -> {
                         com.apix.app.ui.screens.CinemaShell(
-                            data = null, // بيانات مؤقتة لتمرير الـ Build
-                            isLoading = uiState.isLoading,
-                            onItemClick = { item -> 
-                                if (item is com.apix.app.data.MediaItem) {
-                                    handleMediaClick(item)
-                                }
-                            },
+                            data = cinemaState.data, // تمرير البيانات الحقيقية من TMDB
+                            isLoading = cinemaState.isLoading,
+                            onItemClick = { item -> handleMediaClick(item) },
                             onLiveChannelClick = { channel -> 
-                                if (channel is com.apix.app.data.Channel) {
-                                    handleChannelClick(channel)
-                                }
+                                if (channel is Channel) handleChannelClick(channel) 
                             }
                         )
                     }
