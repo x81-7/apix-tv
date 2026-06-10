@@ -30,6 +30,9 @@ import com.apix.app.ui.theme.APiXTheme
 import com.apix.app.viewmodel.MainViewModel
 import com.apix.app.viewmodel.CinemaViewModel
 
+// الاستيراد الحاسم لتجنب خطأ manifestUrl الخاص بالإضافة
+import com.apix.app.vod.plugin.*
+
 class ComposeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,19 +48,13 @@ class ComposeActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     try {
-                        val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
+                        val secureStore = SecureRepositoryStore(applicationContext)
                         val existingRepos = secureStore.getRepositories()
                         
                         val myPluginRepoUrl1 = BuildConfig.PLUGIN_REPO_URL_1 
                         if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl1 }) {
                             secureStore.addRepository("سيرفر الإضافات 1", myPluginRepoUrl1)
                             android.util.Log.d("Plugins", "تم حقن رابط الإضافة 1 بنجاح!")
-                        }
-
-                        val myPluginRepoUrl2 = BuildConfig.PLUGIN_REPO_URL_2 
-                        if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl2 }) {
-                            secureStore.addRepository("سيرفر الإضافات 2", myPluginRepoUrl2)
-                            android.util.Log.d("Plugins", "تم حقن رابط الإضافة 2 بنجاح!")
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -110,7 +107,7 @@ sealed class Screen {
     data object Main : Screen()
     data class SubChannels(val menuName: String, val channels: List<Channel>) : Screen()
     data object Search : Screen()
-    data class Details(val item: MediaItem) : Screen() 
+    data class Details(val item: MediaItem) : Screen()
     data class Player(
         val config: PlayerConfig, 
         val isExternal: Boolean = false,
@@ -142,34 +139,10 @@ fun AppNavigation(
     val cinemaState by cinemaViewModel.homeState.collectAsState()
     val cinemaLoading by cinemaViewModel.isLoading.collectAsState()
 
-    LaunchedEffect(uiState.appMode, uiState.externalSourceUrl) {
+    LaunchedEffect(uiState.appMode, uiState.externalSourceUrl, uiState.categories) {
         if (uiState.appMode.isNotEmpty()) {
-            cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl)
+            cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl, uiState.categories)
         }
-    }
-
-    // دمج البث المباشر مع وضع الهجين باستخدام HomeRow بدلاً من MediaRow
-    val mergedHomeData = remember(cinemaState, uiState.categories) {
-        val liveRows = uiState.categories.filter { !it.hidden }.map { cat ->
-            com.apix.app.data.HomeRow(
-                title = "بث مباشر: ${cat.name}",
-                items = cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }?.map { ch ->
-                    com.apix.app.data.MediaItem(
-                        id = ch.id,
-                        title = ch.name,
-                        poster = ch.imageUrl,
-                        backdrop = ch.imageUrl,
-                        section = "live",
-                        directUrl = ch.stream?.url,
-                        useLocalProxy = ch.useLocalProxy
-                    )
-                } ?: emptyList()
-            )
-        }.filter { it.items.isNotEmpty() }
-
-        cinemaState.copy(
-            rows = liveRows + cinemaState.rows
-        )
     }
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
@@ -275,9 +248,9 @@ fun AppNavigation(
         resolving = true
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(context)
-                val repoManager = com.apix.app.vod.plugin.RepositoryManager(context)
-                val providerLoader = com.apix.app.vod.plugin.ProviderLoader(context)
+                val secureStore = SecureRepositoryStore(context)
+                val repoManager = RepositoryManager(context)
+                val providerLoader = ProviderLoader(context)
                 
                 val plugins = mutableListOf<Pair<java.io.File, String>>()
                 val repos = secureStore.getRepositories()
@@ -576,7 +549,7 @@ fun AppNavigation(
                         liveScreen()
                     } else {
                         com.apix.app.ui.screens.CinemaShell(
-                            data = mergedHomeData,
+                            data = cinemaState,
                             isLoading = cinemaLoading,
                             onItemClick = { item -> handleMediaClick(item) },
                             onLiveChannelClick = { channel -> 
@@ -586,19 +559,13 @@ fun AppNavigation(
                     }
                 }
                 
-                // تم تصحيح المتغيرات بناءً على متطلبات DetailsScreen في مشروعك
                 is Screen.Details -> {
                     DetailsScreen(
                         item = screen.item,
-                        similarItems = emptyList(), // يمكن تمرير قائمة حقيقية لاحقاً
-                        seasons = emptyList(),      // يمكن تمرير المواسم لاحقاً
-                        episodes = emptyList(),     // يمكن تمرير الحلقات لاحقاً
-                        onSeasonSelect = { /* يتم معالجة اختيار الموسم هنا */ },
+                        onSimilarItemClick = { similar -> navigateTo(Screen.Details(similar)) },
                         onPlayClick = { playMediaItem(screen.item, null, null) },
-                        onEpisodeClick = { episode -> 
-                            // ملاحظة: قد تحتاج لتعديل هذا السطر إذا كان الكلاس الخاص بك لـ TvEpisode يختلف
-                            // playMediaItem(screen.item, episode.seasonNumber, episode.episodeNumber)
-                        }
+                        onEpisodeClick = { season, episode -> playMediaItem(screen.item, season.seasonNumber, episode.episodeNumber) },
+                        onBack = { goBack() }
                     )
                 }
 
