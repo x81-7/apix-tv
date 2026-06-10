@@ -1,6 +1,7 @@
 package com.apix.app.ui.screens
 
 import android.content.res.Configuration
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -66,7 +67,7 @@ fun CinemaShell(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     if (isLandscape) {
-        // 📺 تصميم شاشات التلفاز / الوضع العرضي (شريط جانبي) 📺
+        // 📺 تصميم التلفاز / الشريط الجانبي الذكي 📺
         Row(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             NavigationRail(
                 containerColor = Color(0xFF141414),
@@ -95,7 +96,7 @@ fun CinemaShell(
             }
         }
     } else {
-        // 📱 تصميم الهواتف / الوضع الطولي (شريط سفلي) 📱
+        // 📱 تصميم الهاتف / شريط iOS - Telegram السفلي 📱
         Scaffold(
             bottomBar = {
                 if (viewingMoreRow == null) {
@@ -188,13 +189,14 @@ fun ExpandedCategoryScreen(row: HomeRow, onItemClick: (MediaItem) -> Unit, onBac
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class) // 👈 هذا هو السطر السحري الذي عطل البناء!
 @Composable
 fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onSeeMore: (HomeRow) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             if (data.hero.isNotEmpty()) {
                 val pagerState = rememberPagerState(pageCount = { data.hero.size })
-                // 👈 السلايدر التلقائي
+                
                 LaunchedEffect(pagerState) {
                     while(true) {
                         delay(4000)
@@ -209,7 +211,6 @@ fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onSeeMore: 
                         CinemaPosterCard(item = item, onClick = { onItemClick(item) }, modifier = Modifier.fillMaxSize())
                         Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black))))
                         
-                        // 👈 زر مشاهدة
                         Box(modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 24.dp, vertical = 32.dp)) {
                             Button(
                                 onClick = { onItemClick(item) },
@@ -259,7 +260,6 @@ fun MediaRowSection(row: HomeRow, onItemClick: (MediaItem) -> Unit, onSeeMore: (
     }
 }
 
-// 👈 قسم البث المباشر (تصميم 16:9 ضخم وإزالة كلمة بث مباشر)
 @Composable
 fun LiveTvTabContent(categories: List<Category>, onChannelClick: (MediaItem) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 16.dp)) {
@@ -269,17 +269,18 @@ fun LiveTvTabContent(categories: List<Category>, onChannelClick: (MediaItem) -> 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Box(modifier = Modifier.size(4.dp, 20.dp).background(Gold, RoundedCornerShape(2.dp)))
                     Spacer(modifier = Modifier.width(8.dp))
+                    // إزالة كلمة بث مباشر والاكتفاء باسم القسم كما طلبت
                     Text(text = cat.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(channels) { ch ->
                         Box(
                             modifier = Modifier
-                                .width(260.dp) // حجم كبير وواضح
-                                .aspectRatio(16f / 9f) // أبعاد 16:9 الدقيقة
+                                .width(260.dp) 
+                                .aspectRatio(16f / 9f) // أبعاد 16:9 
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFF1E1E1E))
-                                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(12.dp)) // إطار يحيط بها
+                                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(12.dp))
                                 .clickable { 
                                     onChannelClick(MediaItem(id = ch.id, title = ch.name, poster = ch.imageUrl, section = "live", directUrl = ch.stream?.url, useLocalProxy = ch.useLocalProxy)) 
                                 }
