@@ -20,11 +20,9 @@ import java.net.URL
 
 class CinemaViewModel(app: Application) : AndroidViewModel(app) {
 
-    // حالة الصفحة الرئيسية
     private val _homeState = MutableStateFlow(HomeData(appMode = "HYBRID"))
     val homeState: StateFlow<HomeData> = _homeState.asStateFlow()
 
-    // حالات الصفحات الفرعية
     private val _moviesRows = MutableStateFlow<List<HomeRow>>(emptyList())
     val moviesRows: StateFlow<List<HomeRow>> = _moviesRows.asStateFlow()
 
@@ -37,60 +35,64 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    fun loadCinemaData(appMode: String, externalUrl: String) {
+    fun loadCinemaData(appMode: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // --- بيانات الصفحة الرئيسية ---
-                val trendingMovies = fetchTmdb("trending/movie/week", "vod")
-                val trendingSeries = fetchTmdb("trending/tv/week", "series")
-                val latestAnime = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc", "anime")
-                val movieFranchises = fetchTmdb("discover/movie?sort_by=revenue.desc&with_genres=28,878", "vod") // اكشن وخيال علمي كسلاسل
+                // بيانات الرئيسية
+                val trendingMovies = fetchTmdb("trending/movie/week", "vod", 1)
+                val trendingSeries = fetchTmdb("trending/tv/week", "series", 1)
+                val latestAnime = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc", "anime", 1)
+                val franchises = fetchTmdb("discover/movie?with_genres=28,878&sort_by=revenue.desc", "vod", 1)
 
                 _homeState.value = HomeData(
                     appMode = appMode,
                     hero = trendingMovies.take(5),
                     rows = listOf(
-                        HomeRow("أفلام شائعة", trendingMovies),
-                        HomeRow("مسلسلات شائعة", trendingSeries),
-                        HomeRow("أحدث الأنميات", latestAnime),
-                        HomeRow("سلاسل الأفلام والأكشن", movieFranchises)
+                        HomeRow(id = "trending/movie/week", title = "أفلام شائعة", items = trendingMovies),
+                        HomeRow(id = "trending/tv/week", title = "مسلسلات شائعة", items = trendingSeries),
+                        HomeRow(id = "discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc", title = "أحدث الأنميات", items = latestAnime),
+                        HomeRow(id = "discover/movie?with_genres=28,878&sort_by=revenue.desc", title = "سلاسل الأفلام", items = franchises)
                     )
                 )
 
-                // --- بيانات صفحة الأفلام (مقسمة) ---
+                // بيانات قسم الأفلام
                 _moviesRows.value = listOf(
-                    HomeRow("أفلام أجنبية", fetchTmdb("discover/movie?with_original_language=en", "vod")),
-                    HomeRow("أفلام كورية", fetchTmdb("discover/movie?with_original_language=ko", "vod")),
-                    HomeRow("أفلام أنميشن", fetchTmdb("discover/movie?with_genres=16", "vod"))
+                    HomeRow(id = "discover/movie?with_original_language=en", title = "أفلام أجنبية", items = fetchTmdb("discover/movie?with_original_language=en", "vod", 1)),
+                    HomeRow(id = "discover/movie?with_original_language=ko", title = "أفلام كورية", items = fetchTmdb("discover/movie?with_original_language=ko", "vod", 1)),
+                    HomeRow(id = "discover/movie?with_genres=16", title = "أفلام أنميشن", items = fetchTmdb("discover/movie?with_genres=16", "vod", 1))
                 )
 
-                // --- بيانات صفحة المسلسلات (مقسمة) ---
+                // بيانات قسم المسلسلات
                 _seriesRows.value = listOf(
-                    HomeRow("مسلسلات أجنبية", fetchTmdb("discover/tv?with_original_language=en", "series")),
-                    HomeRow("مسلسلات كورية", fetchTmdb("discover/tv?with_original_language=ko", "series")),
-                    HomeRow("مسلسلات عربية", fetchTmdb("discover/tv?with_original_language=ar", "series"))
+                    HomeRow(id = "discover/tv?with_original_language=en", title = "مسلسلات أجنبية", items = fetchTmdb("discover/tv?with_original_language=en", "series", 1)),
+                    HomeRow(id = "discover/tv?with_original_language=ko", title = "مسلسلات كورية", items = fetchTmdb("discover/tv?with_original_language=ko", "series", 1)),
+                    HomeRow(id = "discover/tv?with_original_language=ar", title = "مسلسلات عربية", items = fetchTmdb("discover/tv?with_original_language=ar", "series", 1))
                 )
 
-                // --- بيانات صفحة الأنمي (مقسمة) ---
+                // بيانات قسم الأنمي
                 _animeRows.value = listOf(
-                    HomeRow("أنميشن عالمي", fetchTmdb("discover/tv?with_genres=16&with_original_language=en", "anime")),
-                    HomeRow("أنمي ياباني", fetchTmdb("discover/tv?with_genres=16&with_original_language=ja", "anime")),
-                    HomeRow("أنمي كوري", fetchTmdb("discover/tv?with_genres=16&with_original_language=ko", "anime"))
+                    HomeRow(id = "discover/tv?with_genres=16&with_original_language=en", title = "أنميشن عالمي", items = fetchTmdb("discover/tv?with_genres=16&with_original_language=en", "anime", 1)),
+                    HomeRow(id = "discover/tv?with_genres=16&with_original_language=ja", title = "أنمي ياباني", items = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja", "anime", 1)),
+                    HomeRow(id = "discover/tv?with_genres=16&with_original_language=ko", title = "أنمي كوري", items = fetchTmdb("discover/tv?with_genres=16&with_original_language=ko", "anime", 1))
                 )
-
             } catch (e: Exception) {
-                Log.e("CinemaViewModel", "خطأ في جلب بيانات TMDB", e)
+                Log.e("CinemaViewModel", "خطأ", e)
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    private suspend fun fetchTmdb(endpoint: String, section: String): List<MediaItem> = withContext(Dispatchers.IO) {
+    // دالة عامة لزر "المزيد" لجلب الصفحة الثانية والثالثة الخ..
+    suspend fun fetchMore(endpoint: String, section: String, page: Int): List<MediaItem> {
+        return fetchTmdb(endpoint, section, page)
+    }
+
+    private suspend fun fetchTmdb(endpoint: String, section: String, page: Int): List<MediaItem> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.TMDB_API_KEY
         val prefix = if (endpoint.contains("?")) "&" else "?"
-        val url = "https://api.themoviedb.org/3/$endpoint${prefix}api_key=$apiKey&language=ar"
+        val url = "https://api.themoviedb.org/3/$endpoint${prefix}api_key=$apiKey&language=ar&page=$page"
         
         val result = mutableListOf<MediaItem>()
         var conn: HttpURLConnection? = null
@@ -120,7 +122,7 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         } catch (e: Exception) {
-            Log.e("CinemaViewModel", "TMDB error: $endpoint", e)
+            Log.e("CinemaViewModel", "TMDB error", e)
         } finally {
             conn?.disconnect()
         }
