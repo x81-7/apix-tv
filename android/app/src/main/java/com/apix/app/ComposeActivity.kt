@@ -312,6 +312,8 @@ fun AppNavigation(
         }
     }
 
+    val channels = remember(uiState.selectedCategory) { viewModel.getVisibleChannels() }
+
     val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
         if (item.section == "live") {
             val channelsList = viewModel.getVisibleChannels()
@@ -589,9 +591,10 @@ fun AppNavigation(
                         }
                     }
 
+                    // تم إزالة Parameter المتسبب في خطأ الـ Build ليتوافق 100% مع شاشتك الأصلية
                     DetailsScreen(
                         item = screen.item,
-                        similarItems = emptyList(), // تم تمرير قائمة فارغة لتجنب دالة getSimilar غير الموجودة
+                        similarItems = emptyList(), 
                         seasons = seasons,
                         episodes = episodes,
                         onSeasonSelect = { season -> selectedSeason = season },
@@ -599,8 +602,7 @@ fun AppNavigation(
                         onPlayClick = { playMediaItem(screen.item, null, null) },
                         onEpisodeClick = { episode -> 
                             playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) 
-                        },
-                        onBack = { goBack() }
+                        }
                     )
                 }
 
