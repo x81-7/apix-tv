@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.apix.app.BuildConfig
 import com.apix.app.data.HomeData
 import com.apix.app.data.MediaItem
-import com.apix.app.data.MediaRow
+import com.apix.app.data.HomeRow // تم التعديل إلى HomeRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,18 +35,18 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                 // 2. جلب المسلسلات مباشرة من TMDB
                 val series = fetchTmdbTrending("tv", "series")
                 
-                val rows = mutableListOf<MediaRow>()
+                val rows = mutableListOf<HomeRow>() // تم التعديل إلى HomeRow
                 if (movies.isNotEmpty()) {
-                    rows.add(MediaRow(title = "أفلام شائعة", items = movies))
+                    rows.add(HomeRow(title = "أفلام شائعة", items = movies))
                 }
                 if (series.isNotEmpty()) {
-                    rows.add(MediaRow(title = "مسلسلات شائعة", items = series))
+                    rows.add(HomeRow(title = "مسلسلات شائعة", items = series))
                 }
 
+                // تم إزالة success لأنه غير موجود في الـ Data Class الخاص بك
                 _homeState.value = HomeData(
-                    success = true,
                     appMode = appMode,
-                    hero = movies.take(5), // وضع أول 5 أفلام في البانر العلوي
+                    hero = movies.take(5), 
                     rows = rows
                 )
             } catch (e: Exception) {
