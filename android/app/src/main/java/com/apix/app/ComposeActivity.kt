@@ -42,18 +42,21 @@ class ComposeActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(true) }
             var isInPlayer by remember { mutableStateOf(false) }
 
+            // --- نظام حقن روابط الإضافات بالترتيب الجديد من GitHub Secrets تلقائياً ---
             LaunchedEffect(Unit) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
                         val existingRepos = secureStore.getRepositories()
                         
+                        // الإضافة الأولى
                         val myPluginRepoUrl1 = BuildConfig.PLUGIN_REPO_URL_1 
                         if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl1 }) {
                             secureStore.addRepository("سيرفر الإضافات 1", myPluginRepoUrl1)
                             android.util.Log.d("Plugins", "تم حقن رابط الإضافة 1 بنجاح!")
                         }
 
+                        // الإضافة الثانية
                         val myPluginRepoUrl2 = BuildConfig.PLUGIN_REPO_URL_2 
                         if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl2 }) {
                             secureStore.addRepository("سيرفر الإضافات 2", myPluginRepoUrl2)
@@ -64,6 +67,7 @@ class ComposeActivity : ComponentActivity() {
                     }
                 }
             }
+            // ---------------------------------------------------------------------
 
             LaunchedEffect(isInPlayer) {
                 if (isInPlayer) {
@@ -110,6 +114,7 @@ sealed class Screen {
     data object Main : Screen()
     data class SubChannels(val menuName: String, val channels: List<Channel>) : Screen()
     data object Search : Screen()
+    data class Details(val item: MediaItem) : Screen() // 👈 تم إضافة شاشة التفاصيل هنا
     data class Player(
         val config: PlayerConfig, 
         val isExternal: Boolean = false,
@@ -141,8 +146,35 @@ fun AppNavigation(
     val cinemaState by cinemaViewModel.homeState.collectAsState()
     val cinemaLoading by cinemaViewModel.isLoading.collectAsState()
 
+    // تشغيل جلب بيانات السينما التلقائي عند تبديل الأوضاع
     LaunchedEffect(uiState.appMode, uiState.externalSourceUrl) {
-        cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl)
+        if (uiState.appMode.isNotEmpty()) {
+            cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl)
+        }
+    }
+
+    // 💡 هذا هو الدمج الذكي: يأخذ أقسام البث المباشر ويدمجها كـ Rows داخل وضع الهجين!
+    val mergedHomeData = remember(cinemaState, uiState.categories) {
+        val liveRows = uiState.categories.filter { !it.hidden }.map { cat ->
+            com.apix.app.data.MediaRow(
+                title = "بث مباشر: ${cat.name}",
+                items = cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }?.map { ch ->
+                    com.apix.app.data.MediaItem(
+                        id = ch.id,
+                        title = ch.name,
+                        poster = ch.imageUrl,
+                        backdrop = ch.imageUrl,
+                        section = "live",
+                        directUrl = ch.stream?.url,
+                        useLocalProxy = ch.useLocalProxy
+                    )
+                } ?: emptyList()
+            )
+        }.filter { it.items.isNotEmpty() }
+
+        cinemaState.copy(
+            rows = liveRows + cinemaState.rows
+        )
     }
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
@@ -244,22 +276,8 @@ fun AppNavigation(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var resolving by remember { mutableStateOf(false) }
 
-    val playResolved: (String, String, com.apix.app.data.PlayerHeaders?, String?) -> Unit =
-        { url, title, headers, subtitle ->
-            resolving = false
-            navigateTo(
-                Screen.Player(
-                    PlayerConfig(
-                        url = url,
-                        title = title,
-                        headers = headers,
-                        subtitleUrl = subtitle
-                    )
-                )
-            )
-        }
-
-    val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
+    // دالة التشغيل التي تعتمد على الإضافات (Plugins) لحل الروابط وتشغيلها
+    val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -295,8 +313,8 @@ fun AppNavigation(
                     originalTitle = item.title,
                     year = item.year.toIntOrNull() ?: 2026,
                     isSeries = item.section == "series" || item.section == "anime",
-                    season = null, 
-                    episode = null
+                    season = season, 
+                    episode = episode
                 )
                 
                 val streamsMap = sourceEngine.fetchStreams(request)
@@ -319,31 +337,30 @@ fun AppNavigation(
                         navigateTo(Screen.Player(config, isExternal = false, vodStreams = streamsMap, vodSubtitles = subtitlesList))
                     }
                 } else {
-                    val r = com.apix.app.data.CinemaRepository.resolve(item)
-                    if (r == null) {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
-                    } else if (!r.scrape) {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) { playResolved(r.url, item.title, null, null) }
-                    } else {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            com.apix.app.HiddenWebViewScraper(context).extract(
-                                pageUrl = r.url,
-                                referer = r.referer,
-                                onResult = { res ->
-                                    val h = com.apix.app.data.PlayerHeaders(
-                                        userAgent = res.headers["User-Agent"] ?: res.headers["user-agent"],
-                                        referer = res.headers["Referer"] ?: res.headers["referer"] ?: r.referer
-                                    )
-                                    playResolved(res.url, item.title, h, res.subtitleUrl)
-                                },
-                                onError = { resolving = false }
-                            )
-                        }
-                    }
+                    withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
                 }
             } catch (e: Exception) {
                 withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
             }
+        }
+    }
+
+    val playResolved: (String, String, com.apix.app.data.PlayerHeaders?, String?) -> Unit =
+        { url, title, headers, subtitle ->
+            resolving = false
+            navigateTo(Screen.Player(PlayerConfig(url = url, title = title, headers = headers, subtitleUrl = subtitle)))
+        }
+
+    val channels = remember(uiState.selectedCategory) { viewModel.getVisibleChannels() }
+
+    // 👈 التوجيه الذكي: إذا كان بث مباشر يفتحه، إذا كان فيلم/مسلسل يفتح صفحة التفاصيل
+    val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
+        if (item.section == "live") {
+            val ch = channels.find { it.id == item.id } 
+                     ?: uiState.categories.flatMap { it.channels?.values ?: emptyList() }.find { it.id == item.id }
+            if (ch != null) handleChannelClick(ch)
+        } else {
+            navigateTo(Screen.Details(item))
         }
     }
 
@@ -491,10 +508,6 @@ fun AppNavigation(
         onPlayerStateChanged(currentScreen is Screen.Player || currentScreen is Screen.HybridPlayer)
     }
 
-    val channels = remember(uiState.selectedCategory) {
-        viewModel.getVisibleChannels()
-    }
-
     fun isCurrentExternal(): Boolean = when (val s = currentScreen) {
         is Screen.Player -> s.isExternal
         is Screen.HybridPlayer -> s.isExternal
@@ -566,20 +579,35 @@ fun AppNavigation(
                         )
                     }
 
-                    when (mode) {
-                        "SPORTS_ONLY", "LIVE_ONLY" -> liveScreen()
-                        else -> {
-                            com.apix.app.ui.screens.CinemaShell(
-                                data = cinemaState,
-                                isLoading = cinemaLoading,
-                                onItemClick = { item -> handleMediaClick(item) },
-                                onLiveChannelClick = { channel -> 
-                                    if (channel is Channel) handleChannelClick(channel) 
-                                }
-                            )
-                        }
+                    // لا نهرب من البث المباشر أبداً إذا كان هو المختار
+                    if (mode == "SPORTS_ONLY" || mode == "LIVE_ONLY") {
+                        liveScreen()
+                    } else {
+                        // إرسال البيانات المدمجة (أفلام، مسلسلات، وبث مباشر) لواجهة الهجين
+                        com.apix.app.ui.screens.CinemaShell(
+                            data = mergedHomeData,
+                            isLoading = cinemaLoading,
+                            onItemClick = { item -> handleMediaClick(item) },
+                            onLiveChannelClick = { channel -> 
+                                if (channel is Channel) handleChannelClick(channel) 
+                            }
+                        )
                     }
                 }
+                
+                // 👈 هنا يتم استدعاء شاشة التفاصيل (DetailsScreen)
+                is Screen.Details -> {
+                    // ملاحظة: تأكد من أن أسماء الدوال (مثل onPlayClick وغيرها) 
+                    // مطابقة لما برمجته داخل ملف DetailsScreen.kt في مشروعك
+                    DetailsScreen(
+                        item = screen.item,
+                        onSimilarItemClick = { similar -> navigateTo(Screen.Details(similar)) },
+                        onPlayClick = { playMediaItem(screen.item, null, null) },
+                        onEpisodeClick = { season, episode -> playMediaItem(screen.item, season, episode) },
+                        onBack = { goBack() }
+                    )
+                }
+
                 is Screen.SubChannels -> {
                     var showLoading by remember { mutableStateOf(!isNavigatingBack) }
 
