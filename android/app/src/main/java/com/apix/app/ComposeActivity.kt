@@ -30,7 +30,6 @@ import com.apix.app.ui.theme.APiXTheme
 import com.apix.app.viewmodel.MainViewModel
 import com.apix.app.viewmodel.CinemaViewModel
 
-// استيرادات حاسمة لحل مشاكل الـ Unresolved references للإضافات والمستودعات
 import com.apix.app.vod.plugin.*
 import com.apix.app.vod.engine.TMDBRepository
 
@@ -313,17 +312,10 @@ fun AppNavigation(
         }
     }
 
-    val playResolved: (String, String, com.apix.app.data.PlayerHeaders?, String?) -> Unit =
-        { url, title, headers, subtitle ->
-            resolving = false
-            navigateTo(Screen.Player(PlayerConfig(url = url, title = title, headers = headers, subtitleUrl = subtitle)))
-        }
-
-    val channels = remember(uiState.selectedCategory) { viewModel.getVisibleChannels() }
-
     val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
         if (item.section == "live") {
-            val ch = channels.find { it.id == item.id } 
+            val channelsList = viewModel.getVisibleChannels()
+            val ch = channelsList.find { it.id == item.id } 
                      ?: uiState.categories.flatMap { it.channels?.values ?: emptyList() }.find { it.id == item.id }
             if (ch != null) handleChannelClick(ch)
         } else {
@@ -459,7 +451,22 @@ fun AppNavigation(
                 "sub_channel" -> {
                     val targetId = action.optString("targetId")
                     val channel = sideMenus.values.asSequence().flatMap { it.channels?.values?.asSequence() ?: emptySequence() }.firstOrNull { it.id == targetId }
-                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = androidStream, androidActionType = androidActionType, forcedAspectRatio = forcedAspectRatio, lockAspectRatio = lockAspectRatio))
+                    if (channel != null) {
+                        handleChannelClick(
+                            Channel(
+                                id = channel.id,
+                                name = channel.name,
+                                imageUrl = channel.imageUrl,
+                                sortOrder = channel.sortOrder,
+                                actionType = "direct_play",
+                                stream = channel.stream,
+                                androidStream = channel.androidStream,
+                                androidActionType = channel.androidActionType,
+                                forcedAspectRatio = channel.forcedAspectRatio,
+                                lockAspectRatio = channel.lockAspectRatio
+                            )
+                        )
+                    }
                 }
                 "external_link" -> {
                     val externalUrl = action.optString("externalUrl")
@@ -539,7 +546,7 @@ fun AppNavigation(
                             onCategorySelected = { handleCategorySelect(it) },
                             onChannelClick = { handleChannelClick(it) },
                             onSearchClick = { navigateTo(Screen.Search) },
-                            channels = channels,
+                            channels = remember(uiState.selectedCategory) { viewModel.getVisibleChannels() },
                             isSettings = isSettings,
                             isDarkMode = isDarkMode,
                             onToggleDarkMode = onToggleDarkMode
@@ -560,19 +567,16 @@ fun AppNavigation(
                     }
                 }
                 
-                // تم تعديل شاشة التفاصيل هنا لتطابق كود DetailsScreen.kt الأصلي الخاص بك 100%
                 is Screen.Details -> {
-                    var similarItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
                     var seasons by remember { mutableStateOf<List<TvSeason>>(emptyList()) }
                     var episodes by remember { mutableStateOf<List<TvEpisode>>(emptyList()) }
                     var selectedSeason by remember { mutableStateOf<TvSeason?>(null) }
 
                     LaunchedEffect(screen.item.id) {
                         val isSeries = screen.item.section == "series"
-                        val details = TMDBRepository.getDetails(screen.item.tmdbId, isSeries)
-                        if (details != null) {
-                            similarItems = TMDBRepository.getSimilar(screen.item.tmdbId, isSeries)
-                            if (isSeries) {
+                        if (isSeries) {
+                            val details = TMDBRepository.getDetails(screen.item.tmdbId, isSeries)
+                            if (details != null) {
                                 seasons = TMDBRepository.getSeasons(screen.item.tmdbId)
                                 selectedSeason = seasons.firstOrNull()
                             }
@@ -587,14 +591,16 @@ fun AppNavigation(
 
                     DetailsScreen(
                         item = screen.item,
-                        similarItems = similarItems,
+                        similarItems = emptyList(), // تم تمرير قائمة فارغة لتجنب دالة getSimilar غير الموجودة
                         seasons = seasons,
                         episodes = episodes,
                         onSeasonSelect = { season -> selectedSeason = season },
+                        onSimilarItemClick = { similar -> navigateTo(Screen.Details(similar)) },
                         onPlayClick = { playMediaItem(screen.item, null, null) },
                         onEpisodeClick = { episode -> 
                             playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) 
-                        }
+                        },
+                        onBack = { goBack() }
                     )
                 }
 
