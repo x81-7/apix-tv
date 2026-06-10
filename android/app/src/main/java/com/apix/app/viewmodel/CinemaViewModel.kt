@@ -39,7 +39,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // بيانات الرئيسية
                 val trendingMovies = fetchTmdb("trending/movie/week", "vod", 1)
                 val trendingSeries = fetchTmdb("trending/tv/week", "series", 1)
                 val latestAnime = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc", "anime", 1)
@@ -47,7 +46,7 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
 
                 _homeState.value = HomeData(
                     appMode = appMode,
-                    hero = trendingMovies.take(5),
+                    hero = trendingMovies.take(6), // السلايدر العلوي
                     rows = listOf(
                         HomeRow(id = "trending/movie/week", title = "أفلام شائعة", items = trendingMovies),
                         HomeRow(id = "trending/tv/week", title = "مسلسلات شائعة", items = trendingSeries),
@@ -56,21 +55,18 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 )
 
-                // بيانات قسم الأفلام
                 _moviesRows.value = listOf(
                     HomeRow(id = "discover/movie?with_original_language=en", title = "أفلام أجنبية", items = fetchTmdb("discover/movie?with_original_language=en", "vod", 1)),
                     HomeRow(id = "discover/movie?with_original_language=ko", title = "أفلام كورية", items = fetchTmdb("discover/movie?with_original_language=ko", "vod", 1)),
                     HomeRow(id = "discover/movie?with_genres=16", title = "أفلام أنميشن", items = fetchTmdb("discover/movie?with_genres=16", "vod", 1))
                 )
 
-                // بيانات قسم المسلسلات
                 _seriesRows.value = listOf(
                     HomeRow(id = "discover/tv?with_original_language=en", title = "مسلسلات أجنبية", items = fetchTmdb("discover/tv?with_original_language=en", "series", 1)),
                     HomeRow(id = "discover/tv?with_original_language=ko", title = "مسلسلات كورية", items = fetchTmdb("discover/tv?with_original_language=ko", "series", 1)),
                     HomeRow(id = "discover/tv?with_original_language=ar", title = "مسلسلات عربية", items = fetchTmdb("discover/tv?with_original_language=ar", "series", 1))
                 )
 
-                // بيانات قسم الأنمي
                 _animeRows.value = listOf(
                     HomeRow(id = "discover/tv?with_genres=16&with_original_language=en", title = "أنميشن عالمي", items = fetchTmdb("discover/tv?with_genres=16&with_original_language=en", "anime", 1)),
                     HomeRow(id = "discover/tv?with_genres=16&with_original_language=ja", title = "أنمي ياباني", items = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja", "anime", 1)),
@@ -84,7 +80,6 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // دالة عامة لزر "المزيد" لجلب الصفحة الثانية والثالثة الخ..
     suspend fun fetchMore(endpoint: String, section: String, page: Int): List<MediaItem> {
         return fetchTmdb(endpoint, section, page)
     }
@@ -92,7 +87,8 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun fetchTmdb(endpoint: String, section: String, page: Int): List<MediaItem> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.TMDB_API_KEY
         val prefix = if (endpoint.contains("?")) "&" else "?"
-        val url = "https://api.themoviedb.org/3/$endpoint${prefix}api_key=$apiKey&language=ar&page=$page"
+        // 👈 تم إضافة &include_adult=false لمنع أي محتوى إباحي نهائياً
+        val url = "https://api.themoviedb.org/3/$endpoint${prefix}api_key=$apiKey&language=ar&page=$page&include_adult=false"
         
         val result = mutableListOf<MediaItem>()
         var conn: HttpURLConnection? = null
