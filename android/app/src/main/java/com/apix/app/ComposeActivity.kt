@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
@@ -85,7 +86,12 @@ sealed class Screen {
     data object Main : Screen()
     data class SubChannels(val menuName: String, val channels: List<Channel>) : Screen()
     data object Search : Screen()
-    data class Player(val config: PlayerConfig, val isExternal: Boolean = false) : Screen()
+    data class Player(
+        val config: PlayerConfig, 
+        val isExternal: Boolean = false,
+        val vodStreams: Map<String, List<com.apix.app.vod.extractors.StreamSource>>? = null,
+        val vodSubtitles: List<com.apix.app.vod.extractors.SubtitleSource>? = null
+    ) : Screen()
     data class HybridPlayer(val config: PlayerConfig, val isExternal: Boolean = false) : Screen()
     data class WebViewPlayer(val url: String, val title: String, val orientation: String?, val isExternal: Boolean = false) : Screen()
     data class YouTubeSniffer(val youtubeUrl: String, val config: PlayerConfig) : Screen()
@@ -197,10 +203,6 @@ fun AppNavigation(
         }
     }
 
-    // ── Cinema (movies/series/anime) playback flow ──
-    // 1) resolve the catalog item via the worker → either a direct URL or a
-    //    scraper embed URL. 2) if scraping is needed, run HiddenWebViewScraper to
-    //    extract the real .m3u8 + headers. 3) hand the result to ExoPlayer.
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var resolving by remember { mutableStateOf(false) }
 
@@ -221,25 +223,88 @@ fun AppNavigation(
 
     val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
         resolving = true
-        scope.launch {
-            val r = com.apix.app.data.CinemaRepository.resolve(item)
-            if (r == null) {
-                resolving = false
-            } else if (!r.scrape) {
-                playResolved(r.url, item.title, null, null)
-            } else {
-                com.apix.app.HiddenWebViewScraper(context).extract(
-                    pageUrl = r.url,
-                    referer = r.referer,
-                    onResult = { res ->
-                        val h = com.apix.app.data.PlayerHeaders(
-                            userAgent = res.headers["User-Agent"] ?: res.headers["user-agent"],
-                            referer = res.headers["Referer"] ?: res.headers["referer"] ?: r.referer
-                        )
-                        playResolved(res.url, item.title, h, res.subtitleUrl)
-                    },
-                    onError = { resolving = false }
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(context)
+                val repoManager = com.apix.app.vod.plugin.RepositoryManager(context)
+                val providerLoader = com.apix.app.vod.plugin.ProviderLoader(context)
+                
+                val plugins = mutableListOf<Pair<java.io.File, String>>()
+                val repos = secureStore.getRepositories()
+                
+                for (repo in repos) {
+                    val manifest = repoManager.fetchManifest(repo)
+                    manifest?.plugins?.forEach { entry ->
+                        val pluginDir = context.getDir("plugins", android.content.Context.MODE_PRIVATE)
+                        var file = java.io.File(pluginDir, "${entry.id}_${entry.version}.apk")
+                        if (!file.exists()) {
+                            val downloaded = repoManager.downloadPlugin(repo, entry)
+                            if (downloaded != null) file = downloaded
+                        }
+                        if (file.exists()) {
+                            plugins.add(Pair(file, entry.className))
+                        }
+                    }
+                }
+                
+                val providers = providerLoader.loadProviders(plugins)
+                val sourceEngine = com.apix.app.vod.engine.SourceEngine(providers)
+                
+                val request = com.apix.app.vod.extractors.WatchRequest(
+                    tmdbId = item.tmdbId.ifBlank { item.id },
+                    imdbId = null,
+                    title = item.title,
+                    originalTitle = item.title,
+                    year = item.year.toIntOrNull() ?: 2026,
+                    isSeries = item.section == "series" || item.section == "anime",
+                    season = null, 
+                    episode = null
                 )
+                
+                val streamsMap = sourceEngine.fetchStreams(request)
+                val subtitlesList = sourceEngine.fetchSubtitles(request)
+                
+                if (streamsMap.isNotEmpty()) {
+                    val firstSource = streamsMap.values.first().first()
+                    val config = PlayerConfig(
+                        url = firstSource.url,
+                        title = item.title,
+                        headers = com.apix.app.data.PlayerHeaders(
+                            userAgent = firstSource.headers?.get("User-Agent") ?: firstSource.headers?.get("user-agent"),
+                            referer = firstSource.headers?.get("Referer") ?: firstSource.headers?.get("referer")
+                        ),
+                        customHeaders = firstSource.headers,
+                        subtitleUrl = subtitlesList.firstOrNull()?.url
+                    )
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        resolving = false
+                        navigateTo(Screen.Player(config, isExternal = false, vodStreams = streamsMap, vodSubtitles = subtitlesList))
+                    }
+                } else {
+                    val r = com.apix.app.data.CinemaRepository.resolve(item)
+                    if (r == null) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
+                    } else if (!r.scrape) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) { playResolved(r.url, item.title, null, null) }
+                    } else {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            com.apix.app.HiddenWebViewScraper(context).extract(
+                                pageUrl = r.url,
+                                referer = r.referer,
+                                onResult = { res ->
+                                    val h = com.apix.app.data.PlayerHeaders(
+                                        userAgent = res.headers["User-Agent"] ?: res.headers["user-agent"],
+                                        referer = res.headers["Referer"] ?: res.headers["referer"] ?: r.referer
+                                    )
+                                    playResolved(res.url, item.title, h, res.subtitleUrl)
+                                },
+                                onError = { resolving = false }
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
             }
         }
     }
@@ -462,10 +527,7 @@ fun AppNavigation(
                     )
                 }
                 when (mode) {
-                    // Live TV only → the classic APiX grid.
                     "SPORTS_ONLY" -> liveScreen()
-                    // Cinema or Hybrid → the tabbed cinema shell. HYBRID keeps a
-                    // leading "مباشر" (Live) tab that hosts the classic grid.
                     else -> CinemaShell(
                         appMode = mode,
                         externalSourceUrl = uiState.externalSourceUrl,
@@ -538,6 +600,8 @@ fun AppNavigation(
             is Screen.Player -> {
                 PlayerScreen(
                     config = screen.config,
+                    vodStreams = screen.vodStreams,
+                    vodSubtitles = screen.vodSubtitles,
                     onBack = { goBack() }
                 )
             }
@@ -573,9 +637,8 @@ fun AppNavigation(
                 )
             }
         }
-    } // إغلاق AnimatedContent
+    } 
 
-        // Full-screen loader while a movie/series link is being resolved/scraped.
         if (resolving) {
             androidx.compose.foundation.layout.Box(
                 modifier = androidx.compose.ui.Modifier
@@ -590,5 +653,5 @@ fun AppNavigation(
                 )
             }
         }
-    } // إغلاق Box
-} // إغلاق AppNavigation
+    } 
+} 
