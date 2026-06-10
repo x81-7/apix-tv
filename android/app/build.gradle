@@ -38,6 +38,11 @@ android {
         def tmdbKey = System.getenv("TMDB_API_KEY") ?: localProperties.getProperty("TMDB_API_KEY", "")
         buildConfigField "String", "TMDB_API_KEY", "\"${tmdbKey}\""
 
+        // --- إضافة رابط الإضافات السري هنا ---
+        def pluginRepoUrl = System.getenv("PLUGIN_REPO_URL") ?: localProperties.getProperty("PLUGIN_REPO_URL", "")
+        buildConfigField "String", "PLUGIN_REPO_URL", "\"${pluginRepoUrl}\""
+        // ------------------------------------
+
         def cloudUrl = System.getenv("CLOUD_URL")
                     ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
         def cloudKey = System.getenv("CLOUD_ANON_KEY")
