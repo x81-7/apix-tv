@@ -29,28 +29,30 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apix.app.data.HomeData
 import com.apix.app.data.MediaItem
 import com.apix.app.data.HomeRow
 import com.apix.app.data.Category
-import com.apix.app.data.Channel // 👈 مهم جداً لفتح القنوات الفرعية
+import com.apix.app.data.Channel
 import com.apix.app.ui.theme.Gold
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class NavItem(val title: String, val icon: ImageVector)
-data class StudioConfig(val id: String, val name: String, val logoUrl: String, val companyId: Int, val networkId: Int)
 
-// بيانات الشركات ليتم عرضها تحت السلايدر
-val STU_NETFLIX = StudioConfig("netflix", "Netflix", "https://image.tmdb.org/t/p/w300/wwemzKWzjKYJFfCeiB57q3r4Bcm.png", 6194, 213)
-val STU_DISNEY = StudioConfig("disney", "Disney", "https://image.tmdb.org/t/p/w300/wdrCwmRnLFJhEoG8GSfymY85KHT.png", 2, 2739)
-val STU_MARVEL = StudioConfig("marvel", "Marvel", "https://image.tmdb.org/t/p/w300/hUzeosd33nzE5MCNsZxCGEKTxwQ.png", 420, -1)
-val STU_HBO = StudioConfig("hbo", "HBO", "https://image.tmdb.org/t/p/w300/tuomPhY2UtuPTqqFnKMVHvZ1QI1.png", -1, 49)
-val STU_APPLE = StudioConfig("apple", "Apple TV+", "https://image.tmdb.org/t/p/w300/4KAy34EHvRM25Ih8pz82ARhnYQM.png", -1, 2552)
-val studiosList = listOf(STU_NETFLIX, STU_DISNEY, STU_MARVEL, STU_HBO, STU_APPLE)
+// 👈 تم تغيير الاسم لتجنب أي تعارض مع HomeScreen القديم!
+data class CinemaStudioConfig(val id: String, val name: String, val logoUrl: String, val companyId: Int, val networkId: Int)
+
+object CinemaConstants {
+    val netflix = CinemaStudioConfig("netflix", "Netflix", "https://image.tmdb.org/t/p/w300/wwemzKWzjKYJFfCeiB57q3r4Bcm.png", 6194, 213)
+    val disney = CinemaStudioConfig("disney", "Disney", "https://image.tmdb.org/t/p/w300/wdrCwmRnLFJhEoG8GSfymY85KHT.png", 2, 2739)
+    val marvel = CinemaStudioConfig("marvel", "Marvel", "https://image.tmdb.org/t/p/w300/hUzeosd33nzE5MCNsZxCGEKTxwQ.png", 420, -1)
+    val hbo = CinemaStudioConfig("hbo", "HBO", "https://image.tmdb.org/t/p/w300/tuomPhY2UtuPTqqFnKMVHvZ1QI1.png", -1, 49)
+    val apple = CinemaStudioConfig("apple", "Apple TV+", "https://image.tmdb.org/t/p/w300/4KAy34EHvRM25Ih8pz82ARhnYQM.png", -1, 2552)
+    val list = listOf(netflix, disney, marvel, hbo, apple)
+}
 
 @Composable
 fun CinemaShell(
@@ -61,8 +63,8 @@ fun CinemaShell(
     liveCategories: List<Category>,
     isLoading: Boolean,
     onItemClick: (MediaItem) -> Unit,
-    onLiveChannelClick: (Channel) -> Unit, // 👈 تم تعديلها لتأخذ Channel مباشرة لضمان فتح القنوات الفرعية
-    onStudioClick: (StudioConfig) -> Unit,
+    onLiveChannelClick: (Channel) -> Unit,
+    onStudioClick: (CinemaStudioConfig) -> Unit,
     fetchMore: suspend (String, String, Int) -> List<MediaItem>
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -79,13 +81,10 @@ fun CinemaShell(
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     if (isLandscape) {
-        // 📺 تصميم التلفاز / الشريط الجانبي على اليمين 📺
         Row(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            // المحتوى في المنتصف (يأخذ المساحة المتبقية)
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 MainContentArea(isLoading, viewingMoreRow, selectedTab, homeData, moviesRows, seriesRows, animeRows, liveCategories, onItemClick, onLiveChannelClick, onStudioClick, { viewingMoreRow = it }, fetchMore, { viewingMoreRow = null })
             }
-            // الشريط الجانبي على اليمين (لدعم اتجاه اللغة العربية)
             NavigationRail(
                 containerColor = Color(0xFF141414),
                 contentColor = Color.Gray,
@@ -109,7 +108,6 @@ fun CinemaShell(
             }
         }
     } else {
-        // 📱 تصميم الهاتف / شريط سفلي 📱
         Scaffold(
             bottomBar = {
                 if (viewingMoreRow == null) {
@@ -148,7 +146,7 @@ fun CinemaShell(
 fun MainContentArea(
     isLoading: Boolean, viewingMoreRow: HomeRow?, selectedTab: Int,
     homeData: HomeData, moviesRows: List<HomeRow>, seriesRows: List<HomeRow>, animeRows: List<HomeRow>, liveCategories: List<Category>,
-    onItemClick: (MediaItem) -> Unit, onLiveChannelClick: (Channel) -> Unit, onStudioClick: (StudioConfig) -> Unit, onSeeMore: (HomeRow) -> Unit, fetchMore: suspend (String, String, Int) -> List<MediaItem>, onBack: () -> Unit
+    onItemClick: (MediaItem) -> Unit, onLiveChannelClick: (Channel) -> Unit, onStudioClick: (CinemaStudioConfig) -> Unit, onSeeMore: (HomeRow) -> Unit, fetchMore: suspend (String, String, Int) -> List<MediaItem>, onBack: () -> Unit
 ) {
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Gold) }
@@ -204,7 +202,7 @@ fun ExpandedCategoryScreen(row: HomeRow, onItemClick: (MediaItem) -> Unit, onBac
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onStudioClick: (StudioConfig) -> Unit, onSeeMore: (HomeRow) -> Unit) {
+fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onStudioClick: (CinemaStudioConfig) -> Unit, onSeeMore: (HomeRow) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             if (data.hero.isNotEmpty()) {
@@ -237,10 +235,9 @@ fun HomeTabContent(data: HomeData, onItemClick: (MediaItem) -> Unit, onStudioCli
             }
         }
         
-        // 👈 إضافة أيقونات الشركات (Netflix, Marvel) بين السلايدر والصفوف
         item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(studiosList) { studio ->
+                items(CinemaConstants.list) { studio ->
                     Box(modifier = Modifier.size(70.dp).clip(CircleShape).background(Color(0xFF1E1E1E)).border(1.dp, Color(0x33FFFFFF), CircleShape).clickable { onStudioClick(studio) }, contentAlignment = Alignment.Center) {
                         coil.compose.AsyncImage(model = studio.logoUrl, contentDescription = studio.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(12.dp))
                     }
@@ -282,7 +279,6 @@ fun MediaRowSection(row: HomeRow, onItemClick: (MediaItem) -> Unit, onSeeMore: (
     }
 }
 
-// 👈 قسم البث المباشر (إزالة كلمة بث مباشر، وتصميم 16:9 ضخم)
 @Composable
 fun LiveTvTabContent(categories: List<Category>, onChannelClick: (Channel) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 16.dp)) {
@@ -298,12 +294,12 @@ fun LiveTvTabContent(categories: List<Category>, onChannelClick: (Channel) -> Un
                     items(channels) { ch ->
                         Box(
                             modifier = Modifier
-                                .width(280.dp) // 👈 عرض ضخم وواضح
+                                .width(280.dp) 
                                 .aspectRatio(16f / 9f) 
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFF1E1E1E))
                                 .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(12.dp))
-                                .clickable { onChannelClick(ch) } // 👈 تمرير القناة بشكلها الأصلي
+                                .clickable { onChannelClick(ch) }
                         ) {
                             coil.compose.AsyncImage(
                                 model = ch.imageUrl, contentDescription = ch.name,
