@@ -48,17 +48,15 @@ class ComposeActivity : ComponentActivity() {
                         val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
                         val existingRepos = secureStore.getRepositories()
                         
-                        // الإضافة الأولى
                         val myPluginRepoUrl1 = BuildConfig.PLUGIN_REPO_URL_1 
-                        if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl1)) {
-                            secureStore.addRepository(myPluginRepoUrl1)
+                        if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl1 }) {
+                            secureStore.addRepository("سيرفر الإضافات 1", myPluginRepoUrl1)
                             android.util.Log.d("Plugins", "تم حقن رابط الإضافة 1 بنجاح!")
                         }
 
-                        // الإضافة الثانية
                         val myPluginRepoUrl2 = BuildConfig.PLUGIN_REPO_URL_2 
-                        if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl2)) {
-                            secureStore.addRepository(myPluginRepoUrl2)
+                        if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.any { it.manifestUrl == myPluginRepoUrl2 }) {
+                            secureStore.addRepository("سيرفر الإضافات 2", myPluginRepoUrl2)
                             android.util.Log.d("Plugins", "تم حقن رابط الإضافة 2 بنجاح!")
                         }
                     } catch (e: Exception) {
@@ -135,14 +133,11 @@ fun AppNavigation(
     initialStreamConfigJson: String? = null
 ) {
     val viewModel: MainViewModel = viewModel()
-    val cinemaViewModel: com.apix.app.viewmodel.CinemaViewModel = viewModel()
-    
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     
     val uiState by viewModel.uiState.collectAsState()
     val sideMenus by viewModel.sideMenus.collectAsState()
-    val cinemaState by cinemaViewModel.homeState.collectAsState()
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
@@ -429,7 +424,8 @@ fun AppNavigation(
 
         val host = activity
         if (host != null) {
-            com.apix.app.AdManager.maybeRunUnlockGate(host) {
+            // حل الخطأ الثاني: تمرير "external" كقيمة لـ channelId
+            com.apix.app.AdManager.maybeRunExternalGate(host, "external") {
                 host.runOnUiThread { proceed() }
             }
         } else {
@@ -560,11 +556,12 @@ fun AppNavigation(
                 }
 
                 when (mode) {
-                    "SPORTS_ONLY" -> liveScreen()
+                    "SPORTS_ONLY", "LIVE_ONLY" -> liveScreen()
                     else -> {
+                        // حل الخطأ الثالث: تمرير null مؤقتاً لغياب ملف CinemaViewModel
                         com.apix.app.ui.screens.CinemaShell(
-                            data = cinemaState.data,
-                            isLoading = cinemaState.isLoading,
+                            data = null, 
+                            isLoading = false,
                             onItemClick = { item -> handleMediaClick(item) },
                             onLiveChannelClick = { channel -> 
                                 if (channel is Channel) handleChannelClick(channel) 
