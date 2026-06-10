@@ -41,27 +41,32 @@ class ComposeActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(true) }
             var isInPlayer by remember { mutableStateOf(false) }
 
-            // --- حقن رابط مستودع الإضافات من GitHub Secrets ---
+            // --- حقن روابط مستودعات الإضافات بالترتيب الجديد من GitHub Secrets ---
             LaunchedEffect(Unit) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val secureStore = com.apix.app.vod.plugin.SecureRepositoryStore(applicationContext)
                         val existingRepos = secureStore.getRepositories()
                         
-                        // سيتم جلب الرابط من BuildConfig الذي يتم توليده عبر GitHub Actions
-                        // تأكد من إضافة PLUGIN_REPO_URL في ملف build.gradle
-                        val myPluginRepoUrl = BuildConfig.PLUGIN_REPO_URL 
-                        
-                        if (myPluginRepoUrl.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl)) {
-                            secureStore.addRepository(myPluginRepoUrl)
-                            android.util.Log.d("Plugins", "تم حقن رابط الإضافات بنجاح!")
+                        // الإضافة الأولى
+                        val myPluginRepoUrl1 = BuildConfig.PLUGIN_REPO_URL_1 
+                        if (myPluginRepoUrl1.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl1)) {
+                            secureStore.addRepository(myPluginRepoUrl1)
+                            android.util.Log.d("Plugins", "تم حقن رابط الإضافة 1 بنجاح!")
+                        }
+
+                        // الإضافة الثانية
+                        val myPluginRepoUrl2 = BuildConfig.PLUGIN_REPO_URL_2 
+                        if (myPluginRepoUrl2.isNotEmpty() && !existingRepos.contains(myPluginRepoUrl2)) {
+                            secureStore.addRepository(myPluginRepoUrl2)
+                            android.util.Log.d("Plugins", "تم حقن رابط الإضافة 2 بنجاح!")
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
             }
-            // ----------------------------------------------------
+            // ---------------------------------------------------------------------
 
             LaunchedEffect(isInPlayer) {
                 if (isInPlayer) {
@@ -130,7 +135,6 @@ fun AppNavigation(
     initialStreamConfigJson: String? = null
 ) {
     val viewModel: MainViewModel = viewModel()
-    // استدعاء CinemaViewModel لجلب بيانات الأفلام (TMDB)
     val cinemaViewModel: com.apix.app.viewmodel.CinemaViewModel = viewModel()
     
     val context = LocalContext.current
@@ -138,8 +142,6 @@ fun AppNavigation(
     
     val uiState by viewModel.uiState.collectAsState()
     val sideMenus by viewModel.sideMenus.collectAsState()
-    
-    // مراقبة حالة بيانات السينما
     val cinemaState by cinemaViewModel.homeState.collectAsState()
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
@@ -427,7 +429,7 @@ fun AppNavigation(
 
         val host = activity
         if (host != null) {
-            com.apix.app.AdManager.maybeRunExternalGate(host) {
+            com.apix.app.AdManager.maybeRunUnlockGate(host) {
                 host.runOnUiThread { proceed() }
             }
         } else {
@@ -544,7 +546,6 @@ fun AppNavigation(
             is Screen.Main -> {
                 val mode = uiState.appMode.uppercase()
                 
-                // تعريف واجهة البث المباشر الكلاسيكية
                 val liveScreen: @Composable () -> Unit = {
                     MainScreen(
                         uiState = uiState,
@@ -558,12 +559,11 @@ fun AppNavigation(
                     )
                 }
 
-                // ربط واجهة السينما مع بيانات TMDB
                 when (mode) {
                     "SPORTS_ONLY" -> liveScreen()
                     else -> {
                         com.apix.app.ui.screens.CinemaShell(
-                            data = cinemaState.data, // تمرير البيانات الحقيقية من TMDB
+                            data = cinemaState.data,
                             isLoading = cinemaState.isLoading,
                             onItemClick = { item -> handleMediaClick(item) },
                             onLiveChannelClick = { channel -> 
