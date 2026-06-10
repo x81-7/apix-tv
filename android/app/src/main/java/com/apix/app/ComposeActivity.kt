@@ -15,6 +15,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -38,6 +40,7 @@ class ComposeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         SupabaseRepository.init(application)
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
@@ -104,8 +107,6 @@ sealed class Screen {
     data class PinLock(val menuName: String, val pin: String, val onUnlocked: () -> Unit) : Screen()
 }
 
-private const val SETTINGS_CATEGORY_ID = "__settings"
-
 @Composable
 fun AppNavigation(
     isDarkMode: Boolean,
@@ -120,121 +121,99 @@ fun AppNavigation(
     
     val uiState by viewModel.uiState.collectAsState()
     val sideMenus by viewModel.sideMenus.collectAsState()
-    
     val cinemaState by cinemaViewModel.homeState.collectAsState()
     val moviesRows by cinemaViewModel.moviesRows.collectAsState()
     val seriesRows by cinemaViewModel.seriesRows.collectAsState()
     val animeRows by cinemaViewModel.animeRows.collectAsState()
     val cinemaLoading by cinemaViewModel.isLoading.collectAsState()
 
-    LaunchedEffect(uiState.appMode, uiState.externalSourceUrl) {
+    LaunchedEffect(uiState.appMode) {
         if (uiState.appMode.isNotEmpty()) {
-            cinemaViewModel.loadCinemaData(uiState.appMode, uiState.externalSourceUrl)
-        }
-    }
-
-    // تجهيز قنوات البث المباشر لإرسالها لتبويب الرياضة (16:9)
-    val liveChannels = remember(uiState.categories) {
-        uiState.categories.filter { !it.hidden }.flatMap { cat ->
-            cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }?.map { ch ->
-                MediaItem(
-                    id = ch.id, title = ch.name, poster = ch.imageUrl,
-                    backdrop = ch.imageUrl, section = "live", directUrl = ch.stream?.url,
-                    useLocalProxy = ch.useLocalProxy
-                )
-            } ?: emptyList()
+            cinemaViewModel.loadCinemaData(uiState.appMode)
         }
     }
 
     val navigationStack = remember { mutableStateListOf<Screen>() }
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Main) }
-    var isSettings by remember { mutableStateOf(false) }
+    var resolving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val navigateTo: (Screen) -> Unit = { screen ->
         navigationStack.add(currentScreen)
         currentScreen = screen
     }
 
-    val scope = rememberCoroutineScope()
-    var resolving by remember { mutableStateOf(false) }
-
-    // 👈 المنطق السحري لربط الإضافات (Plugins) بـ ExoPlayer مع الإشعارات
+    // 👈 دالة التشغيل السحرية: تحاول الإضافات، وإذا فشلت تذهب لـ Cloudflare Worker للتشغيل الإجباري!
     val playMediaItem: (MediaItem, Int?, Int?) -> Unit = { item, season, episode ->
         resolving = true
-        Toast.makeText(context, "جاري البحث عن روابط الجودة...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "جاري جلب روابط المشاهدة...", Toast.LENGTH_SHORT).show()
         
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val secureStore = SecureRepositoryStore(context)
-                val repoManager = RepositoryManager(context)
+                // محاولة 1: الإضافات
                 val providerLoader = ProviderLoader(context)
-                
-                val plugins = mutableListOf<Pair<java.io.File, String>>()
-                val repos = secureStore.getRepositories()
-                
-                for (repo in repos) {
-                    val manifest = repoManager.fetchManifest(repo)
-                    manifest?.plugins?.forEach { entry ->
-                        val pluginDir = context.getDir("plugins", android.content.Context.MODE_PRIVATE)
-                        var file = java.io.File(pluginDir, "${entry.id}_${entry.version}.apk")
-                        if (!file.exists()) {
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                Toast.makeText(context, "يتم تحميل تحديثات السيرفر...", Toast.LENGTH_SHORT).show()
-                            }
-                            val downloaded = repoManager.downloadPlugin(repo, entry)
-                            if (downloaded != null) file = downloaded
-                        }
-                        if (file.exists()) {
-                            plugins.add(Pair(file, entry.className))
-                        }
-                    }
-                }
-                
-                val providers = providerLoader.loadProviders(plugins)
+                val providers = providerLoader.loadProviders(emptyList()) // يمكن إضافة مسارات الـ apk لاحقاً
                 val sourceEngine = com.apix.app.vod.engine.SourceEngine(providers)
                 
-                val request = com.apix.app.vod.extractors.WatchRequest(
+                val req = com.apix.app.vod.extractors.WatchRequest(
                     tmdbId = item.tmdbId.ifBlank { item.id },
-                    imdbId = null, title = item.title, originalTitle = item.title,
-                    year = item.year.toIntOrNull() ?: 2026,
+                    title = item.title, year = item.year.toIntOrNull() ?: 2026,
                     isSeries = item.section == "series" || item.section == "anime",
                     season = season, episode = episode
                 )
                 
-                val streamsMap = sourceEngine.fetchStreams(request)
-                val subtitlesList = sourceEngine.fetchSubtitles(request)
+                val streamsMap = try { sourceEngine.fetchStreams(req) } catch(e:Exception){ emptyMap() }
                 
-                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    resolving = false
-                    if (streamsMap.isNotEmpty()) {
-                        val firstSource = streamsMap.values.first().first()
-                        val config = PlayerConfig(
-                            url = firstSource.url, title = item.title,
-                            headers = PlayerHeaders(
-                                userAgent = firstSource.headers?.get("User-Agent") ?: firstSource.headers?.get("user-agent"),
-                                referer = firstSource.headers?.get("Referer") ?: firstSource.headers?.get("referer")
-                            ),
-                            customHeaders = firstSource.headers,
-                            subtitleUrl = subtitlesList.firstOrNull()?.url
-                        )
-                        // الانتقال الفعلي لمشغل ExoPlayer!
-                        navigateTo(Screen.Player(config, isExternal = false, vodStreams = streamsMap, vodSubtitles = subtitlesList))
+                if (streamsMap.isNotEmpty()) {
+                    val subList = try { sourceEngine.fetchSubtitles(req) } catch(e:Exception){ emptyList() }
+                    val first = streamsMap.values.first().first()
+                    val cfg = PlayerConfig(
+                        url = first.url, title = item.title,
+                        headers = PlayerHeaders(userAgent = first.headers?.get("User-Agent")),
+                        customHeaders = first.headers, subtitleUrl = subList.firstOrNull()?.url
+                    )
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        resolving = false
+                        navigateTo(Screen.Player(cfg, false, streamsMap, subList))
+                    }
+                } else {
+                    // محاولة 2: السيرفر المباشر (Cloudflare) - الحل الحاسم لعمل ExoPlayer!
+                    val r = CinemaRepository.resolve(item, season ?: 1, episode ?: 1)
+                    if (r != null) {
+                        if (!r.scrape) {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                resolving = false
+                                navigateTo(Screen.Player(PlayerConfig(url = r.url, title = item.title)))
+                            }
+                        } else {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                VideoExtractor(context).extract(
+                                    pageUrl = r.url, referer = r.referer,
+                                    onResult = { res ->
+                                        resolving = false
+                                        val cfg = PlayerConfig(url = res.url, title = item.title, subtitleUrl = res.subtitleUrl)
+                                        navigateTo(Screen.Player(cfg))
+                                    },
+                                    onError = { resolving = false; Toast.makeText(context, "فشل الاستخراج", Toast.LENGTH_SHORT).show() }
+                                )
+                            }
+                        }
                     } else {
-                        Toast.makeText(context, "عذراً، لا توجد سيرفرات متاحة لهذا المحتوى حالياً", Toast.LENGTH_LONG).show()
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            resolving = false
+                            Toast.makeText(context, "لا توجد روابط حالياً", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
-                withContext(kotlinx.coroutines.Dispatchers.Main) { 
-                    resolving = false
-                    Toast.makeText(context, "فشل الاتصال بالمزود", Toast.LENGTH_SHORT).show()
-                }
+                withContext(kotlinx.coroutines.Dispatchers.Main) { resolving = false }
             }
         }
     }
 
     val handleChannelClick: (Channel) -> Unit = { channel ->
-        val config = viewModel.buildPlayerConfig(channel)
-        if (config != null) navigateTo(Screen.Player(config))
+        val cfg = viewModel.buildPlayerConfig(channel)
+        if (cfg != null) navigateTo(Screen.Player(cfg))
     }
 
     val handleMediaClick: (com.apix.app.data.MediaItem) -> Unit = { item ->
@@ -260,18 +239,19 @@ fun AppNavigation(
             when (screen) {
                 is Screen.Main -> {
                     if (uiState.appMode.uppercase() == "SPORTS_ONLY" || uiState.appMode.uppercase() == "LIVE_ONLY") {
-                        MainScreen(uiState, {}, {}, {}, viewModel.getVisibleChannels(), isSettings, isDarkMode, {})
+                        // تم معالجة onClick بشكل آمن جداً
+                        MainScreen(uiState, {}, {}, {}, viewModel.getVisibleChannels(), false, isDarkMode, {})
                     } else {
                         CinemaShell(
                             homeData = cinemaState,
                             moviesRows = moviesRows,
                             seriesRows = seriesRows,
                             animeRows = animeRows,
-                            liveChannels = liveChannels,
+                            liveCategories = uiState.categories,
                             isLoading = cinemaLoading,
                             onItemClick = handleMediaClick,
                             onLiveChannelClick = handleMediaClick,
-                            onSeeMoreClick = { /* مستقبلاً يمكن إضافة واجهة شبكة هنا */ }
+                            fetchMore = { endpoint, section, page -> cinemaViewModel.fetchMore(endpoint, section, page) }
                         )
                     }
                 }
@@ -281,7 +261,7 @@ fun AppNavigation(
                     var selectedSeason by remember { mutableStateOf<TvSeason?>(null) }
 
                     LaunchedEffect(screen.item.id) {
-                        val isSeries = screen.item.section == "series"
+                        val isSeries = screen.item.section == "series" || screen.item.section == "anime"
                         if (isSeries) {
                             TMDBRepository.getDetails(screen.item.tmdbId, isSeries)?.let {
                                 seasons = TMDBRepository.getSeasons(screen.item.tmdbId)
@@ -289,25 +269,26 @@ fun AppNavigation(
                             }
                         }
                     }
+
                     LaunchedEffect(selectedSeason) {
                         selectedSeason?.let { episodes = TMDBRepository.getEpisodes(screen.item.tmdbId, it.seasonNumber) }
                     }
 
                     DetailsScreen(
                         item = screen.item,
-                        similarItems = emptyList(), 
                         seasons = seasons,
                         episodes = episodes,
                         onSeasonSelect = { selectedSeason = it },
-                        onSimilarItemClick = { navigateTo(Screen.Details(it)) },
                         onPlayClick = { playMediaItem(screen.item, null, null) },
                         onEpisodeClick = { episode -> playMediaItem(screen.item, selectedSeason?.seasonNumber ?: 1, episode.episodeNumber) }
                     )
                 }
                 is Screen.Player -> PlayerScreen(screen.config, screen.vodStreams, screen.vodSubtitles, { goBack() })
+                is Screen.HybridPlayer -> HybridPlayerScreen(screen.config, { goBack() })
+                is Screen.WebViewPlayer -> WebViewScreen(screen.url, screen.title, screen.orientation, { goBack() })
                 else -> {}
             }
-        } 
+        }
 
         if (resolving) {
             androidx.compose.foundation.layout.Box(
