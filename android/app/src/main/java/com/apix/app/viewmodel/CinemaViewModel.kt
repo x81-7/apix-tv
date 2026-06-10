@@ -5,111 +5,94 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apix.app.BuildConfig
-import com.apix.app.data.Category
-import com.apix.app.data.CinemaJson
 import com.apix.app.data.HomeData
+import com.apix.app.data.MediaItem
+import com.apix.app.data.HomeRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 class CinemaViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val _homeState = MutableStateFlow(HomeData())
+    // حالة الصفحة الرئيسية
+    private val _homeState = MutableStateFlow(HomeData(appMode = "HYBRID"))
     val homeState: StateFlow<HomeData> = _homeState.asStateFlow()
+
+    // حالات الصفحات الفرعية
+    private val _moviesRows = MutableStateFlow<List<HomeRow>>(emptyList())
+    val moviesRows: StateFlow<List<HomeRow>> = _moviesRows.asStateFlow()
+
+    private val _seriesRows = MutableStateFlow<List<HomeRow>>(emptyList())
+    val seriesRows: StateFlow<List<HomeRow>> = _seriesRows.asStateFlow()
+
+    private val _animeRows = MutableStateFlow<List<HomeRow>>(emptyList())
+    val animeRows: StateFlow<List<HomeRow>> = _animeRows.asStateFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private var cachedMovies = JSONArray()
-    private var cachedSeries = JSONArray()
-
-    fun loadCinemaData(appMode: String, externalUrl: String, categories: List<Category>) {
-        viewModelScope.launch(Dispatchers.IO) {
+    fun loadCinemaData(appMode: String, externalUrl: String) {
+        viewModelScope.launch {
             _isLoading.value = true
             try {
-                if (cachedMovies.length() == 0) {
-                    cachedMovies = fetchTmdbTrending("movie", "vod")
-                }
-                if (cachedSeries.length() == 0) {
-                    cachedSeries = fetchTmdbTrending("tv", "series")
-                }
+                // --- بيانات الصفحة الرئيسية ---
+                val trendingMovies = fetchTmdb("trending/movie/week", "vod")
+                val trendingSeries = fetchTmdb("trending/tv/week", "series")
+                val latestAnime = fetchTmdb("discover/tv?with_genres=16&with_original_language=ja&sort_by=first_air_date.desc", "anime")
+                val movieFranchises = fetchTmdb("discover/movie?sort_by=revenue.desc&with_genres=28,878", "vod") // اكشن وخيال علمي كسلاسل
 
-                val heroArray = JSONArray()
-                for (i in 0 until minOf(5, cachedMovies.length())) {
-                    heroArray.put(cachedMovies.getJSONObject(i))
-                }
+                _homeState.value = HomeData(
+                    appMode = appMode,
+                    hero = trendingMovies.take(5),
+                    rows = listOf(
+                        HomeRow("أفلام شائعة", trendingMovies),
+                        HomeRow("مسلسلات شائعة", trendingSeries),
+                        HomeRow("أحدث الأنميات", latestAnime),
+                        HomeRow("سلاسل الأفلام والأكشن", movieFranchises)
+                    )
+                )
 
-                val rowsArray = JSONArray()
+                // --- بيانات صفحة الأفلام (مقسمة) ---
+                _moviesRows.value = listOf(
+                    HomeRow("أفلام أجنبية", fetchTmdb("discover/movie?with_original_language=en", "vod")),
+                    HomeRow("أفلام كورية", fetchTmdb("discover/movie?with_original_language=ko", "vod")),
+                    HomeRow("أفلام أنميشن", fetchTmdb("discover/movie?with_genres=16", "vod"))
+                )
 
-                for (cat in categories) {
-                    if (cat.hidden) continue
-                    val channels = cat.channels?.values?.filter { !it.hidden }?.sortedBy { it.sortOrder }
-                    if (channels.isNullOrEmpty()) continue
+                // --- بيانات صفحة المسلسلات (مقسمة) ---
+                _seriesRows.value = listOf(
+                    HomeRow("مسلسلات أجنبية", fetchTmdb("discover/tv?with_original_language=en", "series")),
+                    HomeRow("مسلسلات كورية", fetchTmdb("discover/tv?with_original_language=ko", "series")),
+                    HomeRow("مسلسلات عربية", fetchTmdb("discover/tv?with_original_language=ar", "series"))
+                )
 
-                    val catRow = JSONObject()
-                    catRow.put("title", "بث مباشر: ${cat.name}")
-                    val catItems = JSONArray()
-                    for (ch in channels) {
-                        val item = JSONObject()
-                        item.put("id", ch.id)
-                        item.put("title", ch.name)
-                        item.put("poster", ch.imageUrl)
-                        item.put("backdrop", ch.imageUrl)
-                        item.put("section", "live")
-                        item.put("url", ch.stream?.url ?: "")
-                        item.put("useLocalProxy", ch.useLocalProxy)
-                        catItems.put(item)
-                    }
-                    catRow.put("items", catItems)
-                    rowsArray.put(catRow)
-                }
+                // --- بيانات صفحة الأنمي (مقسمة) ---
+                _animeRows.value = listOf(
+                    HomeRow("أنميشن عالمي", fetchTmdb("discover/tv?with_genres=16&with_original_language=en", "anime")),
+                    HomeRow("أنمي ياباني", fetchTmdb("discover/tv?with_genres=16&with_original_language=ja", "anime")),
+                    HomeRow("أنمي كوري", fetchTmdb("discover/tv?with_genres=16&with_original_language=ko", "anime"))
+                )
 
-                if (cachedMovies.length() > 0) {
-                    val moviesRow = JSONObject()
-                    moviesRow.put("title", "أفلام شائعة")
-                    moviesRow.put("items", cachedMovies)
-                    rowsArray.put(moviesRow)
-                }
-
-                if (cachedSeries.length() > 0) {
-                    val seriesRow = JSONObject()
-                    seriesRow.put("title", "مسلسلات شائعة")
-                    seriesRow.put("items", cachedSeries)
-                    rowsArray.put(seriesRow)
-                }
-
-                val root = JSONObject()
-                root.put("success", true)
-                root.put("app_mode", appMode)
-                root.put("hero", heroArray)
-                root.put("rows", rowsArray)
-
-                val parsedData = CinemaJson.parseHome(root.toString())
-                
-                withContext(Dispatchers.Main) {
-                    _homeState.value = parsedData
-                }
             } catch (e: Exception) {
-                Log.e("CinemaViewModel", "Error joining VOD and Live data", e)
+                Log.e("CinemaViewModel", "خطأ في جلب بيانات TMDB", e)
             } finally {
-                withContext(Dispatchers.Main) {
-                    _isLoading.value = false
-                }
+                _isLoading.value = false
             }
         }
     }
 
-    private suspend fun fetchTmdbTrending(type: String, section: String): JSONArray = withContext(Dispatchers.IO) {
+    private suspend fun fetchTmdb(endpoint: String, section: String): List<MediaItem> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.TMDB_API_KEY
-        val url = "https://api.themoviedb.org/3/trending/$type/week?api_key=$apiKey&language=ar"
-        val result = JSONArray()
+        val prefix = if (endpoint.contains("?")) "&" else "?"
+        val url = "https://api.themoviedb.org/3/$endpoint${prefix}api_key=$apiKey&language=ar"
+        
+        val result = mutableListOf<MediaItem>()
         var conn: HttpURLConnection? = null
         try {
             conn = URL(url).openConnection() as HttpURLConnection
@@ -117,26 +100,27 @@ class CinemaViewModel(app: Application) : AndroidViewModel(app) {
             conn.readTimeout = 10000
             if (conn.responseCode == 200) {
                 val jsonText = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(jsonText)
-                val arr = json.optJSONArray("results") ?: return@withContext result
+                val arr = JSONObject(jsonText).optJSONArray("results") ?: return@withContext emptyList()
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
-                    val item = JSONObject()
-                    item.put("id", obj.optString("id"))
-                    item.put("tmdb_id", obj.optString("id"))
-                    item.put("title", obj.optString("title", obj.optString("name", "")))
-                    item.put("poster", "https://image.tmdb.org/t/p/w500" + obj.optString("poster_path", ""))
-                    item.put("backdrop", "https://image.tmdb.org/t/p/w780" + obj.optString("backdrop_path", ""))
-                    item.put("description", obj.optString("overview", ""))
-                    item.put("rating", String.format("%.1f", obj.optDouble("vote_average", 0.0)))
-                    item.put("year", obj.optString("release_date", obj.optString("first_air_date", "")).take(4))
-                    item.put("section", section)
-                    item.put("ext", "mp4")
-                    result.put(item)
+                    result.add(
+                        MediaItem(
+                            id = obj.optString("id"),
+                            tmdbId = obj.optString("id"),
+                            title = obj.optString("title", obj.optString("name", "")),
+                            poster = "https://image.tmdb.org/t/p/w500" + obj.optString("poster_path", ""),
+                            backdrop = "https://image.tmdb.org/t/p/w780" + obj.optString("backdrop_path", ""),
+                            description = obj.optString("overview", ""),
+                            rating = String.format("%.1f", obj.optDouble("vote_average", 0.0)),
+                            year = obj.optString("release_date", obj.optString("first_air_date", "")).take(4),
+                            section = section,
+                            extension = "mp4"
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {
-            Log.e("CinemaViewModel", "TMDB fetch error", e)
+            Log.e("CinemaViewModel", "TMDB error: $endpoint", e)
         } finally {
             conn?.disconnect()
         }
