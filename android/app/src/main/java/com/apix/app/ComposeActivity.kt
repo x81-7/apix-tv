@@ -528,13 +528,14 @@ fun AppNavigation(
                 }
                 when (mode) {
                     "SPORTS_ONLY" -> liveScreen()
-                    else -> CinemaShell(
-                        appMode = mode,
-                        externalSourceUrl = uiState.externalSourceUrl,
-                        onMediaClick = handleMediaClick,
-                        leadingTabs = if (mode == "HYBRID")
-                            listOf(CinemaTab("مباشر") { liveScreen() }) else emptyList()
-                    )
+                    else -> {
+                        com.apix.app.ui.screens.CinemaShell(
+                            data = uiState.categories,
+                            isLoading = uiState.isLoading,
+                            onItemClick = handleMediaClick,
+                            onLiveChannelClick = handleChannelClick
+                        )
+                    }
                 }
             }
             is Screen.SubChannels -> {
