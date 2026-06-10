@@ -23,10 +23,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # هنا تم حل مشكلة الـ NDK وإجبار السيرفر على تثبيت الإصدار المطلوب لحماية C++
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" "cmake;3.22.1"
 
       - name: Create local.properties
         working-directory: ./android
@@ -58,6 +59,8 @@ jobs:
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          PLUGIN_REPO_URL_1: ${{ secrets.PLUGIN_REPO_URL_1 }}
+          PLUGIN_REPO_URL_2: ${{ secrets.PLUGIN_REPO_URL_2 }}
         working-directory: ./android
         shell: bash
         run: |
@@ -83,6 +86,8 @@ jobs:
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          PLUGIN_REPO_URL_1: ${{ secrets.PLUGIN_REPO_URL_1 }}
+          PLUGIN_REPO_URL_2: ${{ secrets.PLUGIN_REPO_URL_2 }}
         working-directory: ./android
         shell: bash
         run: |
