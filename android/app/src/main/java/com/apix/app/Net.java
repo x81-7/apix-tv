@@ -127,62 +127,6 @@ public final class Net {
         }
     }
 
-    /**
-     * POST a JSON body to {@code path} through the gateway and return the body.
-     * Used by the Cinema repository to reach the cinema-gateway edge function
-     * (/functions/v1/cinema-gateway) without ever exposing the Supabase origin.
-     */
-    public static String post(String path, String jsonBody) throws Exception {
-        HttpURLConnection conn = open(path);
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/json");
-        try {
-            try (java.io.OutputStream os = conn.getOutputStream()) {
-                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            }
-            verifyPins(conn);
-            int code = conn.getResponseCode();
-            java.io.InputStream is = (code >= 200 && code < 300)
-                    ? conn.getInputStream() : conn.getErrorStream();
-            StringBuilder sb = new StringBuilder();
-            if (is != null) {
-                try (BufferedReader r = new BufferedReader(
-                        new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = r.readLine()) != null) sb.append(line);
-                }
-            }
-            if (code < 200 || code >= 300) throw new Exception("HTTP " + code + " for " + path + " :: " + sb);
-            return sb.toString();
-        } finally {
-            conn.disconnect();
-        }
-    }
-
-    /** A free-form GET to an absolute URL (used for client external-source feeds). */
-    public static String getAbsolute(String absoluteUrl) throws Exception {
-        URL url = new URL(absoluteUrl);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(20000);
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("Accept", "application/json");
-        try {
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
-            StringBuilder sb = new StringBuilder();
-            try (BufferedReader r = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) sb.append(line);
-            }
-            return sb.toString();
-        } finally {
-            conn.disconnect();
-        }
-    }
-
     // ───────────────────────── SSL pinning ─────────────────────────
 
     private static List<String> pins() {

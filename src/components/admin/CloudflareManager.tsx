@@ -106,21 +106,6 @@ const CloudflareManager: React.FC = () => {
     finally { setBusyKey('deploy', false); }
   };
 
-  const handleDeployCinema = async () => {
-    if (!cfg.accountId.trim() || !apiToken.trim()) { toast.error('أدخل Account ID و API Token'); return; }
-    setBusyKey('cinema', true);
-    try {
-      const d = await callManager('deploy-cinema');
-      if (d.workerUrl) {
-        try { await navigator.clipboard.writeText(d.workerUrl); } catch { /* ignore */ }
-        toast.success(`تم نشر وركر السينما: ${d.workerUrl} (تم نسخه)`);
-      } else {
-        toast.success('تم نشر وركر السينما');
-      }
-    } catch (e: any) { toast.error(`فشل نشر وركر السينما: ${e?.message}`); }
-    finally { setBusyKey('cinema', false); }
-  };
-
   const handleUpdateSecrets = async () => {
     if (!cfg.accountId.trim() || !apiToken.trim()) { toast.error('أدخل Account ID و API Token'); return; }
     setBusyKey('secrets', true);
@@ -229,9 +214,6 @@ const CloudflareManager: React.FC = () => {
             </Button>
             <Button variant="outline" onClick={handlePurge} disabled={busy.purge} className="hover:text-destructive">
               {busy.purge ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}مسح الكاش
-            </Button>
-            <Button variant="outline" onClick={handleDeployCinema} disabled={busy.cinema}>
-              {busy.cinema ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Rocket className="w-4 h-4 mr-2" />}نشر وركر السينما (منفصل)
             </Button>
           </div>
           {cfg.workerUrl && (

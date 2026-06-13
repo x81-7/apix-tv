@@ -57,56 +57,17 @@ object SupabaseRepository {
     fun observeAppSettings(): Flow<AppSettings> = flow {
         val ctx = appContext
         var show = true
-        var mode = "HYBRID"
-        var externalUrl = ""
         try {
             if (ctx != null) {
-                // Single source of truth: read from the same worker-cached bundle
-                // that powers the rest of the app (cached-data via the Cloudflare
-                // Worker). This avoids an extra direct /rest/v1 call (which would
-                // leak the origin) and guarantees the hide/show flag is consistent
-                // with the categories actually rendered.
-                val data = suspendCoroutine<SupabaseDataManager.DataBundle?> { cont ->
-                    SupabaseDataManager.fetchRemote(ctx, object : SupabaseDataManager.DataCallback {
-                        override fun onSuccess(data: SupabaseDataManager.DataBundle) { cont.resume(data) }
-                        override fun onError(error: String) { cont.resume(null) }
-                    })
-                }
-                val raw = data?.settings?.get("appSettings")
-                if (!raw.isNullOrBlank()) {
-                    try {
-                        val obj = org.json.JSONObject(raw)
-                        if (obj.has("showSettingsSection")) {
-                            show = obj.optBoolean("showSettingsSection", true)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "appSettings parse failed", e)
-                    }
-                }
-                // App mode (cinema / live / hybrid) — stored under the appMode key.
-                val rawMode = data?.settings?.get("appMode")
-                if (!rawMode.isNullOrBlank()) {
-                    try {
-                        mode = org.json.JSONObject(rawMode).optString("mode", "HYBRID")
-                            .uppercase()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "appMode parse failed", e)
-                    }
-                }
-                // External client JSON feed URL — stored under externalSources key.
-                val rawExt = data?.settings?.get("externalSources")
-                if (!rawExt.isNullOrBlank()) {
-                    try {
-                        externalUrl = org.json.JSONObject(rawExt).optString("url", "")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "externalSources parse failed", e)
-                    }
+                val obj = SupabaseDataManager.fetchAppSettings()
+                if (obj != null && obj.has("showSettingsSection")) {
+                    show = obj.optBoolean("showSettingsSection", true)
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "observeAppSettings failed", e)
+            Log.w(TAG, "fetchAppSettings failed", e)
         }
-        emit(AppSettings(showSettingsSection = show, appMode = mode, externalSourceUrl = externalUrl))
+        emit(AppSettings(showSettingsSection = show))
     }.flowOn(Dispatchers.IO)
 
     fun observeSideMenus(): Flow<Map<String, SideMenu>> = flow {

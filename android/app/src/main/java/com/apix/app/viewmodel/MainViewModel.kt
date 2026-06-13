@@ -28,10 +28,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 SupabaseRepository.ensureAnonymousAuth()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Authentication failed: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, error = "فشل المصادقة: ${e.message}") }
                 return@launch
             }
 
+            // Observe categories
             launch {
                 SupabaseRepository.observeCategories().collect { cats ->
                     _uiState.update { state ->
@@ -48,6 +49,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            // Observe side menus
             launch {
                 SupabaseRepository.observeSideMenus().collect { menus ->
                     _sideMenus.value = menus
@@ -58,17 +60,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch {
                 SupabaseRepository.observeAppSettings().collect { settings ->
                     _uiState.update { state ->
-                        state.copy(
-                            showSettingsSection = settings.showSettingsSection,
-                            appMode = settings.appMode,
-                            externalSourceUrl = settings.externalSourceUrl
-                        )
+                        state.copy(showSettingsSection = settings.showSettingsSection)
                     }
                 }
             }
         }
     }
 
+    /**
+     * Pull-to-refresh + refresh button.
+     * Re-fetches streams/links only. Images & names remain cached on disk.
+     */
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
@@ -92,6 +94,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Warm Coil disk cache with all channel images so they render instantly & offline. */
     private fun preloadImages(urls: List<String>) {
         val ctx = getApplication<Application>().applicationContext
         urls.filter { it.isNotEmpty() }.distinct().forEach { url ->
@@ -120,6 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val filter = query.lowercase().trim()
         val results = mutableListOf<Channel>()
 
+        // Search main channels
         for (cat in _uiState.value.categories) {
             cat.channels?.values?.forEach { ch ->
                 if (!ch.hidden && ch.name.lowercase().contains(filter)) {
@@ -128,6 +132,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
+        // Search sub-channels
         for (menu in _sideMenus.value.values) {
             menu.channels?.values?.forEach { sc ->
                 if (!sc.hidden && sc.name.lowercase().contains(filter)) {
@@ -167,6 +172,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             channel.androidStream!!.headers?.let { h ->
+                // تعديل جراحي هنا: التقاط الريفيرر بجميع التسميات الممكنة
                 val ref = h["referer"] ?: h["referrer"] ?: h["Referer"] ?: h["Referrer"]
                 val ua = h["userAgent"] ?: h["useragent"] ?: h["User-Agent"]
                 
@@ -187,10 +193,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 var keyId = as_.drmKeyId
                 var key = as_.drmKey
 
+                // Handle combined KID:KEY format
                 if (as_.drmClearKeyMode == "combined" && as_.drmClearKeyCombined != null) {
                     val parts = as_.drmClearKeyCombined!!.split(":")
                     if (parts.size == 2) { keyId = parts[0]; key = parts[1] }
                 }
+                // Also handle KID:KEY pasted directly in keyId field
                 if (key.isNullOrEmpty() && keyId != null && keyId.contains(":") && !keyId.contains("http")) {
                     val parts = keyId.split(":")
                     if (parts.size == 2 && parts[0].length >= 16 && parts[1].length >= 16) {
@@ -210,6 +218,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 config.servers = servers
             }
 
+            // New advanced fields
             channel.androidStream!!.customHeaders?.let { ch ->
                 val map = mutableMapOf<String, String>()
                 ch.forEach { h -> if (h.key != null && h.value != null) map[h.key!!] = h.value!! }
@@ -231,6 +240,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else if (channel.stream?.url != null) {
             config.url = channel.stream!!.url!!
             
+            // نكتفي بـ referrer فقط لأن كلاس Stream لا يحتوي على referer
             val ref = channel.stream!!.referrer
             
             if (channel.stream!!.userAgent != null || ref != null) {
@@ -244,33 +254,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         return if (config.url.isNotEmpty()) config else null
     }
-
-    suspend fun buildVodPlayerConfig(
-        item: MediaItem,
-        seasonNumber: Int? = null,
-        episodeNumber: Int? = null,
-        sourceEngine: com.apix.app.vod.engine.SourceEngine
-    ): PlayerConfig? {
-        val vodBridge = com.apix.app.vod.engine.VodPlayerBridge(sourceEngine)
-        val adaptedConfig = vodBridge.preparePlayerConfig(item, seasonNumber, episodeNumber)
-
-        if (adaptedConfig.url.isEmpty()) return null
-
-        val config = PlayerConfig(title = item.title)
-        config.url = adaptedConfig.url
-
-        adaptedConfig.headers?.let { h ->
-            config.headers = PlayerHeaders(
-                userAgent = h.userAgent,
-                referer = h.referer,
-                cookie = h.cookie
-            )
-        }
-
-        config.subtitleUrl = adaptedConfig.subtitleUrl
-
-        return config
-    }
 }
 
 data class UiState(
@@ -278,7 +261,5 @@ data class UiState(
     val selectedCategory: Category? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
-    val showSettingsSection: Boolean = true,
-    val appMode: String = "HYBRID",
-    val externalSourceUrl: String = ""
+    val showSettingsSection: Boolean = true
 )

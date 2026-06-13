@@ -14,8 +14,9 @@ android {
         minSdk 24
         targetSdk 34
         versionCode 2
-        versionName "1.6"
+        versionName "1.5"
 
+        // حل خطأ DataProcessor.kt المفقود في السجلات
         buildConfigField "String", "X_DP_K", "\"7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a\""
 
         def envFile = rootProject.file("../.env")
@@ -26,25 +27,6 @@ android {
         def cleanEnv = { value ->
             value == null ? null : value.toString().trim().replaceAll('^"|"$', '')
         }
-
-        def localProperties = new Properties()
-        def localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localPropertiesFile.withInputStream { stream ->
-                localProperties.load(stream)
-            }
-        }
-        
-        def tmdbKey = System.getenv("TMDB_API_KEY") ?: localProperties.getProperty("TMDB_API_KEY", "")
-        buildConfigField "String", "TMDB_API_KEY", "\"${tmdbKey}\""
-
-        // --- إضافة روابط الإضافات السرية هنا (الترتيب الجديد) ---
-        def pluginRepoUrl1 = System.getenv("PLUGIN_REPO_URL_1") ?: localProperties.getProperty("PLUGIN_REPO_URL_1", "")
-        buildConfigField "String", "PLUGIN_REPO_URL_1", "\"${pluginRepoUrl1}\""
-
-        def pluginRepoUrl2 = System.getenv("PLUGIN_REPO_URL_2") ?: localProperties.getProperty("PLUGIN_REPO_URL_2", "")
-        buildConfigField "String", "PLUGIN_REPO_URL_2", "\"${pluginRepoUrl2}\""
-        // ----------------------------------------------------
 
         def cloudUrl = System.getenv("CLOUD_URL")
                     ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
@@ -59,18 +41,18 @@ android {
         def extKey   = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY")
                      ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
         def sigHash  = System.getenv("SIGNATURE_HASH") ?: "__HASH__"
-        
+        // White-label gateway: when WORKER_URL is provided the app talks ONLY to
+        // the Cloudflare Worker, which hides Supabase. Falls back to direct cloud.
         def workerUrl = System.getenv("WORKER_URL")
                     ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
+        // Optional SSL pinning: comma-separated base64 SHA-256 SPKI pins for the
+        // Worker host. Empty = pinning disabled (network_security_config still
+        // blocks user-installed CAs). Injected via CI from the WORKER_PINS secret.
         def workerPins = System.getenv("WORKER_PINS")
                     ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
 
-        def workerActive = (workerUrl != null && !workerUrl.trim().isEmpty())
-        def bakedCloudUrl = workerActive ? "" : cloudUrl
-        def bakedCloudKey = workerActive ? "" : cloudKey
-
-        buildConfigField "String", "CLOUD_URL",      "\"${bakedCloudUrl}\""
-        buildConfigField "String", "CLOUD_ANON_KEY", "\"${bakedCloudKey}\""
+        buildConfigField "String", "CLOUD_URL",      "\"${cloudUrl}\""
+        buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
         buildConfigField "String", "WORKER_URL",     "\"${workerUrl}\""
         buildConfigField "String", "WORKER_PINS",    "\"${workerPins}\""
 
@@ -81,8 +63,8 @@ android {
                           "-DHMAC_SECRET=${hmacSec}",
                           "-DKEY_SALT=${keySalt}",
                           "-DEXT_KEY=${extKey}",
-                          "-DCLOUD_URL=${bakedCloudUrl}",
-                          "-DCLOUD_ANON_KEY=${bakedCloudKey}",
+                          "-DCLOUD_URL=${cloudUrl}",
+                          "-DCLOUD_ANON_KEY=${cloudKey}",
                           "-DWORKER_URL=${workerUrl}"
             }
         }
@@ -171,12 +153,10 @@ dependencies {
     implementation 'com.google.android.gms:play-services-ads:23.0.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
+    // Embedded local HTTP server for the on-device IPTV proxy (manifest rewriting).
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'androidx.leanback:leanback:1.0.0'
     implementation 'androidx.compose.material3:material3-window-size-class'
-
-    implementation 'androidx.tv:tv-foundation:1.0.0-alpha10'
-    implementation 'androidx.tv:tv-material:1.0.0-alpha10'
 
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"

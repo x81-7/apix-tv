@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.key.KeyEventType
@@ -75,15 +74,11 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.SubtitleView
 import coil.compose.rememberAsyncImagePainter
 import com.apix.app.data.*
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
-import com.apix.app.vod.extractors.StreamSource
-import com.apix.app.vod.extractors.SubtitleSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,6 +88,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 
+// ===== Custom Helper =====
+
 @Composable
 fun isSystemInTvMode(): Boolean {
     val context = LocalContext.current
@@ -100,15 +97,22 @@ fun isSystemInTvMode(): Boolean {
     return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
 }
 
+// ===== Custom Outline Icons =====
+
 private val PlayOutlineIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "PlayOutline", defaultWidth = 24.dp, defaultHeight = 24.dp,
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
-        ) { moveTo(8f, 6f); lineTo(8f, 18f); lineTo(18f, 12f); close() }
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(8f, 6f); lineTo(8f, 18f); lineTo(18f, 12f); close()
+        }
     }.build()
 }
 
@@ -118,8 +122,10 @@ private val PauseOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(6f, 7f); arcTo(2f, 2f, 0f, false, true, 10f, 7f); lineTo(10f, 17f); arcTo(2f, 2f, 0f, false, true, 6f, 17f); close()
             moveTo(14f, 7f); arcTo(2f, 2f, 0f, false, true, 18f, 7f); lineTo(18f, 17f); arcTo(2f, 2f, 0f, false, true, 14f, 17f); close()
@@ -133,8 +139,11 @@ private val ForwardOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(9f, 7f); lineTo(14f, 12f); lineTo(9f, 17f)
             moveTo(15f, 7f); lineTo(20f, 12f); lineTo(15f, 17f)
@@ -148,8 +157,11 @@ private val RewindOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(15f, 7f); lineTo(10f, 12f); lineTo(15f, 17f)
             moveTo(9f, 7f); lineTo(4f, 12f); lineTo(9f, 17f)
@@ -163,35 +175,58 @@ private val SettingsOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(19.14f, 12.94f)
             curveTo(19.18f, 12.63f, 19.2f, 12.31f, 19.2f, 12f)
             curveTo(19.2f, 11.69f, 19.18f, 11.37f, 19.14f, 11.06f)
-            lineTo(21.17f, 9.48f); curveTo(21.35f, 9.34f, 21.4f, 9.07f, 21.29f, 8.87f)
-            lineTo(19.37f, 5.55f); curveTo(19.25f, 5.33f, 19f, 5.26f, 18.78f, 5.33f)
-            lineTo(16.39f, 6.29f); curveTo(15.89f, 5.91f, 15.36f, 5.59f, 14.77f, 5.35f)
-            lineTo(14.41f, 2.81f); curveTo(14.37f, 2.57f, 14.17f, 2.4f, 13.93f, 2.4f)
-            lineTo(10.09f, 2.4f); curveTo(9.85f, 2.4f, 9.66f, 2.57f, 9.62f, 2.81f)
-            lineTo(9.26f, 5.35f); curveTo(8.67f, 5.59f, 8.13f, 5.92f, 7.64f, 6.29f)
-            lineTo(5.25f, 5.33f); curveTo(5.03f, 5.25f, 4.78f, 5.33f, 4.66f, 5.55f)
-            lineTo(2.74f, 8.87f); curveTo(2.62f, 9.08f, 2.66f, 9.34f, 2.86f, 9.48f)
-            lineTo(4.89f, 11.06f); curveTo(4.85f, 11.37f, 4.81f, 11.69f, 4.81f, 12f)
+            lineTo(21.17f, 9.48f)
+            curveTo(21.35f, 9.34f, 21.4f, 9.07f, 21.29f, 8.87f)
+            lineTo(19.37f, 5.55f)
+            curveTo(19.25f, 5.33f, 19f, 5.26f, 18.78f, 5.33f)
+            lineTo(16.39f, 6.29f)
+            curveTo(15.89f, 5.91f, 15.36f, 5.59f, 14.77f, 5.35f)
+            lineTo(14.41f, 2.81f)
+            curveTo(14.37f, 2.57f, 14.17f, 2.4f, 13.93f, 2.4f)
+            lineTo(10.09f, 2.4f)
+            curveTo(9.85f, 2.4f, 9.66f, 2.57f, 9.62f, 2.81f)
+            lineTo(9.26f, 5.35f)
+            curveTo(8.67f, 5.59f, 8.13f, 5.92f, 7.64f, 6.29f)
+            lineTo(5.25f, 5.33f)
+            curveTo(5.03f, 5.25f, 4.78f, 5.33f, 4.66f, 5.55f)
+            lineTo(2.74f, 8.87f)
+            curveTo(2.62f, 9.08f, 2.66f, 9.34f, 2.86f, 9.48f)
+            lineTo(4.89f, 11.06f)
+            curveTo(4.85f, 11.37f, 4.81f, 11.69f, 4.81f, 12f)
             curveTo(4.81f, 12.31f, 4.83f, 12.63f, 4.87f, 12.94f)
-            lineTo(2.84f, 14.52f); curveTo(2.66f, 14.66f, 2.61f, 14.93f, 2.73f, 15.13f)
-            lineTo(4.65f, 18.45f); curveTo(4.77f, 18.67f, 5.02f, 18.74f, 5.24f, 18.67f)
-            lineTo(7.63f, 17.71f); curveTo(8.13f, 18.09f, 8.66f, 18.41f, 9.25f, 18.65f)
-            lineTo(9.61f, 21.19f); curveTo(9.66f, 21.43f, 9.85f, 21.6f, 10.09f, 21.6f)
-            lineTo(13.93f, 21.6f); curveTo(14.17f, 21.6f, 14.37f, 21.43f, 14.4f, 21.19f)
-            lineTo(14.76f, 18.65f); curveTo(15.35f, 18.41f, 15.89f, 18.09f, 16.38f, 17.71f)
-            lineTo(18.77f, 18.67f); curveTo(18.99f, 18.75f, 19.24f, 18.67f, 19.36f, 18.45f)
-            lineTo(21.28f, 15.13f); curveTo(21.4f, 14.91f, 21.35f, 14.66f, 21.16f, 14.52f)
-            lineTo(19.14f, 12.94f); close()
-            moveTo(12f, 15.6f); curveTo(10.02f, 15.6f, 8.4f, 13.98f, 8.4f, 12f)
+            lineTo(2.84f, 14.52f)
+            curveTo(2.66f, 14.66f, 2.61f, 14.93f, 2.73f, 15.13f)
+            lineTo(4.65f, 18.45f)
+            curveTo(4.77f, 18.67f, 5.02f, 18.74f, 5.24f, 18.67f)
+            lineTo(7.63f, 17.71f)
+            curveTo(8.13f, 18.09f, 8.66f, 18.41f, 9.25f, 18.65f)
+            lineTo(9.61f, 21.19f)
+            curveTo(9.66f, 21.43f, 9.85f, 21.6f, 10.09f, 21.6f)
+            lineTo(13.93f, 21.6f)
+            curveTo(14.17f, 21.6f, 14.37f, 21.43f, 14.4f, 21.19f)
+            lineTo(14.76f, 18.65f)
+            curveTo(15.35f, 18.41f, 15.89f, 18.09f, 16.38f, 17.71f)
+            lineTo(18.77f, 18.67f)
+            curveTo(18.99f, 18.75f, 19.24f, 18.67f, 19.36f, 18.45f)
+            lineTo(21.28f, 15.13f)
+            curveTo(21.4f, 14.91f, 21.35f, 14.66f, 21.16f, 14.52f)
+            lineTo(19.14f, 12.94f)
+            close()
+            moveTo(12f, 15.6f)
+            curveTo(10.02f, 15.6f, 8.4f, 13.98f, 8.4f, 12f)
             curveTo(8.4f, 10.02f, 10.02f, 8.4f, 12f, 8.4f)
             curveTo(13.98f, 8.4f, 15.6f, 10.02f, 15.6f, 12f)
-            curveTo(15.6f, 13.98f, 13.98f, 15.6f, 12f, 15.6f); close()
+            curveTo(15.6f, 13.98f, 13.98f, 15.6f, 12f, 15.6f)
+            close()
         }
     }.build()
 }
@@ -202,8 +237,11 @@ private val PipOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(9f, 19f); lineTo(5f, 19f); arcTo(2f, 2f, 0f, false, true, 3f, 17f)
             lineTo(3f, 7f); arcTo(2f, 2f, 0f, false, true, 5f, 5f)
@@ -222,8 +260,11 @@ private val ResizeOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(15f, 3f); lineTo(21f, 3f); lineTo(21f, 9f)
             moveTo(9f, 21f); lineTo(3f, 21f); lineTo(3f, 15f)
@@ -239,8 +280,11 @@ private val CastOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(2f, 16.1f); arcTo(5f, 5f, 0f, false, true, 5.9f, 20f)
             moveTo(2f, 12.05f); arcTo(9f, 9f, 0f, false, true, 9.95f, 20f)
@@ -258,8 +302,11 @@ private val CellTowerOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(7.05f, 16.95f); arcTo(7f, 7f, 0f, false, true, 7.05f, 7.05f)
             moveTo(4.22f, 19.78f); arcTo(11f, 11f, 0f, false, true, 4.22f, 4.22f)
@@ -279,8 +326,11 @@ private val BackOutlineIcon: ImageVector by lazy {
         viewportWidth = 24f, viewportHeight = 24f
     ).apply {
         path(
-            fill = SolidColor(Color.Transparent), stroke = SolidColor(Color.White),
-            strokeLineWidth = 1.5f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
+            fill = SolidColor(Color.Transparent),
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.5f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
         ) {
             moveTo(19f, 12f); lineTo(5f, 12f)
             moveTo(12f, 19f); lineTo(5f, 12f); lineTo(12f, 5f)
@@ -288,12 +338,12 @@ private val BackOutlineIcon: ImageVector by lazy {
     }.build()
 }
 
+// ===== Main Player Screen =====
+
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
     config: PlayerConfig,
-    vodStreams: Map<String, List<StreamSource>>? = null,
-    vodSubtitles: List<SubtitleSource>? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -318,11 +368,6 @@ fun PlayerScreen(
     var retryCountSameServer by remember { mutableStateOf(0) }
     var showServersButtonEnabled by remember { mutableStateOf(false) }
 
-    var showVodServerDialog by remember { mutableStateOf(false) }
-    var showVodSubtitleDialog by remember { mutableStateOf(false) }
-    var showVodSubtitleSettings by remember { mutableStateOf(false) }
-    var subtitleConfig by remember { mutableStateOf(SubtitleConfig()) }
-
     LaunchedEffect(Unit) {
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -330,7 +375,8 @@ fun PlayerScreen(
                 val cached = sp.getBoolean("show_servers_button", false)
                 showServersButtonEnabled = cached
                 try {
-                    val url = java.net.URL(com.apix.app.Net.base() + "/rest/v1/system_settings?key=eq.playerUiConfig&select=value")
+                    val url = java.net.URL(com.apix.app.Net.base() +
+                        "/rest/v1/system_settings?key=eq.playerUiConfig&select=value")
                     val c = url.openConnection() as java.net.HttpURLConnection
                     c.setRequestProperty("apikey", com.apix.app.Net.anon())
                     c.setRequestProperty("Authorization", "Bearer " + com.apix.app.Net.anon())
@@ -398,7 +444,7 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
-    suspend fun loadStream(streamUrl: String, cfg: PlayerConfig, startPosition: Long = 0L) {
+    suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
         try {
             latestPlaybackError = null
 
@@ -452,11 +498,11 @@ fun PlayerScreen(
                             val updatedHeaders = (cfg.customHeaders ?: emptyMap()).toMutableMap()
                             updatedHeaders.putAll(dynamicHeaders)
                             val newCfg = cfg.copy(url = realUrl, customHeaders = updatedHeaders)
-                            loadStream(realUrl, newCfg, startPosition)
+                            loadStream(realUrl, newCfg)
                         } else {
                             val backup = cfg.backupUrl
                             if (!backup.isNullOrEmpty() && streamUrl != backup) {
-                                loadStream(backup, cfg, startPosition)
+                                loadStream(backup, cfg)
                             } else {
                                 errorMessage = "فشل تحليل رابط الـ JSON للحصول على البث."
                             }
@@ -466,6 +512,10 @@ fun PlayerScreen(
                 return
             }
 
+            // ── الحماية القصوى (Local Proxy) ──────────────────────────────
+            // عند تفعيلها، نمرر روابط القوائم (m3u8/mpd) عبر سيرفر محلي
+            // 127.0.0.1:8080 يعيد كتابة الروابط الداخلية لإخفاء المصدر الأصلي.
+            // الملفات الثنائية (.mp4/.mkv) تتجاوز البروكسي تلقائياً (Bypass).
             var playUrl = streamUrl
             if (cfg.useLocalProxy && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -488,9 +538,6 @@ fun PlayerScreen(
 
             player.setMediaSource(mediaSource)
             player.prepare()
-            if (startPosition > 0L) {
-                player.seekTo(startPosition)
-            }
             player.playWhenReady = true
         } catch (e: Exception) {
             errorMessage = "فشل إعداد البث: ${e.message}"
@@ -539,7 +586,7 @@ fun PlayerScreen(
                     Log.d("PlayerScreen", "→ retrying same server (attempt #${retryCountSameServer + 1})")
                     kotlinx.coroutines.MainScope().launch {
                         kotlinx.coroutines.delay(800)
-                        loadStream(currentServerUrl, resolvedConfig, currentPosition)
+                        loadStream(currentServerUrl, resolvedConfig)
                     }
                     return
                 }
@@ -582,13 +629,13 @@ fun PlayerScreen(
                     resolvedConfig = merged
                     currentServerUrl = nextFb.url!!
                     Log.d("PlayerScreen", "→ trying fallback #$nextIdx: ${nextFb.name ?: nextFb.url}")
-                    kotlinx.coroutines.MainScope().launch { loadStream(nextFb.url!!, merged, currentPosition) }
+                    kotlinx.coroutines.MainScope().launch { loadStream(nextFb.url!!, merged) }
                     return
                 }
                 val backup = resolvedConfig.backupUrl
                 if (!backup.isNullOrEmpty() && currentServerUrl != backup) {
                     currentServerUrl = backup
-                    kotlinx.coroutines.MainScope().launch { loadStream(backup, resolvedConfig, currentPosition) }
+                    kotlinx.coroutines.MainScope().launch { loadStream(backup, resolvedConfig) }
                     return
                 }
                 val causeMsg = error.cause?.message ?: ""
@@ -658,20 +705,6 @@ fun PlayerScreen(
                         this.player = player
                         useController = false
                         subtitleView?.setApplyEmbeddedFontSizes(false)
-                        
-                        val edgeType = if (subtitleConfig.backgroundColor == Color.Transparent) CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW else CaptionStyleCompat.EDGE_TYPE_NONE
-                        val style = CaptionStyleCompat(
-                            subtitleConfig.textColor.toArgb(),
-                            subtitleConfig.backgroundColor.toArgb(),
-                            Color.Transparent.toArgb(),
-                            edgeType,
-                            Color.Black.toArgb(),
-                            null
-                        )
-                        subtitleView?.setStyle(style)
-                        subtitleView?.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * (subtitleConfig.fontSize / 18f))
-                        subtitleView?.setBottomPaddingFraction(subtitleConfig.bottomOffset / 100f)
-
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -682,19 +715,6 @@ fun PlayerScreen(
                 update = { view ->
                     view.player = player
                     view.resizeMode = resizeModes[currentResizeMode]
-                    
-                    val edgeType = if (subtitleConfig.backgroundColor == Color.Transparent) CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW else CaptionStyleCompat.EDGE_TYPE_NONE
-                    val style = CaptionStyleCompat(
-                        subtitleConfig.textColor.toArgb(),
-                        subtitleConfig.backgroundColor.toArgb(),
-                        Color.Transparent.toArgb(),
-                        edgeType,
-                        Color.Black.toArgb(),
-                        null
-                    )
-                    view.subtitleView?.setStyle(style)
-                    view.subtitleView?.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * (subtitleConfig.fontSize / 18f))
-                    view.subtitleView?.setBottomPaddingFraction(subtitleConfig.bottomOffset / 100f)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -729,13 +749,17 @@ fun PlayerScreen(
             if (isBuffering) {
                 CircularProgressIndicator(
                     color = MediumRed, strokeWidth = 3.dp,
-                    modifier = Modifier.size(44.dp).align(Alignment.Center)
+                    modifier = Modifier
+                        .size(44.dp)
+                        .align(Alignment.Center)
                 )
             }
 
             errorMessage?.let { err ->
                 Box(
-                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.9f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -756,7 +780,10 @@ fun PlayerScreen(
                             .align(Alignment.TopCenter)
                             .background(
                                 androidx.compose.ui.graphics.Brush.verticalGradient(
-                                    listOf(Color.Black.copy(0.7f), Color.Transparent)
+                                    listOf(
+                                        Color.Black.copy(0.7f),
+                                        Color.Transparent
+                                    )
                                 )
                             )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -772,7 +799,10 @@ fun PlayerScreen(
                             .align(Alignment.BottomCenter)
                             .background(
                                 androidx.compose.ui.graphics.Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color.Black.copy(0.8f))
+                                    listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(0.8f)
+                                    )
                                 )
                             )
                             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -783,7 +813,10 @@ fun PlayerScreen(
                                 value = if (duration > 0) currentPosition.toFloat() / duration else 0f,
                                 onValueChange = { player.seekTo((it * duration).toLong()) },
                                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFE50914), inactiveTrackColor = Color(0x44FFFFFF)),
-                                modifier = Modifier.weight(1f).height(16.dp).focusable()
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(16.dp)
+                                    .focusable()
                             )
                             Text(formatTime(duration), color = Color.White, fontSize = 14.sp, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
                         }
@@ -802,19 +835,12 @@ fun PlayerScreen(
                                     PlayerControlButton(icon = Icons.Default.Audiotrack, contentDescription = "Audio", size = 32) { showAudioSourceDialog = true }
                                 }
 
-                                if (!vodSubtitles.isNullOrEmpty()) {
-                                    PlayerControlButton(icon = Icons.Default.Subtitles, contentDescription = "Subtitles", size = 32) { showVodSubtitleDialog = true }
+                                if (!resolvedConfig.servers.isNullOrEmpty()) {
+                                    PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
                                 }
 
-                                if (!vodStreams.isNullOrEmpty()) {
-                                    PlayerControlButton(icon = CastOutlineIcon, contentDescription = "VOD Servers", size = 32) { showVodServerDialog = true }
-                                } else {
-                                    if (!resolvedConfig.servers.isNullOrEmpty()) {
-                                        PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
-                                    }
-                                    if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
-                                        PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
-                                    }
+                                if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                    PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
                                 }
 
                                 PlayerControlButton(icon = SettingsOutlineIcon, contentDescription = "Quality", size = 32) { showTrackDialog = true }
@@ -835,7 +861,6 @@ fun PlayerScreen(
             }
 
             if (showTrackDialog) TrackSelectionDialog(player = player, trackSelector = trackSelector, onDismiss = { showTrackDialog = false })
-            
             if (showServerDialog && !resolvedConfig.servers.isNullOrEmpty()) {
                 ServerSelectionDialog(
                     servers = resolvedConfig.servers!!,
@@ -844,61 +869,11 @@ fun PlayerScreen(
                         showServerDialog = false
                         currentServerUrl = server.url ?: return@ServerSelectionDialog
                         currentFallbackIndex = -1 
-                        val currentPos = player.currentPosition
-                        kotlinx.coroutines.MainScope().launch { loadStream(server.url!!, resolvedConfig, currentPos) }
+                        kotlinx.coroutines.MainScope().launch { loadStream(server.url!!, resolvedConfig) }
                     },
                     onDismiss = { showServerDialog = false }
                 )
             }
-
-            if (showVodServerDialog && vodStreams != null) {
-                ServerSelectionScreen(
-                    groupedStreams = vodStreams,
-                    onSelect = { source ->
-                        showVodServerDialog = false
-                        currentServerUrl = source.url
-                        val newCfg = resolvedConfig.copy(
-                            url = source.url,
-                            headers = PlayerHeaders(
-                                userAgent = source.headers?.get("User-Agent") ?: resolvedConfig.headers?.userAgent,
-                                referer = source.headers?.get("Referer") ?: resolvedConfig.headers?.referer
-                            ),
-                            customHeaders = source.headers
-                        )
-                        resolvedConfig = newCfg
-                        val currentPos = player.currentPosition
-                        kotlinx.coroutines.MainScope().launch { loadStream(source.url, newCfg, currentPos) }
-                    },
-                    onDismiss = { showVodServerDialog = false }
-                )
-            }
-
-            if (showVodSubtitleDialog && vodSubtitles != null) {
-                SubtitleSelectionScreen(
-                    subtitles = vodSubtitles,
-                    onSelect = { sub ->
-                        showVodSubtitleDialog = false
-                        val newCfg = resolvedConfig.copy(subtitleUrl = sub?.url)
-                        resolvedConfig = newCfg
-                        val currentPos = player.currentPosition
-                        kotlinx.coroutines.MainScope().launch { loadStream(currentServerUrl, newCfg, currentPos) }
-                    },
-                    onSettingsClick = {
-                        showVodSubtitleDialog = false
-                        showVodSubtitleSettings = true
-                    },
-                    onDismiss = { showVodSubtitleDialog = false }
-                )
-            }
-
-            if (showVodSubtitleSettings) {
-                SubtitleSettingsScreen(
-                    currentConfig = subtitleConfig,
-                    onConfigChanged = { subtitleConfig = it },
-                    onDismiss = { showVodSubtitleSettings = false }
-                )
-            }
-
             if (showAudioSourceDialog && !resolvedConfig.audioSources.isNullOrEmpty()) {
                 AudioSourceDialog(
                     sources = resolvedConfig.audioSources!!,
@@ -931,8 +906,7 @@ fun PlayerScreen(
                         retryCountSameServer = 0
                         currentServerUrl = config.url
                         resolvedConfig = config
-                        val currentPos = player.currentPosition
-                        kotlinx.coroutines.MainScope().launch { loadStream(config.url, config, currentPos) }
+                        kotlinx.coroutines.MainScope().launch { loadStream(config.url, config) }
                     },
                     onSelect = { idx, fb ->
                         showFallbackServerDialog = false
@@ -971,8 +945,7 @@ fun PlayerScreen(
                         )
                         resolvedConfig = merged
                         currentServerUrl = u
-                        val currentPos = player.currentPosition
-                        kotlinx.coroutines.MainScope().launch { loadStream(u, merged, currentPos) }
+                        kotlinx.coroutines.MainScope().launch { loadStream(u, merged) }
                     },
                     onDismiss = { showFallbackServerDialog = false }
                 )
@@ -981,24 +954,45 @@ fun PlayerScreen(
     }
 }
 
+// ===== Fallback Server Selection Dialog =====
 @Composable
 fun FallbackServerSelectionDialog(
-    servers: List<com.apix.app.data.FallbackServer>, currentUrl: String, primaryUrl: String,
-    onSelectPrimary: () -> Unit, onSelect: (Int, com.apix.app.data.FallbackServer) -> Unit, onDismiss: () -> Unit
+    servers: List<com.apix.app.data.FallbackServer>,
+    currentUrl: String,
+    primaryUrl: String,
+    onSelectPrimary: () -> Unit,
+    onSelect: (Int, com.apix.app.data.FallbackServer) -> Unit,
+    onDismiss: () -> Unit
 ) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(if (isTv) 0.6f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.5f)
+            .fillMaxHeight(if (isTv) 0.6f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     item {
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = currentUrl == primaryUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelectPrimary() }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelectPrimary() }
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("السيرفر الأساسي", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -1010,7 +1004,15 @@ fun FallbackServerSelectionDialog(
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = server.url == currentUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelect(idx, server) }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(idx, server) }
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(server.name ?: "سيرفر بديل ${idx + 1}", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
@@ -1019,27 +1021,49 @@ fun FallbackServerSelectionDialog(
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) {
+                    Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
 }
 
+// ===== Server Selection Dialog =====
 @Composable
 fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: String, onSelect: (com.apix.app.data.Server) -> Unit, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.5f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.5f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("اختر السيرفر", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     itemsIndexed(servers) { _, server ->
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
                         val isActive = server.url == currentUrl
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelect(server) }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isTv && isFocused) Color.White.copy(0.1f) else if (isActive) Color(0xFF2A2A2A) else Color.Transparent)
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(server) }
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(server.name ?: "Server", color = if (isActive || isFocused) Gold else Color.White, fontSize = 14.sp)
@@ -1048,25 +1072,45 @@ fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: S
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
 }
 
+// ===== Audio Source Dialog =====
 @Composable
 fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (com.apix.app.data.AudioSource) -> Unit, onDismiss: () -> Unit) {
     val isTv = isSystemInTvMode()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.5f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.5f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
                 Text("مصادر الصوت", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
                 HorizontalDivider(color = Color(0xFF222222))
-                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                LazyColumn(
+                    Modifier
+                        .weight(1f)
+                        .padding(8.dp)) {
                     itemsIndexed(sources) { _, source ->
                         val interactionSource = remember { MutableInteractionSource() }
                         val isFocused by interactionSource.collectIsFocusedAsState()
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(if (isTv && isFocused) Color.White.copy(0.1f) else Color.Transparent).then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = interactionSource, indication = null) { onSelect(source) }.focusable(interactionSource = interactionSource).padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Row(modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isTv && isFocused) Color.White.copy(0.1f) else Color.Transparent)
+                            .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable(interactionSource = interactionSource, indication = null) { onSelect(source) }
+                            .focusable(interactionSource = interactionSource)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Icon(Icons.Default.Audiotrack, null, tint = Gold, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(12.dp))
                             Text(source.name ?: "Audio", color = Color.White, fontSize = 14.sp)
@@ -1074,12 +1118,16 @@ fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (c
                     }
                 }
                 HorizontalDivider(color = Color(0xFF222222))
-                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
 }
 
+// ===== Track Selection Dialog =====
 @OptIn(UnstableApi::class)
 @Composable
 fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector, onDismiss: () -> Unit) {
@@ -1128,14 +1176,27 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
     var selectedAudioIndex by remember { mutableStateOf(audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(if (isTv) 0.65f else 0.85f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF111111)).border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.65f else 0.85f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
-                Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(top = 8.dp)) {
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0A0A0A))
+                    .padding(top = 8.dp)) {
                     tabs.forEachIndexed { index, title ->
                         val isActive = selectedTab == index
                         val tabInteraction = remember { MutableInteractionSource() }
                         val tabFocused by tabInteraction.collectIsFocusedAsState()
-                        Column(modifier = Modifier.weight(1f).clickable(interactionSource = tabInteraction, indication = null) { selectedTab = index }.focusable(interactionSource = tabInteraction).then(if (tabFocused) Modifier.border(2.dp, Gold, RoundedCornerShape(4.dp)) else Modifier).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(modifier = Modifier
+                            .weight(1f)
+                            .clickable(interactionSource = tabInteraction, indication = null) { selectedTab = index }
+                            .focusable(interactionSource = tabInteraction)
+                            .then(if (tabFocused) Modifier.border(2.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                            .padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = title, color = if (isActive) Gold else Color(0xFF888888), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             if (isActive) { Spacer(Modifier.height(6.dp)); Box(Modifier.width(32.dp).height(2.dp).background(Gold, RoundedCornerShape(1.dp))) }
                         }
@@ -1146,12 +1207,28 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
                 val currentTracks = if (selectedTab == 0) videoTracks else audioTracks
                 val currentSelected = if (selectedTab == 0) selectedVideoIndex else selectedAudioIndex
                 
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                LazyColumn(modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)) {
                     itemsIndexed(currentTracks) { index, track ->
                         val itemInteraction = remember { MutableInteractionSource() }
                         val itemFocused by itemInteraction.collectIsFocusedAsState()
                         val isItemSelected = index == currentSelected
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(8.dp)).background(when { isTv && itemFocused -> Color.White.copy(0.1f); isItemSelected -> Color(0xFF2A2A2A); itemFocused -> Color(0xFF1E1E1E); else -> Color.Transparent }).then(if (isTv && itemFocused) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier).clickable(interactionSource = itemInteraction, indication = null) {
+                        Row(modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                when {
+                                    isTv && itemFocused -> Color.White.copy(0.1f)
+                                    isItemSelected -> Color(0xFF2A2A2A)
+                                    itemFocused -> Color(0xFF1E1E1E)
+                                    else -> Color.Transparent
+                                }
+                            )
+                            .then(if (isTv && itemFocused) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                            .clickable(interactionSource = itemInteraction, indication = null) {
                                 try {
                                     if (selectedTab == 0) {
                                         selectedVideoIndex = index
@@ -1161,16 +1238,24 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
                                         applyAudioTrackSafe(trackSelector, track, player)
                                     }
                                 } catch (_: Exception) {}
-                            }.focusable(interactionSource = itemInteraction).padding(horizontal = 14.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            }
+                            .focusable(interactionSource = itemInteraction)
+                            .padding(horizontal = 14.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = track.label, color = if (isItemSelected || (isTv && itemFocused)) Gold else Color.White, fontSize = 13.sp, fontWeight = if (isItemSelected) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             if (isItemSelected) { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
+
                 HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
                 val closeInteraction = remember { MutableInteractionSource() }
                 val closeFocused by closeInteraction.collectIsFocusedAsState()
-                Box(modifier = Modifier.fillMaxWidth().then(if (closeFocused) Modifier.border(1.5.dp, Gold, RoundedCornerShape(4.dp)) else Modifier).clickable(interactionSource = closeInteraction, indication = null) { onDismiss() }.focusable(interactionSource = closeInteraction).padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (closeFocused) Modifier.border(1.5.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                    .clickable(interactionSource = closeInteraction, indication = null) { onDismiss() }
+                    .focusable(interactionSource = closeInteraction)
+                    .padding(12.dp), contentAlignment = Alignment.Center) { Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1182,12 +1267,24 @@ data class TrackInfo(val label: String, val groupIndex: Int, val trackIndex: Int
 private fun applyVideoTrackSafe(trackSelector: DefaultTrackSelector, track: TrackInfo, player: ExoPlayer) {
     try {
         if (track.groupIndex == -1) { 
-            trackSelector.setParameters(trackSelector.buildUponParameters().clearVideoSizeConstraints().clearOverridesOfType(C.TRACK_TYPE_VIDEO).build())
+            trackSelector.setParameters(
+                trackSelector.buildUponParameters()
+                    .clearVideoSizeConstraints()
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                    .build()
+            )
             return 
         }
         val trackGroup = player.currentTracks.groups[track.groupIndex].mediaTrackGroup
         val override = TrackSelectionOverride(trackGroup, listOf(track.trackIndex))
-        trackSelector.setParameters(trackSelector.buildUponParameters().clearVideoSizeConstraints().clearOverridesOfType(C.TRACK_TYPE_VIDEO).addOverride(override).build())
+        
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .clearVideoSizeConstraints()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .addOverride(override)
+                .build()
+        )
     } catch (e: Exception) { Log.e("PlayerScreen", "Error applying video track", e) }
 }
 
@@ -1195,12 +1292,22 @@ private fun applyVideoTrackSafe(trackSelector: DefaultTrackSelector, track: Trac
 private fun applyAudioTrackSafe(trackSelector: DefaultTrackSelector, track: TrackInfo, player: ExoPlayer) {
     try {
         if (track.groupIndex == -1) {
-            trackSelector.setParameters(trackSelector.buildUponParameters().clearOverridesOfType(C.TRACK_TYPE_AUDIO).build())
+            trackSelector.setParameters(
+                trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .build()
+            )
             return
         }
         val trackGroup = player.currentTracks.groups[track.groupIndex].mediaTrackGroup
         val override = TrackSelectionOverride(trackGroup, listOf(track.trackIndex))
-        trackSelector.setParameters(trackSelector.buildUponParameters().clearOverridesOfType(C.TRACK_TYPE_AUDIO).addOverride(override).build())
+        
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .addOverride(override)
+                .build()
+        )
     } catch (e: Exception) { Log.e("PlayerScreen", "Error applying audio track", e) }
 }
 
@@ -1212,7 +1319,13 @@ fun PlayerControlButton(icon: ImageVector, contentDescription: String, size: Int
     val isTv = isSystemInTvMode()
     val isHighlighted = isFocused || isPressed
     val scale by animateFloatAsState(if (isHighlighted) 1.2f else 1f, label = "playerBtnScale")
-    Box(modifier = Modifier.size(size.dp).scale(scale).then(if (isTv && isFocused) Modifier.border(3.dp, Color.White, CircleShape) else if (isFocused) Modifier.border(2.dp, Gold, CircleShape) else Modifier).clip(CircleShape).clickable(interactionSource = interactionSource, indication = null, onClick = onClick).then(if (focusRequester != null) Modifier.focusRequester(focusRequester).focusable(interactionSource = interactionSource) else Modifier.focusable(interactionSource = interactionSource)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier
+        .size(size.dp)
+        .scale(scale)
+        .then(if (isTv && isFocused) Modifier.border(3.dp, Color.White, CircleShape) else if (isFocused) Modifier.border(2.dp, Gold, CircleShape) else Modifier)
+        .clip(CircleShape)
+        .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester).focusable(interactionSource = interactionSource) else Modifier.focusable(interactionSource = interactionSource)), contentAlignment = Alignment.Center) {
         Icon(imageVector = icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size((size * 0.65f).dp))
     }
 }
@@ -1224,6 +1337,8 @@ private fun formatTime(ms: Long): String {
     val seconds = totalSeconds % 60
     return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds) else String.format("%02d:%02d", minutes, seconds)
 }
+
+// ===== Player utilities =====
 
 @OptIn(UnstableApi::class)
 private fun buildDataSourceFactory(config: PlayerConfig): DefaultHttpDataSource.Factory {
@@ -1255,11 +1370,12 @@ private fun buildDataSourceFactory(config: PlayerConfig): DefaultHttpDataSource.
     return factory
 }
 
+// بناء وإعداد الـ TrackSelector لدعم الـ 4K والـ 120fps على نطاق محرك الميديا بالكامل تلقائياً
 @OptIn(UnstableApi::class)
 private fun buildOptimalTrackSelector(context: Context): DefaultTrackSelector {
     val params = DefaultTrackSelector.Parameters.Builder(context)
-        .setMaxVideoSize(3840, 2160)
-        .setMaxVideoFrameRate(120)
+        .setMaxVideoSize(3840, 2160) // فك قفل دقة 4K
+        .setMaxVideoFrameRate(120)  // دعم 120 إطار في الثانية
         .setMaxVideoBitrate(Int.MAX_VALUE)
         .setForceHighestSupportedBitrate(false)
         .setAllowVideoMixedMimeTypeAdaptiveness(true)
@@ -1268,6 +1384,7 @@ private fun buildOptimalTrackSelector(context: Context): DefaultTrackSelector {
     return DefaultTrackSelector(context, params)
 }
 
+// استخراج FPS وعرض اسم الدقة بدقة عالية داخل حوار الجودات
 @OptIn(UnstableApi::class)
 private fun getTrackLabel(format: Format): String {
     val height = format.height
@@ -1303,7 +1420,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
         mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManager }
     }
 
-    val mediaItemBuilder = androidx.media3.common.MediaItem.Builder().setUri(Uri.parse(streamUrl))
+    val mediaItemBuilder = MediaItem.Builder().setUri(Uri.parse(streamUrl))
     val format = detectStreamFormat(streamUrl)
 
     when (format) {
@@ -1313,7 +1430,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
 
     val drm = config.drm
     if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
-        val drmBuilder = androidx.media3.common.MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+        val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
             .setLicenseUri(drm.licenseUrl)
         if (!config.drmLicenseHeaders.isNullOrEmpty()) {
             drmBuilder.setLicenseRequestHeaders(config.drmLicenseHeaders!!)
@@ -1322,7 +1439,7 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
     }
 
     if (!config.subtitleUrl.isNullOrEmpty()) {
-        val subtitleConfig = androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(Uri.parse(config.subtitleUrl!!))
+        val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(Uri.parse(config.subtitleUrl!!))
             .setMimeType(if (config.subtitleUrl!!.contains(".srt")) MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
             .setLanguage("ar")
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)

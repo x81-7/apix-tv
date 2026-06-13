@@ -138,16 +138,6 @@ async function buildBundle(): Promise<{ etag: string; encrypted: string }> {
     maxTs(settings.data ?? []),
   );
 
-  // Content hash of system_settings so toggles like showSettingsSection bust the
-  // cache even when no updated_at trigger exists (otherwise edits return 304 and
-  // never reach the app). djb2 over the serialized settings rows.
-  const settingsHash = (() => {
-    const str = JSON.stringify(settings.data ?? []);
-    let h = 5381;
-    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-    return h;
-  })();
-
   const bundle: Bundle = {
     categories: cats.data ?? [],
     channels: chans.data ?? [],
@@ -160,7 +150,7 @@ async function buildBundle(): Promise<{ etag: string; encrypted: string }> {
 
   const plain = JSON.stringify(bundle);
   const enc = await encryptPayload(plain);
-  const etag = `W/"v${bundleVersion}-a${auxTs}-s${settingsHash}-e1"`; // suffix bumped: payload format = encrypted v1
+  const etag = `W/"v${bundleVersion}-a${auxTs}-e1"`; // suffix bumped: payload format = encrypted v1
   return { etag, encrypted: JSON.stringify(enc) };
 }
 

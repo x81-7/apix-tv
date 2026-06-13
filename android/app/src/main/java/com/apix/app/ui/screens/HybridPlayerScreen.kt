@@ -190,26 +190,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
             "file:///android_asset/shaka_player.html"
         }
         val enc: (String) -> String = { java.net.URLEncoder.encode(it, "UTF-8") }
-
-        // ── الحماية القصوى (Local Proxy) لمشغلات WebView (Shaka / JW) ──
-        // عند تفعيلها نمرّر روابط القوائم (m3u8/mpd) عبر السيرفر المحلي
-        // 127.0.0.1:8080 لإخفاء المصدر الأصلي. ملفات mp4/mkv تتجاوز البروكسي.
-        var effectiveUrl = streamUrl
-        if (cfg.useLocalProxy && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
-            try {
-                val hdrs = HashMap<String, String>()
-                cfg.headers?.userAgent?.let { hdrs["User-Agent"] = it }
-                cfg.headers?.referer?.let { hdrs["Referer"] = it }
-                cfg.headers?.cookie?.let { hdrs["Cookie"] = it }
-                cfg.headers?.origin?.let { hdrs["Origin"] = it }
-                cfg.customHeaders?.forEach { (k, v) -> hdrs[k] = v }
-                com.apix.app.LocalStreamServer.setHeaders(hdrs)
-                com.apix.app.LocalStreamServer.ensureStarted()
-                effectiveUrl = com.apix.app.LocalStreamServer.wrap(streamUrl)
-            } catch (_: Throwable) { effectiveUrl = streamUrl }
-        }
-
-        val sb = StringBuilder("$baseUrl?url=${enc(effectiveUrl)}")
+        val sb = StringBuilder("$baseUrl?url=${enc(streamUrl)}")
 
         cfg.drm?.let { drm ->
             val currentKeyId = drm.keyId
