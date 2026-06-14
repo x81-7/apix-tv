@@ -88,7 +88,7 @@ public class AppVerifier {
     };
     
     private static final int[] FP = {27042, 27043};
-    private static final String VWP = "172.19.0.";
+    private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
     public interface VerifyCallback {
         void onComplete(boolean passed, String failReason);
@@ -397,7 +397,11 @@ public class AppVerifier {
                     List<InetAddress> addresses = Collections.list(ni.getInetAddresses());
                     for (InetAddress addr : addresses) {
                         String ip = addr.getHostAddress();
-                        if (ip != null && ip.startsWith(VWP)) return true;
+                        if (ip != null) {
+                            for (String allowedIp : VWP) {
+                                if (ip.startsWith(allowedIp) || ip.equals(allowedIp)) return true;
+                            }
+                        }
                     }
                 }
             }
