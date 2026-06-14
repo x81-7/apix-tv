@@ -14,6 +14,11 @@ object OkRuStreamHandler {
 
     private const val T = "OkRu"
 
+    // تم وضع الدالة هنا بالداخل لحل مشكلة (Unresolved reference)
+    fun isOkRuPayload(json: JSONObject): Boolean {
+        return json.optString("type", "") == "okru_extractor"
+    }
+
     suspend fun loadStream(
         json: JSONObject,
         baseConfig: PlayerConfig
@@ -32,7 +37,7 @@ object OkRuStreamHandler {
             return@withContext null
         }
 
-        // استخراج الرابط الحقيقي من OK.ru (تم التصحيح هنا)
+        // استخراج الرابط الحقيقي من OK.ru
         val rawUrl = extractFromOkRu(videoId, cookie, tkn, userAgent)
             ?: return@withContext null
 
@@ -77,7 +82,6 @@ object OkRuStreamHandler {
             conn.connectTimeout = 12000
             conn.readTimeout    = 15000
 
-            // تم تصحيح الهيدرات: tkn أصبح هيدر كما يطلب السيرفر الروسي
             conn.setRequestProperty("Content-Type",  "application/x-www-form-urlencoded")
             conn.setRequestProperty("User-Agent",    userAgent)
             conn.setRequestProperty("Cookie",        cookie)
@@ -87,7 +91,6 @@ object OkRuStreamHandler {
             conn.setRequestProperty("Accept",        "application/json, */*")
             conn.setRequestProperty("Accept-Language", "ar,en;q=0.9")
 
-            // تم تصحيح جسم الطلب (Body) ليكون نفس طريقة الوركر
             val body = "mid=$videoId&is=on"
             OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(body) }
 
@@ -111,14 +114,14 @@ object OkRuStreamHandler {
         return try {
             val root = JSONObject(responseBody)
             
-            // 1. فحص رابط البث المباشر HLS (الأولوية القصوى والمطابق للوركر)
+            // 1. فحص رابط البث المباشر HLS
             var hlsUrl = root.optString("hlsMasterPlaylistUrl", "").replace("\\u0026", "&")
             if (hlsUrl.isEmpty()) {
                 hlsUrl = root.optString("hlsManifestUrl", "").replace("\\u0026", "&")
             }
             if (hlsUrl.isNotEmpty()) return hlsUrl
 
-            // 2. خطة بديلة (Fallback) في حال كان الفيديو مسجلاً وليس بثاً مباشراً
+            // 2. خطة بديلة (Fallback) للفيديو المسجل
             val videos = root.optJSONArray("videos") ?: return null
             val priority = listOf("1080", "720", "480", "360", "240")
             val map = mutableMapOf<String, String>()
@@ -144,6 +147,3 @@ object OkRuStreamHandler {
         }
     }
 }
-
-fun OkRuStreamHandler.isOkRuPayload(json: JSONObject): Boolean =
-    json.optString("type", "") == "okru_extractor"
