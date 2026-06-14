@@ -53,6 +53,14 @@ object ApixStreamResolver {
     private fun parseJson(json: String, base: PlayerConfig): PlayerConfig? {
         return try {
             val obj = JSONObject(json)
+
+            // ── OK.ru interceptor ─────────────────────────────────────
+            if (com.apix.app.OkRuStreamHandler.isOkRuPayload(obj)) {
+                return kotlinx.coroutines.runBlocking {
+                    com.apix.app.OkRuStreamHandler.loadStream(obj, base)
+                }
+            }
+
             val config = base.copy()
 
             // الرابط الأساسي — إلزامي
