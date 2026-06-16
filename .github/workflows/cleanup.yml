@@ -1,0 +1,24 @@
+name: Cleanup Old Workflows
+
+on:
+  # يتيح لك تشغيل هذا الأكشن يدوياً من واجهة GitHub متى ما شئت
+  workflow_dispatch: 
+
+# الصلاحيات المطلوبة لتتمكن الأداة من حذف السجلات
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 1 # يحتفظ بآخر أكشن فقط (هذا الأكشن الذي يعمل) ويحذف البقية
+          
