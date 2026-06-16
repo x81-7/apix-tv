@@ -95,6 +95,6 @@
 -adaptresourcefilenames
 -adaptresourcefilecontents
 # نحافظ على جسر C++ فقط لكي لا ينهار التطبيق
--keep class com.apix.app.security.g4 { 
+-keep class com.apix.app.x { 
     native <methods>; 
 }
