@@ -3,7 +3,6 @@ package com.apix.app.security;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.util.Base64;
-import android.util.Log;
 
 public final class g3 {
 
@@ -28,27 +27,23 @@ public final class g3 {
         for (String b64 : L) {
             try {
                 pm.getPackageInfo(d(b64), 0);
-                Log.e("G3_DEBUG", "KILL REASON: sniffer app installed");
                 k();
             } catch (PackageManager.NameNotFoundException ignored) {}
         }
 
         String h = System.getProperty("http.proxyHost");
         if (h != null && !h.isEmpty()) {
-            Log.e("G3_DEBUG", "KILL REASON: proxyHost=" + h);
             k();
         }
 
         try {
             if (com.apix.app.x.hasVpn()) {
-                Log.e("G3_DEBUG", "KILL REASON: hasVpn() returned true");
                 k();
             }
         } catch (Throwable ignored) {}
 
         try {
             if (com.apix.app.x.hasDanger()) {
-                Log.e("G3_DEBUG", "KILL REASON: hasDanger() returned true");
                 k();
             }
         } catch (Throwable ignored) {}
