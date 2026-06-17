@@ -41,16 +41,20 @@ public class MainActivity extends AppCompatActivity {
         webView = binding.webView;
         setupWebView();
         
-        // Load the web app FIRST, then start security after a delay
         webView.loadUrl(WEB_APP_URL);
         
-        // Delay security monitor to let WebView initialize properly
         webView.postDelayed(() -> {
             AppVerifier.getInstance(MainActivity.this).startMonitor();
         }, 3000);
-                com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
-
+        
+        android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(UI_MODE_SERVICE);
+        boolean isTV = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+        
+        if (!isTV) {
+            com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+        }
     }
+
 
 
     @SuppressLint("SetJavaScriptEnabled")
