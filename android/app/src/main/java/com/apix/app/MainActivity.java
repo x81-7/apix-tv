@@ -48,10 +48,10 @@ public class MainActivity extends AppCompatActivity {
         webView.postDelayed(() -> {
             AppVerifier.getInstance(MainActivity.this).startMonitor();
         }, 3000);
-        
-        // تم تعطيل وحش الـ C++ مؤقتاً لنسمح للتطبيق بالعمل لعدة ثوانٍ
-        // com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+                com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+
     }
+
 
     @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
