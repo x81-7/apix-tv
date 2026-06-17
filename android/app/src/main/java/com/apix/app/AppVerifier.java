@@ -149,26 +149,28 @@ public class AppVerifier {
     }
     
     /**
-     * Run initial check with 24h cache support.
+     * Run initial check with 24h cache support for heavy tasks ONLY.
      * Returns null if passed, or error message string.
      */
     public String runCheck() {
-        // Blocked-signature check runs ALWAYS (no 24h cache) — manual ban list.
-        if (detectBlockedHash()) return "هذه النسخة محظورة";
+        // 1. Live checks (Must run always)
+        if (detectBlockedHash()) return "Blocked version detected";
+        if (detectUnauthorizedVPN()) return "Unauthorized VPN detected";
+        if (detectProxy()) return "Proxy detected";
+        if (detectSniffers()) return "Network sniffer detected";
+        if (detectDebugger()) return "Debugger detected";
+        if (detectFrida()) return "Hacking tool detected";
+        if (detectSecondaryDisplay()) return "Secondary display not allowed";
 
+        // 2. 24h cache for heavy checks
         if (!shouldRunCheck()) {
-            return null; // Within 24h window, skip
+            return null; 
         }
         
-        if (detectSniffers()) return "تم اكتشاف برنامج مراقبة";
-        if (detectCloudPhone()) return "لا يمكن تشغيل التطبيق على هاتف سحابي";
-        if (detectSecondaryDisplay()) return "لا يمكن تشغيل التطبيق على شاشة ثانوية";
-        if (detectProxy()) return "تم اكتشاف بروكسي";
-        if (detectDebugger()) return "تم اكتشاف مصحح أخطاء";
-        if (detectTampering()) return "تم تعديل ملفات التطبيق";
-        if (detectFrida()) return "تم اكتشاف أداة اختراق";
+        // 3. Heavy checks
+        if (detectCloudPhone()) return "Cloud phone not allowed";
+        if (detectTampering()) return "App files tampered";
         
-        // All checks passed - mark as done for 24h
         markCheckDone();
         return null;
     }
@@ -192,6 +194,12 @@ public class AppVerifier {
         }).start();
     }
     
+    private void showDebugToast(final String threatName) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(context, "Alert: Detected " + threatName, android.widget.Toast.LENGTH_LONG).show();
+        });
+    }
+
     public void startMonitor() {
         if (running) return;
         running = true;
@@ -199,18 +207,18 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    if (detectBlockedHash()) { killApp(); return; }
-                    if (detectSniffers()) { killApp(); return; }
-                    if (detectCloudPhone()) { killApp(); return; }
-                    if (detectSecondaryDisplay()) { killApp(); return; }
-                    if (detectProxy()) { killApp(); return; }
-                    if (detectHostsMod()) { killApp(); return; }
-                    if (detectUnauthorizedVPN()) { killApp(); return; }
-                    if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectPrivateDNS()) { killApp(); return; }
-                    if (detectDebugger()) { killApp(); return; }
-                    if (detectFrida()) { killApp(); return; }
-                    if (detectTampering()) { killApp(); return; }
+                    if (detectBlockedHash()) { showDebugToast("Blocked Hash"); /* killApp(); */ return; }
+                    if (detectSniffers()) { showDebugToast("Sniffers"); /* killApp(); */ return; }
+                    if (detectCloudPhone()) { showDebugToast("Cloud Phone / Root"); /* killApp(); */ return; }
+                    if (detectSecondaryDisplay()) { showDebugToast("Secondary Display"); /* killApp(); */ return; }
+                    if (detectProxy()) { showDebugToast("Proxy"); /* killApp(); */ return; }
+                    if (detectHostsMod()) { showDebugToast("Hosts Mod"); /* killApp(); */ return; }
+                    if (detectUnauthorizedVPN()) { showDebugToast("VPN"); /* killApp(); */ return; }
+                    if (detectDynamicHashMismatch()) { showDebugToast("Hash Mismatch"); /* killApp(); */ return; }
+                    if (detectPrivateDNS()) { showDebugToast("Private DNS"); /* killApp(); */ return; }
+                    if (detectDebugger()) { showDebugToast("Debugger"); /* killApp(); */ return; }
+                    if (detectFrida()) { showDebugToast("Frida / Hack Tool"); /* killApp(); */ return; }
+                    if (detectTampering()) { showDebugToast("Tampering"); /* killApp(); */ return; }
                     
                     Thread.sleep(5 + (long)(Math.random() * 14));
                 } catch (InterruptedException e) {
