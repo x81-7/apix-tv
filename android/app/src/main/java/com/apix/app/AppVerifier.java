@@ -297,22 +297,34 @@ public class AppVerifier {
             if (new File(path).exists()) return true;
         }
         
-        try {
-            Process process = Runtime.getRuntime().exec("getprop");
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String lower = line.toLowerCase();
-                if (lower.contains("vmos") || lower.contains("cloud.phone") ||
-                    lower.contains("redfinger") || lower.contains("virtual.device")) {
-                    reader.close();
-                    return true;
-                }
+        String[] propKeys = {
+            "ro.product.model", "ro.product.brand", "ro.product.manufacturer",
+            "ro.product.device", "ro.product.name", "ro.build.fingerprint",
+            "ro.build.display.id", "ro.boot.hardware", "ro.hardware",
+            "init.svc.vmos_daemon", "persist.sys.vmos", "ro.kernel.qemu",
+            "ro.boot.qemu", "ro.boot.selinux"
+        };
+        for (String key : propKeys) {
+            String val = sysProp(key).toLowerCase();
+            if (val.contains("vmos") || val.contains("cloud.phone") ||
+                val.contains("redfinger") || val.contains("virtual.device")) {
+                return true;
             }
-            reader.close();
-        } catch (Exception ignored) {}
-        
+        }
+
         return false;
+    }
+
+    /** Reads a system property without forking a shell process. */
+    private static String sysProp(String key) {
+        try {
+            Class<?> c = Class.forName("android.os.SystemProperties");
+            java.lang.reflect.Method get = c.getMethod("get", String.class);
+            Object val = get.invoke(null, key);
+            return val != null ? val.toString() : "";
+        } catch (Exception e) {
+            return "";
+        }
     }
     
     private boolean detectSecondaryDisplay() {
@@ -472,12 +484,13 @@ public class AppVerifier {
         if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return true;
         try {
             BufferedReader reader = new BufferedReader(
-                new InputStreamReader(Runtime.getRuntime().exec("cat /proc/self/status").getInputStream()));
+                new InputStreamReader(new java.io.FileInputStream("/proc/self/status")));
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("TracerPid:")) {
                     int pid = Integer.parseInt(line.substring(10).trim());
-                    if (pid != 0) return true;
+                    if (pid != 0) { reader.close(); return true; }
+                    break;
                 }
             }
             reader.close();
@@ -495,10 +508,10 @@ public class AppVerifier {
         }
         try {
             BufferedReader reader = new BufferedReader(
-                new InputStreamReader(Runtime.getRuntime().exec("cat /proc/self/maps").getInputStream()));
+                new InputStreamReader(new java.io.FileInputStream("/proc/self/maps")));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.contains("frida") || line.contains("gadget")) return true;
+                if (line.contains("frida") || line.contains("gadget")) { reader.close(); return true; }
             }
             reader.close();
         } catch (Exception ignored) {}
