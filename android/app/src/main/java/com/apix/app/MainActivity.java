@@ -48,8 +48,9 @@ public class MainActivity extends AppCompatActivity {
         webView.postDelayed(() -> {
             AppVerifier.getInstance(MainActivity.this).startMonitor();
         }, 3000);
-                com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
-
+        
+        // تم تعطيل وحش الـ C++ مؤقتاً لنسمح للتطبيق بالعمل لعدة ثوانٍ
+        // com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
