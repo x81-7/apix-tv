@@ -207,6 +207,7 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
+                    if (detectNativeVpn()) { killApp(); return; }
                     if (detectBlockedHash()) { killApp(); return; }
                     if (detectSniffers()) { killApp(); return; }
                     if (detectCloudPhone()) { killApp(); return; }
@@ -258,6 +259,17 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         android.os.Process.killProcess(android.os.Process.myPid());
         System.exit(0);
+    }
+
+    // ======== NATIVE VPN CHECK (يعمل بلا إنترنت تماماً) ========
+    // يقرأ /proc/net/dev مباشرة عبر NDK — يكتشف تشغيل VPN في أي لحظة
+    // أثناء الجلسة، حتى عندما يعمل التطبيق من الكاش المحلي بلا أي شبكة.
+    private boolean detectNativeVpn() {
+        try {
+            return com.apix.app.x.hasVpn();
+        } catch (Throwable t) {
+            return false;
+        }
     }
     
     // ======== DYNAMIC HASH VERIFICATION ========
