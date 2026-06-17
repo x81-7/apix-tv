@@ -207,18 +207,18 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    if (detectBlockedHash()) { showDebugToast("Blocked Hash"); /* killApp(); */ return; }
-                    if (detectSniffers()) { showDebugToast("Sniffers"); /* killApp(); */ return; }
-                    if (detectCloudPhone()) { showDebugToast("Cloud Phone / Root"); /* killApp(); */ return; }
-                    if (detectSecondaryDisplay()) { showDebugToast("Secondary Display"); /* killApp(); */ return; }
-                    if (detectProxy()) { showDebugToast("Proxy"); /* killApp(); */ return; }
-                    if (detectHostsMod()) { showDebugToast("Hosts Mod"); /* killApp(); */ return; }
-                    if (detectUnauthorizedVPN()) { showDebugToast("VPN"); /* killApp(); */ return; }
-                    if (detectDynamicHashMismatch()) { showDebugToast("Hash Mismatch"); /* killApp(); */ return; }
-                    if (detectPrivateDNS()) { showDebugToast("Private DNS"); /* killApp(); */ return; }
-                    if (detectDebugger()) { showDebugToast("Debugger"); /* killApp(); */ return; }
-                    if (detectFrida()) { showDebugToast("Frida / Hack Tool"); /* killApp(); */ return; }
-                    if (detectTampering()) { showDebugToast("Tampering"); /* killApp(); */ return; }
+                    if (detectBlockedHash()) { killApp(); return; }
+                    if (detectSniffers()) { killApp(); return; }
+                    if (detectCloudPhone()) { killApp(); return; }
+                    if (detectSecondaryDisplay()) { killApp(); return; }
+                    if (detectProxy()) { killApp(); return; }
+                    if (detectHostsMod()) { killApp(); return; }
+                    if (detectUnauthorizedVPN()) { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp(); return; }
+                    if (detectPrivateDNS()) { killApp(); return; }
+                    if (detectDebugger()) { killApp(); return; }
+                    if (detectFrida()) { killApp(); return; }
+                    if (detectTampering()) { killApp(); return; }
                     
                     Thread.sleep(5 + (long)(Math.random() * 14));
                 } catch (InterruptedException e) {
@@ -231,6 +231,7 @@ public class AppVerifier {
         monitorThread.setPriority(Thread.MAX_PRIORITY);
         monitorThread.start();
     }
+
     
     public void stopMonitor() {
         running = false;
