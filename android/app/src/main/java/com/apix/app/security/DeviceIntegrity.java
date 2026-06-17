@@ -124,10 +124,19 @@ public final class DeviceIntegrity {
                 }
             }
         } catch (Throwable ignored) {}
-        // Installed packages (best-effort, no QUERY_ALL_PACKAGES)
+        // Installed packages (best-effort, no QUERY_ALL_PACKAGES).
+        
         try {
             PackageManager pm = ctx.getPackageManager();
-            String[] pkgs = {"de.robv.android.xposed.installer", "io.github.lsposed.manager"};
+            String[] pkgs = {
+                "de.robv.android.xposed.installer", // Xposed
+                "io.github.lsposed.manager",         // LSPosed
+                "com.topjohnwu.magisk",              // Magisk الرسمي (مستقر/canary/debug)
+                "io.github.huskydg.magisk",          // Magisk فرع Kitsune/HuskyDG
+                "io.github.vvb2060.magisk",          // Magisk فرع Delta/community
+                "me.weishu.kernelsu",                // KernelSU
+                "me.bmax.apatch"                     // APatch
+            };
             for (String p : pkgs) {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
             }
