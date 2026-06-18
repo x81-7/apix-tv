@@ -21,13 +21,6 @@ import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/**
- * Collects hardware-bound device id (MediaDrm Widevine), signature SHA-256
- * and classes.dex CRC32 in obfuscated, indirect ways. Also exposes
- * environment-danger checks (debugger / hooking frameworks).
- *
- * Public API kept tiny so attackers can't easily grep call sites.
- */
 public final class DeviceIntegrity {
 
     private static final UUID WV = new UUID(0xEDEF8BA979D64ACEL, 0xA3C827DCD51D21EDL);
@@ -35,7 +28,6 @@ public final class DeviceIntegrity {
     private static final String K_INSTALL = "_inst";
 
     public static String deviceId(Context ctx) {
-        // MediaDrm Widevine ID is bound to motherboard and survives factory reset
         try {
             MediaDrm drm = new MediaDrm(WV);
             byte[] raw = drm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID);
@@ -44,7 +36,6 @@ public final class DeviceIntegrity {
                 return sha256Hex(raw);
             }
         } catch (Throwable ignored) {}
-        // Fallback 1: ANDROID_ID is stable per device + signing key and survives reinstall.
         try {
             String androidId = Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.ANDROID_ID);
             if (androidId != null && !androidId.isEmpty() && !"9774d56d682e549c".equals(androidId)) {
@@ -52,7 +43,6 @@ public final class DeviceIntegrity {
             }
         } catch (Throwable ignored) {}
 
-        // Fallback 2: hardware fingerprint
         try {
             String fb = Build.MANUFACTURER + "|" + Build.MODEL + "|" + Build.BOARD + "|" + Build.FINGERPRINT;
             return "fb_" + sha256Hex(fb.getBytes(StandardCharsets.UTF_8));
@@ -61,7 +51,6 @@ public final class DeviceIntegrity {
         }
     }
 
-    /** SHA-256 of currently installed APK signing certificate. */
     public static String signatureHash(Context ctx) {
         try {
             PackageManager pm = ctx.getPackageManager();
@@ -83,7 +72,6 @@ public final class DeviceIntegrity {
         }
     }
 
-    /** CRC32 of classes.dex inside the installed APK. */
     public static String dexChecksum(Context ctx) {
         ZipFile zf = null;
         try {
@@ -105,11 +93,8 @@ public final class DeviceIntegrity {
         }
     }
 
-    /** Returns short danger label or null. */
     public static String environmentDanger(Context ctx) {
-        // Anti-debug
         if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return "DEBUGGER";
-        // Anti-hook: scan /proc/self/maps for known frameworks
         try {
             File maps = new File("/proc/self/maps");
             if (maps.exists() && maps.canRead()) {
@@ -124,18 +109,16 @@ public final class DeviceIntegrity {
                 }
             }
         } catch (Throwable ignored) {}
-        // Installed packages (best-effort, no QUERY_ALL_PACKAGES).
-        
         try {
             PackageManager pm = ctx.getPackageManager();
             String[] pkgs = {
-                "de.robv.android.xposed.installer", // Xposed
-                "io.github.lsposed.manager",         // LSPosed
-                "com.topjohnwu.magisk",              // Magisk الرسمي (مستقر/canary/debug)
-                "io.github.huskydg.magisk",          // Magisk فرع Kitsune/HuskyDG
-                "io.github.vvb2060.magisk",          // Magisk فرع Delta/community
-                "me.weishu.kernelsu",                // KernelSU
-                "me.bmax.apatch"                     // APatch
+                "de.robv.android.xposed.installer",
+                "io.github.lsposed.manager",
+                "com.topjohnwu.magisk",
+                "io.github.huskydg.magisk",
+                "io.github.vvb2060.magisk",
+                "me.weishu.kernelsu",
+                "me.bmax.apatch"
             };
             for (String p : pkgs) {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
@@ -144,10 +127,9 @@ public final class DeviceIntegrity {
         return null;
     }
 
-    /**
-     * MODIFIED FOR TV BOX COMPATIBILITY & STRICT CLOUD EMULATOR BLOCKING
-     */
     public static boolean isEmulator() {
+        if (isRealTvBoxHardware()) return false;
+
         try {
             String fp  = String.valueOf(Build.FINGERPRINT).toLowerCase();
             String mdl = String.valueOf(Build.MODEL).toLowerCase();
@@ -160,27 +142,22 @@ public final class DeviceIntegrity {
 
             String haystack = fp + "|" + mdl + "|" + mfr + "|" + brd + "|" + dev + "|" + prd + "|" + hw + "|" + bd;
 
-            // 1) Cloud Emulators & Server-Side VMs (Redfinger, VMOS, AWS, Tencent)
             String[] cloudVms = {"redfinger", "vmos", "vphone", "netmulator", "tencent", "cloudvm", "aliyun"};
             for (String c : cloudVms) if (haystack.contains(c)) return true;
 
-            // 2) Generic Android Studio / SDK emulator markers
-            // REMOVED: "test-keys", "generic", "unknown" as they are common in Chinese TV Boxes
             if (fp.contains("generic_x86") || fp.contains("emu") || fp.contains("vbox")
                     || fp.contains("sdk_gphone") || fp.contains("ranchu") || fp.contains("goldfish")) return true;
             if (mdl.contains("google_sdk") || mdl.contains("emulator") || mdl.contains("android sdk")) return true;
             if (mfr.contains("genymotion")) return true;
-            if (brd.equals("generic") && dev.equals("generic")) return true; // Strict generic check
+            if (brd.equals("generic") && dev.equals("generic")) return true;
             if (prd.contains("sdk") || prd.contains("emulator") || prd.contains("simulator") || prd.contains("vbox")) return true;
             if (hw.contains("goldfish") || hw.contains("ranchu") || hw.contains("vbox") || hw.contains("ttvm") || hw.contains("intel")) return true;
             if (bd.contains("qemu") || bd.contains("vbox")) return true;
 
-            // 3) LDPlayer / BlueStacks / Nox / MEmu — popular RE emulators
             String[] emuMarkers = {"ldplayer", "bluestacks", "noxplayer", "nox ", "memu", "andy",
                     "droid4x", "ttvm", "windroye", "mumu", "phoenix os", "koplayer"};
             for (String m : emuMarkers) if (haystack.contains(m)) return true;
 
-            // 4) Telltale files only present in emulator images
             String[] emuFiles = {
                 "/dev/socket/qemud", "/dev/qemu_pipe", "/system/lib/libc_malloc_debug_qemu.so",
                 "/sys/qemu_trace", "/system/bin/qemu-props", "/dev/socket/genyd",
@@ -195,7 +172,44 @@ public final class DeviceIntegrity {
         return false;
     }
 
-    /** Reads developer allow-list (UUIDs) from system_settings cache. */
+    private static boolean isRealTvBoxHardware() {
+        try {
+            String abi = System.getProperty("os.arch", "").toLowerCase();
+            boolean isArm = abi.contains("arm") || abi.contains("aarch64");
+            if (!isArm) return false;
+
+            String hw  = String.valueOf(Build.HARDWARE).toLowerCase();
+            String brd = String.valueOf(Build.BOARD).toLowerCase();
+            String soc = String.valueOf(Build.SOC_MODEL).toLowerCase();
+            String haystack = hw + "|" + brd + "|" + soc;
+
+            String[] knownTvBoxChips = {
+                "amlogic", "meson", "gxbb", "gxl", "gxm", "g12",
+                "rockchip", "rk30", "rk31", "rk32", "rk33",
+                "allwinner", "sun50i", "sun8i",
+                "mt6", "mt7", "mt8",
+                "hisilicon", "hi35"
+            };
+            boolean knownChip = false;
+            for (String chip : knownTvBoxChips) {
+                if (haystack.contains(chip)) { knownChip = true; break; }
+            }
+            if (!knownChip) return false;
+
+            boolean hasRealDrm = false;
+            try {
+                MediaDrm drm = new MediaDrm(WV);
+                byte[] raw = drm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID);
+                try { drm.close(); } catch (Throwable ignored) {}
+                hasRealDrm = raw != null && raw.length > 0;
+            } catch (Throwable ignored) {}
+
+            return hasRealDrm;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private static java.util.Set<String> developerOverrides(Context ctx) {
         try {
             android.content.SharedPreferences sp =
@@ -214,11 +228,6 @@ public final class DeviceIntegrity {
         }
     }
 
-    /**
-     * STRICT emulator gate consumed by SplashActivity.
-     * Returns true ONLY when emulator is detected AND the device id is NOT
-     * present in the developer override list (system_settings.developer_uuids).
-     */
     public static boolean shouldStrictBanEmulator(Context ctx) {
         if (!isEmulator()) return false;
         java.util.Set<String> overrides = developerOverrides(ctx);
@@ -227,11 +236,6 @@ public final class DeviceIntegrity {
         return !overrides.contains(myId);
     }
 
-    /**
-     * isFreshInstall = true the FIRST time we see this install (or after the
-     * user wiped app data). Stored in plain SharedPreferences which gets
-     * cleared on uninstall + clear-data.
-     */
     public static boolean consumeFreshInstall(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(P, Context.MODE_PRIVATE);
         if (sp.getBoolean(K_INSTALL, false)) return false;
