@@ -2,15 +2,6 @@ import Foundation
 import CryptoKit
 
 /// AES-256-GCM payload cipher.
-///
-/// Decrypts the `{ "iv": "<base64>", "data": "<base64>" }` envelope returned
-/// by the Supabase `cached-data` Edge Function. The 32-byte key MUST match
-/// the server-side `ENCRYPTION_SECRET_KEY` env var.
-///
-/// Key sourcing order:
-///   1. `Info.plist` value for `APIX_ENCRYPTION_KEY`
-///   2. `ProcessInfo` env var `ENCRYPTION_SECRET_KEY`
-///   3. compile-time placeholder (replaced by CI for production builds)
 enum PayloadCipher {
 
     enum CipherError: Error {
@@ -20,8 +11,6 @@ enum PayloadCipher {
         case decryptFailed
     }
 
-    /// 32-byte all-zero placeholder. CI MUST inject the real key into
-    /// Info.plist (`APIX_ENCRYPTION_KEY`) before archiving.
     private static let fallbackKeyHex =
         "0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -40,7 +29,6 @@ enum PayloadCipher {
         do {
             return SymmetricKey(data: try decodeKey(raw))
         } catch {
-            // Falls back to zero-key — decrypt will simply fail at runtime.
             return SymmetricKey(data: Data(repeating: 0, count: 32))
         }
     }()
@@ -48,7 +36,6 @@ enum PayloadCipher {
     private static func decodeKey(_ raw: String) throws -> Data {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw CipherError.missingKey }
-        // hex 64 chars
         if trimmed.count == 64,
            trimmed.range(of: "^[0-9a-fA-F]+$", options: .regularExpression) != nil {
             var bytes = [UInt8]()
@@ -62,12 +49,11 @@ enum PayloadCipher {
             }
             return Data(bytes)
         }
-        // base64
         guard let d = Data(base64Encoded: trimmed), d.count == 32 else { throw CipherError.badKey }
         return d
     }
 
-    /// Decrypt envelope JSON `Data` -> plaintext `Data` (UTF-8 JSON).
+    /// الدالة الأصلية (تتعامل مع البيانات Data)
     static func decrypt(envelope: Data) throws -> Data {
         guard let obj = try JSONSerialization.jsonObject(with: envelope) as? [String: Any],
               let ivB64 = obj["iv"] as? String,
@@ -76,8 +62,6 @@ enum PayloadCipher {
               let ct = Data(base64Encoded: dataB64) else {
             throw CipherError.badEnvelope
         }
-        // CryptoKit expects ciphertext + 16-byte tag combined — server emits
-        // them concatenated (WebCrypto AES-GCM appends the tag).
         guard ct.count > 16 else { throw CipherError.badEnvelope }
         let tag = ct.suffix(16)
         let cipherText = ct.prefix(ct.count - 16)
@@ -88,5 +72,13 @@ enum PayloadCipher {
         } catch {
             throw CipherError.decryptFailed
         }
+    }
+    
+    /// الدالة المضافة حديثاً (تتعامل مع النصوص String لكي تتوافق مع Resolver)
+    static func decrypt(envelope: String) throws -> String {
+        guard let data = envelope.data(using: .utf8) else { throw CipherError.badEnvelope }
+        let decryptedData = try decrypt(envelope: data)
+        guard let plainText = String(data: decryptedData, encoding: .utf8) else { throw CipherError.decryptFailed }
+        return plainText
     }
 }
