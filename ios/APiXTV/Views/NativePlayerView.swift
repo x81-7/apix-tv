@@ -10,9 +10,13 @@ final class NativePlayerCoordinator: ObservableObject {
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?
     private var itemObserver: AnyCancellable?
+    
+    // متغيرات مضافة للحفاظ على جلسة فك التشفير (DRM)
+    private var contentKeySession: AVContentKeySession?
+    private var keyResolver: ClearKeyResolver?
 
     @Published var isPlaying      = false
-    @Published var isBuffering     = true
+    @Published var isBuffering    = true
     @Published var currentTime: Double = 0
     @Published var duration: Double    = 0
     @Published var errorMessage: String?
@@ -62,14 +66,14 @@ final class NativePlayerCoordinator: ObservableObject {
 
     private func buildServers(from channel: Channel) {
         var svrs: [NamedServer] = []
-        if let primary = channel.playbackURL?.absoluteString {
+        if let primary = channel.playbackURL {
             svrs.append(NamedServer(
                 name: "سيرفر 1", url: primary,
                 headers: channel.effectiveHeaders,
                 clearKey: channel.clearKeyCombined
             ))
         }
-        if let backup = channel.backupURL?.absoluteString {
+        if let backup = channel.backupURL {
             svrs.append(NamedServer(
                 name: "احتياطي", url: backup,
                 headers: channel.effectiveHeaders,
@@ -77,8 +81,10 @@ final class NativePlayerCoordinator: ObservableObject {
             ))
         }
         if let extras = channel.iosStream?.customHeaders {
-            for (i, _) in extras.enumerated() where i < svrs.count {
-                svrs[i].headers.merge(extras) { _, new in new }
+            for i in 0..<svrs.count {
+                for (k, v) in extras {
+                    svrs[i].headers[k] = v
+                }
             }
         }
         servers = svrs
@@ -92,7 +98,7 @@ final class NativePlayerCoordinator: ObservableObject {
     }
 
     private func loadURL(_ urlString: String, headers: [String: String], clearKey: String?) {
-        removeObservers()
+        forceCleanupObservers()
         errorMessage = nil
         isBuffering  = true
         currentTime  = 0
@@ -104,16 +110,21 @@ final class NativePlayerCoordinator: ObservableObject {
         var opts: [String: Any] = [:]
         if !headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = headers }
         let asset    = AVURLAsset(url: url, options: opts.isEmpty ? nil : opts)
-        let item     = AVPlayerItem(asset: asset)
 
+        // إعداد جلسة التشفير بالطريقة الصحيحة لنظام أبل
         if let ck = clearKey, ck.contains(":") {
             let parts = ck.components(separatedBy: ":")
             if parts.count == 2 {
                 let resolver = ClearKeyResolver(keyId: parts[0], key: parts[1])
-                item.contentKeySessionDelegate = resolver
+                self.keyResolver = resolver
+                let session = AVContentKeySession(keySystem: .clearKey)
+                session.setDelegate(resolver, queue: .main)
+                session.addContentKeyRecipient(asset)
+                self.contentKeySession = session
             }
         }
 
+        let item = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: item)
         attachObservers(item: item)
         player.play()
@@ -146,58 +157,81 @@ final class NativePlayerCoordinator: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
-            self?.currentTime = time.seconds
+            Task { @MainActor in self?.currentTime = time.seconds }
         }
 
         itemObserver = item.publisher(for: \.status)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                switch status {
-                case .readyToPlay: self?.isBuffering = false
-                case .failed:
-                    self?.errorMessage = item.error?.localizedDescription ?? "فشل التشغيل"
-                    self?.isBuffering  = false
-                default: break
+            .sink { [weak self, weak item] status in
+                Task { @MainActor in
+                    switch status {
+                    case .readyToPlay: self?.isBuffering = false
+                    case .failed:
+                        self?.errorMessage = item?.error?.localizedDescription ?? "فشل التشغيل"
+                        self?.isBuffering  = false
+                    default: break
+                    }
                 }
             }
 
         statusObserver = item.publisher(for: \.duration)
-            .receive(on: RunLoop.main)
             .sink { [weak self] dur in
-                if dur.isNumeric { self?.duration = dur.seconds }
+                Task { @MainActor in
+                    if dur.isNumeric { self?.duration = dur.seconds }
+                }
             }
 
         NotificationCenter.default.addObserver(
             forName: AVPlayerItem.playbackStalledNotification,
             object: item, queue: .main
-        ) { [weak self] _ in self?.isBuffering = true }
+        ) { [weak self] _ in
+            Task { @MainActor in self?.isBuffering = true }
+        }
 
         NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: item, queue: .main
-        ) { [weak self] _ in self?.isPlaying = false }
+        ) { [weak self] _ in
+            Task { @MainActor in self?.isPlaying = false }
+        }
     }
 
-    private func removeObservers() {
+    private func forceCleanupObservers() {
         if let obs = timeObserver { player.removeTimeObserver(obs); timeObserver = nil }
-        itemObserver  = nil
+        itemObserver?.cancel()
+        itemObserver = nil
+        statusObserver?.cancel()
         statusObserver = nil
         NotificationCenter.default.removeObserver(self)
     }
 
-    deinit { removeObservers() }
+    // دالة لتنظيف كل شيء عند الخروج من الواجهة
+    func cleanupAll() {
+        forceCleanupObservers()
+        player.pause()
+        contentKeySession?.expire()
+        contentKeySession = nil
+        keyResolver = nil
+    }
 }
 
 // MARK: - ClearKey stub
 final class ClearKeyResolver: NSObject, AVContentKeySessionDelegate {
-    let keyId: String; let key: String
+    let keyId: String
+    let key: String
     init(keyId: String, key: String) { self.keyId = keyId; self.key = key }
+    
     func contentKeySession(_ session: AVContentKeySession,
                            didProvide request: AVContentKeyRequest) {
         guard let keyData = Data(hexString: key) else { return }
-        let response = request.makeStreamingContentKeyRequestData(forApp: Data(),
-                                                                   contentIdentifier: Data())
-        try? request.processContentKeyResponse(AVContentKeyResponse(fairPlayStreamingKeyResponseData: keyData))
+        Task {
+            do {
+                let _ = try await request.makeStreamingContentKeyRequestData(forApp: Data(), contentIdentifier: Data())
+                let response = AVContentKeyResponse(fairPlayStreamingKeyResponseData: keyData)
+                request.processContentKeyResponse(response)
+            } catch {
+                print("DRM Error: \(error)")
+            }
+        }
     }
 }
 
@@ -290,12 +324,15 @@ struct NativePlayerView: View {
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
         .persistentSystemOverlays(.hidden)
+        .onDisappear {
+            // تنظيف المشغل عند الخروج بدلاً من استخدام deinit
+            coordinator.cleanupAll()
+        }
         .task {
-            if ApixStreamResolverIOS.isApixStream(
-                channel.playbackURL?.absoluteString ?? "") {
+            let pUrl = channel.playbackURL ?? ""
+            if ApixStreamResolverIOS.isApixStream(pUrl) {
                 isApixResolving = true
-                if let cfg = await ApixStreamResolverIOS.resolve(
-                    channel.playbackURL!.absoluteString) {
+                if let cfg = await ApixStreamResolverIOS.resolve(pUrl) {
                     coordinator.setupFromApix(cfg, fallbackTitle: channel.name)
                 } else {
                     coordinator.setup(channel: channel)
@@ -411,7 +448,7 @@ struct NativePlayerView: View {
                                 ? .resizeAspectFill : .resizeAspect
                         }
 
-                        if UIDevice.current.supportsMultipleScenes {
+                        if UIApplication.shared.supportsMultipleScenes {
                             BottomBarButton(systemName: "pip.enter") {
                             }
                         }
