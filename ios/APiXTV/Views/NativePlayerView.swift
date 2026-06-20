@@ -64,6 +64,7 @@ final class NativePlayerCoordinator: ObservableObject {
         loadServer(at: 0)
     }
 
+    // 👈 الدالة التي تم تعديلها وحل الأخطاء بها
     private func buildServers(from channel: Channel) {
         var svrs: [NamedServer] = []
         if let primary = channel.playbackURL {
@@ -73,7 +74,7 @@ final class NativePlayerCoordinator: ObservableObject {
                 clearKey: channel.clearKeyCombined
             ))
         }
-        if let backup = channel.backupURL {
+        if let backup = channel.backupURL?.absoluteString {
             svrs.append(NamedServer(
                 name: "احتياطي", url: backup,
                 headers: channel.effectiveHeaders,
@@ -82,8 +83,8 @@ final class NativePlayerCoordinator: ObservableObject {
         }
         if let extras = channel.iosStream?.customHeaders {
             for i in 0..<svrs.count {
-                for (k, v) in extras {
-                    svrs[i].headers[k] = v
+                for entry in extras {
+                    svrs[i].headers[entry.key] = entry.value
                 }
             }
         }
