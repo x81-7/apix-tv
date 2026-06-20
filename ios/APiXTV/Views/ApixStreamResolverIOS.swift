@@ -31,8 +31,8 @@ enum ApixStreamResolverIOS {
                   let body = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
             else { return nil }
             
-            // تم التعديل هنا إلى decrypt بدلاً من decryptExternal
-            let plain = try PayloadCipher.decrypt(body)
+            // تم تصحيح الاستدعاء ليتوافق مع PayloadCipher الجديد
+            let plain = try PayloadCipher.decrypt(envelope: body)
             
             return parseJson(plain)
         } catch {
