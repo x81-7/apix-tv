@@ -196,7 +196,127 @@ struct MainHomeView: View {
     let onOpenSearch: () -> Void
     let onOpenSettings: () -> Void
 
+    @Environment(\.horizontalSizeClass) private var hSize
+
     var body: some View {
+        if hSize == .regular {
+            iPadLayout
+        } else {
+            phoneLayout
+        }
+    }
+
+    // ── iPad / Landscape layout (مطابق للأندرويد Landscape) ──────────
+    private var iPadLayout: some View {
+        HStack(spacing: 0) {
+            // القائمة الجانبية
+            VStack(alignment: .center, spacing: 24) {
+                VStack(spacing: 2) {
+                    Rectangle()
+                        .fill(AppTheme.gold)
+                        .frame(width: 4, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                    Text("APiX")
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(.white)
+                    Text("TV")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AppTheme.gold)
+                }
+                .padding(.top, 24)
+
+                Divider().background(AppTheme.muted.opacity(0.3))
+
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(categories) { cat in
+                            iPadCatRow(cat)
+                        }
+                        if showSettingsSection {
+                            Button(action: onOpenSettings) {
+                                HStack {
+                                    Image(systemName: "gearshape.fill")
+                                        .foregroundStyle(AppTheme.muted)
+                                    Text("الإعدادات")
+                                        .foregroundStyle(AppTheme.muted)
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+                Spacer()
+            }
+            .frame(width: 200)
+            .background(Color(red: 0.07, green: 0.07, blue: 0.07))
+
+            // المحتوى الرئيسي
+            VStack(spacing: 0) {
+                HStack {
+                    if let name = categories.first(where: { $0.id == selectedCategoryID })?.name {
+                        Text(name.uppercased())
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    Spacer()
+                    Button(action: onOpenSearch) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.white)
+                            .font(.system(size: 20, weight: .bold))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+
+                let cols = gridColumns(hSize: hSize)
+                ScrollView {
+                    LazyVGrid(columns: cols, spacing: 12) {
+                        ForEach(channels) { ch in
+                            ChannelCardView(channel: ch, onTap: { onSelectChannel(ch) })
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .background(AppTheme.background)
+        }
+        .background(AppTheme.background.ignoresSafeArea())
+    }
+
+    private func iPadCatRow(_ cat: CategorySection) -> some View {
+        let isSelected = cat.id == selectedCategoryID
+        return Button { onSelectCategory(cat.id) } label: {
+            HStack {
+                if isSelected {
+                    Rectangle()
+                        .fill(AppTheme.gold)
+                        .frame(width: 3, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                }
+                Text(cat.name)
+                    .font(.system(size: 14, weight: isSelected ? .bold : .regular))
+                    .foregroundStyle(isSelected ? AppTheme.gold : .white)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isSelected ? AppTheme.gold.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func gridColumns(hSize: UserInterfaceSizeClass?) -> [GridItem] {
+        let count = hSize == .regular ? 4 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 10), count: count)
+    }
+
+    // ── iPhone layout (نفس التصميم الحالي) ──────────────────────────
+    private var phoneLayout: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("APiX TV")
