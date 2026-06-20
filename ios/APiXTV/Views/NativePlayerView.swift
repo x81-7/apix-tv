@@ -11,7 +11,6 @@ final class NativePlayerCoordinator: ObservableObject {
     private var statusObserver: AnyCancellable?
     private var itemObserver: AnyCancellable?
     
-    // متغيرات مضافة للحفاظ على جلسة فك التشفير (DRM)
     private var contentKeySession: AVContentKeySession?
     private var keyResolver: ClearKeyResolver?
 
@@ -64,7 +63,6 @@ final class NativePlayerCoordinator: ObservableObject {
         loadServer(at: 0)
     }
 
-    // 👈 الدالة التي تم تعديلها وحل الأخطاء بها
     private func buildServers(from channel: Channel) {
         var svrs: [NamedServer] = []
         if let primary = channel.playbackURL {
@@ -112,7 +110,6 @@ final class NativePlayerCoordinator: ObservableObject {
         if !headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = headers }
         let asset    = AVURLAsset(url: url, options: opts.isEmpty ? nil : opts)
 
-        // إعداد جلسة التشفير بالطريقة الصحيحة لنظام أبل
         if let ck = clearKey, ck.contains(":") {
             let parts = ck.components(separatedBy: ":")
             if parts.count == 2 {
@@ -205,7 +202,6 @@ final class NativePlayerCoordinator: ObservableObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    // دالة لتنظيف كل شيء عند الخروج من الواجهة
     func cleanupAll() {
         forceCleanupObservers()
         player.pause()
@@ -221,8 +217,7 @@ final class ClearKeyResolver: NSObject, AVContentKeySessionDelegate {
     let key: String
     init(keyId: String, key: String) { self.keyId = keyId; self.key = key }
     
-    func contentKeySession(_ session: AVContentKeySession,
-                           didProvide request: AVContentKeyRequest) {
+    func contentKeySession(_ session: AVContentKeySession, didProvide request: AVContentKeyRequest) {
         guard let keyData = Data(hexString: key) else { return }
         Task {
             do {
@@ -325,8 +320,13 @@ struct NativePlayerView: View {
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
         .persistentSystemOverlays(.hidden)
+        .onAppear {
+            // تدوير الشاشة تلقائياً للوضع العرضي عند فتح المشغل
+            forceLandscape()
+        }
         .onDisappear {
-            // تنظيف المشغل عند الخروج بدلاً من استخدام deinit
+            // إعادة الشاشة للوضع الطولي عند الخروج من المشغل
+            forcePortrait()
             coordinator.cleanupAll()
         }
         .task {
@@ -347,121 +347,117 @@ struct NativePlayerView: View {
         .sheet(isPresented: $showServerSheet)  { serverSheet  }
     }
 
-    // MARK: Controls Overlay
+    // MARK: - الدوال المسؤولة عن دوران الشاشة
+    private func forceLandscape() {
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        }
+    }
+
+    private func forcePortrait() {
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        }
+    }
+
+    // MARK: - Controls Overlay (تصميم الأندرويد)
     private var controlsOverlay: some View {
         ZStack {
-            LinearGradient(
-                colors: [.black.opacity(0.7), .clear, .clear, .black.opacity(0.75)],
-                startPoint: .top, endPoint: .bottom
-            )
+            // تدرج لوني علوي وسفلي مطابق للأندرويد
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 80)
+                Spacer()
+                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 100)
+            }
             .ignoresSafeArea()
 
-            // Top bar
             VStack {
                 HStack {
-                    Button {
+                    PlayerIconButton(systemName: "chevron.left", size: 36) {
                         coordinator.player.pause()
                         dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(Circle().fill(.black.opacity(0.4)))
                     }
-
                     Spacer()
-
                     Text(coordinator.title)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .padding(.horizontal, 8)
-
-                    Spacer()
-                    Spacer().frame(width: 44)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
                 Spacer()
 
-                // Center controls
-                HStack(spacing: 48) {
-                    PlayerIconButton(systemName: "gobackward.10") {
-                        coordinator.seek(by: -10)
-                        resetControlsTimer()
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(formatTime(coordinator.currentTime))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 45)
+                        
+                        ProgressSlider(
+                            value: coordinator.duration > 0 ? coordinator.currentTime / coordinator.duration : 0,
+                            onChanged: { coordinator.seek(to: $0) }
+                        )
+                        .frame(height: 16)
+                        
+                        Text(formatTime(coordinator.duration))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 45)
                     }
-                    PlayerIconButton(
-                        systemName: coordinator.isPlaying ? "pause.fill" : "play.fill",
-                        size: 52
-                    ) {
-                        coordinator.togglePlay()
-                        resetControlsTimer()
-                    }
-                    PlayerIconButton(systemName: "goforward.10") {
-                        coordinator.seek(by: 10)
-                        resetControlsTimer()
-                    }
-                }
 
-                Spacer()
-
-                // Bottom bar
-                VStack(spacing: 6) {
-                    ProgressSlider(
-                        value: coordinator.duration > 0
-                            ? coordinator.currentTime / coordinator.duration : 0,
-                        onChanged: { coordinator.seek(to: $0) }
-                    )
-                    .padding(.horizontal, 16)
+                    Spacer().frame(height: 4)
 
                     HStack {
-                        Text(formatTime(coordinator.currentTime))
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(formatTime(coordinator.duration))
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(AppTheme.muted)
-                    }
-                    .padding(.horizontal, 18)
-
-                    HStack(spacing: 20) {
-                        Spacer()
-
-                        if coordinator.servers.count > 1 {
-                            BottomBarButton(systemName: "server.rack") {
-                                showServerSheet = true
+                        HStack(spacing: 16) {
+                            PlayerIconButton(systemName: "gobackward.10", size: 38) {
+                                coordinator.seek(by: -10)
+                                resetControlsTimer()
+                            }
+                            PlayerIconButton(systemName: coordinator.isPlaying ? "pause.fill" : "play.fill", size: 44) {
+                                coordinator.togglePlay()
+                                resetControlsTimer()
+                            }
+                            PlayerIconButton(systemName: "goforward.10", size: 38) {
+                                coordinator.seek(by: 10)
+                                resetControlsTimer()
                             }
                         }
-
-                        BottomBarButton(systemName: "slider.horizontal.3") {
-                            showQualitySheet = true
-                        }
-
-                        BottomBarButton(
-                            systemName: resizeMode == .resizeAspect
-                                ? "arrow.up.left.and.arrow.down.right"
-                                : "arrow.down.right.and.arrow.up.left"
-                        ) {
-                            resizeMode = resizeMode == .resizeAspect
-                                ? .resizeAspectFill : .resizeAspect
-                        }
-
-                        if UIApplication.shared.supportsMultipleScenes {
-                            BottomBarButton(systemName: "pip.enter") {
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 12) {
+                            if coordinator.servers.count > 1 {
+                                PlayerIconButton(systemName: "server.rack", size: 32) { showServerSheet = true }
+                            }
+                            PlayerIconButton(systemName: "slider.horizontal.3", size: 32) { showQualitySheet = true }
+                            PlayerIconButton(
+                                systemName: resizeMode == .resizeAspect ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
+                                size: 32
+                            ) {
+                                resizeMode = resizeMode == .resizeAspect ? .resizeAspectFill : .resizeAspect
+                            }
+                            if UIApplication.shared.supportsMultipleScenes {
+                                PlayerIconButton(systemName: "pip.enter", size: 32) { }
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
         }
     }
 
-    // MARK: Quality Sheet
     private var qualitySheet: some View {
         PlayerSheet(title: "الجودة") {
             ForEach(Array(coordinator.qualities.enumerated()), id: \.offset) { index, q in
@@ -476,7 +472,6 @@ struct NativePlayerView: View {
         }
     }
 
-    // MARK: Server Sheet
     private var serverSheet: some View {
         PlayerSheet(title: "السيرفرات") {
             ForEach(Array(coordinator.servers.enumerated()), id: \.offset) { index, svr in
@@ -491,7 +486,6 @@ struct NativePlayerView: View {
         }
     }
 
-    // MARK: Helpers
     private func toggleControlsVisibility() {
         withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
         if showControls { resetControlsTimer() }
@@ -515,7 +509,7 @@ struct NativePlayerView: View {
     }
 }
 
-// MARK: - Sub-views
+// MARK: - Sub-views (تصميم الأندرويد للأزرار والشريط)
 
 struct PlayerIconButton: View {
     let systemName: String
@@ -528,20 +522,7 @@ struct PlayerIconButton: View {
                 .font(.system(size: size * 0.6, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: size, height: size)
-                .background(Circle().fill(.white.opacity(0.12)))
-        }
-    }
-}
-
-struct BottomBarButton: View {
-    let systemName: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
+                .contentShape(Rectangle())
         }
     }
 }
@@ -558,12 +539,12 @@ struct ProgressSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.25)).frame(height: 4)
                 Capsule()
-                    .fill(AppTheme.gold)
+                    .fill(Color(red: 229/255, green: 9/255, blue: 20/255))
                     .frame(width: geo.size.width * display, height: 4)
                 Circle()
                     .fill(.white)
                     .frame(width: 14, height: 14)
-                    .offset(x: geo.size.width * display - 7)
+                    .offset(x: max(0, min(geo.size.width - 14, geo.size.width * display - 7)))
             }
             .contentShape(Rectangle())
             .gesture(
@@ -575,11 +556,10 @@ struct ProgressSlider: View {
                     .onEnded { v in
                         let fraction = max(0, min(1, v.location.x / geo.size.width))
                         onChanged(fraction)
-                        dragging  = false
+                        dragging = false
                     }
             )
         }
-        .frame(height: 20)
     }
 }
 
