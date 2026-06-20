@@ -45,6 +45,7 @@ final class AppViewModel: ObservableObject {
         // device UUID is on the developer allow-list in system_settings.
         // Jailbreak / root are allowed (legitimate TV-box users), only
         // SIMULATOR triggers the strict ban.
+        #if !DEBUG
         if DeviceIntegrityIOS.isSimulator() {
             let devIds = await api.fetchDeveloperUUIDs()
             let myId = KeychainDeviceID.get()
@@ -59,6 +60,7 @@ final class AppViewModel: ObservableObject {
                 return
             }
         }
+        #endif
 
         // 1) Hydrate UI INSTANTLY from the encrypted on-device cache so the
         //    user sees content even before the network call returns. This
