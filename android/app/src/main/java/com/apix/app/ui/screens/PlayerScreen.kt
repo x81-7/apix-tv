@@ -698,8 +698,21 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, controlsResetKey) {
-        if (showControls) { delay(3000); showControls = false }
+    LaunchedEffect(showControls, controlsResetKey, showTrackDialog, showServerDialog, showAudioSourceDialog, showFallbackServerDialog) {
+        // 1. مؤقت إخفاء أزرار المشغل بعد 3 ثواني
+        if (showControls) { 
+            delay(3000)
+            showControls = false 
+        }
+        
+        // 2. [الحل السحري]: إجبار أزرار الهاتف (الرجوع وغيرها) على الاختفاء 
+        // بمجرد انتهاء الـ 3 ثواني أو عند إغلاق أي نافذة (دقة/سيرفر)
+        if (!showControls && !showTrackDialog && !showServerDialog && !showAudioSourceDialog && !showFallbackServerDialog) {
+            val window = activity?.window
+            if (window != null) {
+                WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
 
     LaunchedEffect(showControls) {
