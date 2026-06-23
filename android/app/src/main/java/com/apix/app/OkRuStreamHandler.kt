@@ -47,6 +47,7 @@ object OkRuStreamHandler {
             hdrs["Cookie"]     = cookie
             hdrs["User-Agent"] = userAgent
             hdrs["Referer"]    = "https://ok.ru/video/$videoId"
+            hdrs["Connection"] = "close"
             LocalStreamServer.setHeaders(hdrs)
             LocalStreamServer.ensureStarted()
             LocalStreamServer.wrap(rawUrl)
