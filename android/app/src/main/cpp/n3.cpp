@@ -17,7 +17,7 @@ MK3(_kd, V_D)    // ext key
 std::string n3_a4() { return _a4(); }
 std::string n3_d()  { return _kd(); }
 
-// ── فحص Root ─────────────────────────────────────────────────────
+// ── فحص Root (تم الإبقاء عليه لكنه لن يغلق التطبيق) ──────────────
 static bool n3_check_root() {
     const char* paths[] = {
         "/system/xbin/su", "/system/bin/su",
@@ -30,10 +30,10 @@ static bool n3_check_root() {
     return false;
 }
 
-// ── فحص منافذ Frida ──────────────────────────────────────────────
+// ── فحص منافذ Frida (الاختراق والهندسة العكسية) ─────────────────
 static bool n3_check_frida_port() {
     // هذا يحتاج Java لفحص الاتصال الفعلي
-    // هنا نتحقق من وجود /proc/net/tcp مع منفذ 27042
+    // هنا نتحقق من وجود /proc/net/tcp مع منافذ أداة Frida
     FILE* f = fopen("/proc/net/tcp", "r");
     if (!f) return false;
     char line[256];
@@ -52,10 +52,12 @@ static bool n3_check_frida_port() {
 
 extern "C" {
 
-// يُعيد 1 إذا root أو Frida مكتشف
+// يُعيد 1 "فقط" إذا تم اكتشاف Frida (أدوات اختراق)
+// أجهزة الـ TV Box التي تحتوي على Root ستعمل بشكل طبيعي الآن
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_nr(JNIEnv*, jobject) {
-    return (n3_check_root() || n3_check_frida_port()) ? 1 : 0;
+    // تم إزالة n3_check_root() من شرط الحظر
+    return (n3_check_frida_port()) ? 1 : 0;
 }
 
 } // extern "C"
