@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <cstring>
 
-// ── مفتاح XOR مختلف ─────────────────────────────────────────────
+// XOR Key
 static constexpr uint8_t K3[] = {
     0xD7, 0x23, 0x8B, 0x4F, 0x61, 0xE5, 0x9A, 0x16,
     0xC4, 0x78, 0x3E, 0xB2, 0x05, 0x97, 0xDA, 0x4C
@@ -11,13 +11,13 @@ static constexpr uint8_t K3[] = {
 
 #define MK3(n, v) static std::string n() { static const char r[] = v; return std::string(r); }
 
-MK3(_a4, V_A4)   // enc part 4
-MK3(_kd, V_D)    // ext key
+MK3(_a4, V_A4)   
+MK3(_kd, V_D)    
 
 std::string n3_a4() { return _a4(); }
 std::string n3_d()  { return _kd(); }
 
-// ── فحص Root (تم الإبقاء عليه لكنه لن يغلق التطبيق) ──────────────
+// Root Check (Kept for reference, not used for blocking)
 static bool n3_check_root() {
     const char* paths[] = {
         "/system/xbin/su", "/system/bin/su",
@@ -30,10 +30,8 @@ static bool n3_check_root() {
     return false;
 }
 
-// ── فحص منافذ Frida (الاختراق والهندسة العكسية) ─────────────────
+// Frida Port Check
 static bool n3_check_frida_port() {
-    // هذا يحتاج Java لفحص الاتصال الفعلي
-    // هنا نتحقق من وجود /proc/net/tcp مع منافذ أداة Frida
     FILE* f = fopen("/proc/net/tcp", "r");
     if (!f) return false;
     char line[256];
@@ -52,12 +50,10 @@ static bool n3_check_frida_port() {
 
 extern "C" {
 
-// يُعيد 1 "فقط" إذا تم اكتشاف Frida (أدوات اختراق)
-// أجهزة الـ TV Box التي تحتوي على Root ستعمل بشكل طبيعي الآن
+// Returns 1 ONLY if Frida is detected
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_nr(JNIEnv*, jobject) {
-    // تم إزالة n3_check_root() من شرط الحظر
     return (n3_check_frida_port()) ? 1 : 0;
 }
 
-} // extern "C"
+} 
