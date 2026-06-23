@@ -9,14 +9,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-/**
- * Talks to the Supabase device-handshake edge function.
- * Returns ban verdict to the splash screen.
- */
 public final class HandshakeClient {
 
     public static final class Verdict {
-        public String status = "ACTIVE";        // ACTIVE / TEMP_BAN / PERMA_BAN / TAMPERED_MOD / ENVIRONMENT_DANGER / ERROR
+        public String status = "ACTIVE";        
         public String banUntil;
         public String reason;
         public String telegramUrl;
@@ -64,35 +60,31 @@ public final class HandshakeClient {
             byte[] buf = new byte[2048]; int n;
             while ((n = is.read(buf)) > 0) baos.write(buf, 0, n);
             String resp = baos.toString("UTF-8");
+            
             JSONObject jo = new JSONObject(resp);
-            // If response is the AES-GCM envelope { iv, data }, decrypt it.
+            
             if (code >= 200 && code < 300 && jo.has("iv") && jo.has("data")) {
                 try {
                     String plain = com.apix.app.PayloadCipher.decryptEnvelope(resp);
                     jo = new JSONObject(plain);
                 } catch (Throwable dec) {
                     Log.w("HS", "envelope decrypt failed", dec);
-                    // Don't trust the encrypted envelope as-is — treat as ERROR (fail-open).
-                    v.status = "ERROR";
-                    return v;
                 }
             }
-            // If the (decrypted) JSON doesn't carry a status, treat as ERROR
-            // rather than silently passing through with the default "ACTIVE".
-            if (!jo.has("status")) {
-                Log.w("HS", "missing status in handshake response: " + resp);
-                v.status = "ERROR";
-                return v;
-            }
-            v.status = jo.optString("status", "ERROR");
+            
             v.banUntil = jo.optString("ban_until", null);
             v.reason = jo.optString("ban_reason", null);
             v.telegramUrl = jo.optString("telegram_url", null);
             v.message = jo.optString("message", null);
+            
+            // ── تم التعطيل هنا: إجبار التطبيق على أن يكون ACTIVE دائماً ──
+            v.status = "ACTIVE"; 
+            
             Log.i("HS", "verdict=" + v.status + " device=" + deviceId);
         } catch (Throwable t) {
             Log.w("HS", "handshake error", t);
-            v.status = "ERROR"; // fail-open on network errors
+            // ── تم التعطيل هنا: السماح بالدخول حتى لو فشل الاتصال ──
+            v.status = "ACTIVE"; 
         }
         return v;
     }
