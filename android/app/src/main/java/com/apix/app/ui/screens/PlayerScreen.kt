@@ -525,6 +525,7 @@ fun PlayerScreen(
                     cfg.headers?.cookie?.let { hdrs["Cookie"] = it }
                     cfg.headers?.origin?.let { hdrs["Origin"] = it }
                     cfg.customHeaders?.forEach { (k, v) -> hdrs[k] = v }
+                    hdrs["Connection"] = "close"
                     com.apix.app.LocalStreamServer.setHeaders(hdrs)
                     com.apix.app.LocalStreamServer.ensureStarted()
                     playUrl = com.apix.app.LocalStreamServer.wrap(streamUrl)
@@ -650,6 +651,9 @@ fun PlayerScreen(
             player.stop()
             player.clearMediaItems()
             player.release()
+            try {
+                com.apix.app.LocalStreamServer.setHeaders(HashMap())
+            } catch (e: Exception) {}
         }
     }
 
