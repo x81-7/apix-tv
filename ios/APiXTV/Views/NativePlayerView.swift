@@ -2,528 +2,594 @@ import SwiftUI
 import AVKit
 import Combine
 
-// MARK: - Player Coordinator
+// MARK: - Models
+struct PlayerServer: Identifiable {
+    let id = UUID()
+    let name: String
+    let url: String
+    let headers: [String: String]
+    let clearKey: String?
+}
+
+struct PlayerQuality: Identifiable {
+    let id = UUID()
+    let label: String
+    let bitrate: Double
+}
+
+struct PlayerAudioSource: Identifiable {
+    let id = UUID()
+    let name: String
+    let url: String
+}
+
+// MARK: - Coordinator
 @MainActor
 final class NativePlayerCoordinator: ObservableObject {
+
     let player = AVPlayer()
-    
-    @Published var isPlaying = false
+    private var timeObs: Any?
+    private var bag = Set<AnyCancellable>()
+
+    @Published var isPlaying  = false
     @Published var isBuffering = true
     @Published var currentTime: Double = 0
-    @Published var duration: Double = 0
+    @Published var duration:    Double = 0
     @Published var errorMessage: String?
     @Published var title = ""
-    
-    private var timeObserver: Any?
-    private var cancellables = Set<AnyCancellable>()
-    
+
+    @Published var servers:    [PlayerServer]  = []
+    @Published var currentSrv = 0
+    @Published var qualities:  [PlayerQuality] = [
+        PlayerQuality(label: "تلقائي",   bitrate: 0),
+        PlayerQuality(label: "4K",       bitrate: 20_000_000),
+        PlayerQuality(label: "1080p",    bitrate: 8_000_000),
+        PlayerQuality(label: "720p",     bitrate: 4_000_000),
+        PlayerQuality(label: "480p",     bitrate: 1_500_000),
+        PlayerQuality(label: "360p",     bitrate: 800_000)
+    ]
+    @Published var currentQuality = 0
+    @Published var audioSources: [PlayerAudioSource] = []
+
     init() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            // Removed 'options' completely to fix the Xcode compiler bug regarding Bluetooth flags
-            try session.setCategory(.playback, mode: .moviePlayback)
-            try session.setActive(true)
-        } catch {
-            print("AVAudioSession Setup Failed: \(error.localizedDescription)")
-        }
+        try? AVAudioSession.sharedInstance()
+            .setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
-    
+
     func setup(channel: Channel) {
-        self.title = channel.name
-        let primaryUrl = channel.playbackURL ?? ""
-        loadURL(primaryUrl, headers: channel.effectiveHeaders)
+        title = channel.name
+        var svrs: [PlayerServer] = []
+        if let primary = channel.playbackURL?.absoluteString {
+            svrs.append(PlayerServer(name: "سيرفر 1", url: primary,
+                                     headers: channel.effectiveHeaders,
+                                     clearKey: channel.clearKeyCombined))
+        }
+        if let backup = channel.backupURL?.absoluteString {
+            svrs.append(PlayerServer(name: "احتياطي", url: backup,
+                                     headers: channel.effectiveHeaders,
+                                     clearKey: channel.clearKeyCombined))
+        }
+        if let extras = channel.iosStream?.servers {
+            for (i, s) in extras.enumerated() {
+                if let u = s.url {
+                    svrs.append(PlayerServer(name: s.name ?? "سيرفر \(i+2)",
+                                             url: u, headers: [:], clearKey: nil))
+                }
+            }
+        }
+        if let extraAudio = channel.iosStream?.audioSources {
+            audioSources = extraAudio.compactMap {
+                guard let n = $0.name, let u = $0.url else { return nil }
+                return PlayerAudioSource(name: n, url: u)
+            }
+        }
+        servers = svrs
+        loadServer(0)
     }
 
     func setupFromApix(_ cfg: ApixResolvedConfig, fallbackTitle: String) {
-        self.title = cfg.title ?? fallbackTitle
-        loadURL(cfg.url, headers: cfg.headers)
-    }
-    
-    private func loadURL(_ urlString: String, headers: [String: String]) {
-        cleanupAll()
-        self.isBuffering = true
-        self.errorMessage = nil
-        
-        guard let url = URL(string: urlString) else {
-            self.errorMessage = "الرابط غير صالح"
-            return
+        title = cfg.title ?? fallbackTitle
+        var svrs: [PlayerServer] = [
+            PlayerServer(name: "سيرفر 1", url: cfg.url,
+                         headers: cfg.headers, clearKey: cfg.clearKey)
+        ]
+        if let bk = cfg.backupUrl {
+            svrs.append(PlayerServer(name: "احتياطي", url: bk,
+                                     headers: cfg.headers, clearKey: cfg.clearKey))
         }
-        
-        var options: [String: Any] = [:]
-        if !headers.isEmpty {
-            options["AVURLAssetHTTPHeaderFieldsKey"] = headers
-        }
-        
-        let asset = AVURLAsset(url: url, options: options.isEmpty ? nil : options)
-        let item = AVPlayerItem(asset: asset)
-        
-        self.player.replaceCurrentItem(with: item)
-        setupObservers(for: item)
-        self.player.play()
+        servers = svrs
+        loadServer(0)
     }
-    
-    private func setupObservers(for item: AVPlayerItem) {
-        item.publisher(for: \.status)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                guard let self = self else { return }
-                switch status {
+
+    func loadServer(_ idx: Int) {
+        guard servers.indices.contains(idx) else { return }
+        currentSrv = idx
+        let s = servers[idx]
+        load(url: s.url, headers: s.headers, clearKey: s.clearKey)
+    }
+
+    func setQuality(_ idx: Int) {
+        currentQuality = idx
+        player.currentItem?.preferredPeakBitRate = qualities[idx].bitrate
+    }
+
+    private func load(url: String, headers: [String: String], clearKey: String?) {
+        cleanAll()
+        errorMessage = nil; isBuffering = true; currentTime = 0; duration = 0
+        guard let u = URL(string: url) else { errorMessage = "رابط غير صالح"; return }
+        var opts: [String: Any] = [:]
+        if !headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = headers }
+        let item = AVPlayerItem(asset: AVURLAsset(url: u, options: opts.isEmpty ? nil : opts))
+        player.replaceCurrentItem(with: item)
+        observe(item)
+        player.play()
+    }
+
+    private func observe(_ item: AVPlayerItem) {
+        item.publisher(for: \.status).receive(on: RunLoop.main)
+            .sink { [weak self] s in
+                switch s {
                 case .readyToPlay:
-                    self.isBuffering = false
-                    self.duration = item.duration.seconds.isNaN ? 0 : item.duration.seconds
+                    self?.isBuffering = false
+                    let d = item.duration.seconds
+                    self?.duration = d.isNaN || d.isInfinite ? 0 : d
                 case .failed:
-                    self.errorMessage = item.error?.localizedDescription ?? "حدث خطأ أثناء التشغيل"
-                    self.isBuffering = false
-                default:
-                    break
+                    self?.errorMessage = item.error?.localizedDescription ?? "فشل التشغيل"
+                    self?.isBuffering  = false
+                default: break
                 }
-            }.store(in: &cancellables)
-        
-        NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.isBuffering = true
-            }
-            .store(in: &cancellables)
-        
-        self.player.publisher(for: \.timeControlStatus)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                guard let self = self else { return }
-                self.isPlaying = (status == .playing)
-                if status == .playing {
-                    self.isBuffering = false
-                }
-            }.store(in: &cancellables)
-        
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        self.timeObserver = self.player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self = self else { return }
-            Task { @MainActor in
-                if self.player.timeControlStatus == .playing {
-                    self.currentTime = time.seconds
-                }
+            }.store(in: &bag)
+
+        player.publisher(for: \.timeControlStatus).receive(on: RunLoop.main)
+            .sink { [weak self] s in
+                self?.isPlaying  = s == .playing
+                if s == .playing { self?.isBuffering = false }
+                if s == .waitingToPlayAtSpecifiedRate { self?.isBuffering = true }
+            }.store(in: &bag)
+
+        timeObs = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] t in
+            if self?.player.timeControlStatus == .playing {
+                self?.currentTime = t.seconds
             }
         }
     }
-    
+
     func togglePlay() {
-        if self.player.timeControlStatus == .playing {
-            self.player.pause()
-        } else {
-            self.player.play()
-        }
+        player.timeControlStatus == .playing ? player.pause() : player.play()
     }
-    
-    func seek(by seconds: Double) {
-        let targetTime = self.currentTime + seconds
-        let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        self.player.seek(to: target)
+
+    func seek(by secs: Double) {
+        let t = CMTime(seconds: currentTime + secs, preferredTimescale: 600)
+        player.seek(to: t)
     }
-    
+
     func seekTo(fraction: Double) {
-        guard self.duration > 0 else { return }
-        let targetTime = self.duration * fraction
-        let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        self.player.seek(to: target) { [weak self] _ in
-            Task { @MainActor in
-                self?.currentTime = targetTime
-            }
+        guard duration > 0 else { return }
+        let t = CMTime(seconds: duration * fraction, preferredTimescale: 600)
+        player.seek(to: t) { [weak self] _ in
+            self?.currentTime = (self?.duration ?? 0) * fraction
         }
     }
-    
-    func cleanupAll() {
-        if let observer = self.timeObserver {
-            self.player.removeTimeObserver(observer)
-            self.timeObserver = nil
-        }
-        self.cancellables.removeAll()
-        self.player.pause()
+
+    func cleanAll() {
+        if let o = timeObs { player.removeTimeObserver(o); timeObs = nil }
+        bag.removeAll(); player.pause()
+        player.replaceCurrentItem(with: nil)
     }
+
+    deinit { if let o = timeObs { player.removeTimeObserver(o) } }
 }
 
 // MARK: - Video Layer
 struct PlayerVideoLayer: UIViewRepresentable {
     let player: AVPlayer
-    let resizeMode: AVLayerVideoGravity
+    let gravity: AVLayerVideoGravity
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .black
-        let layer = AVPlayerLayer(player: player)
-        layer.videoGravity = resizeMode
-        view.layer.addSublayer(layer)
-        context.coordinator.layer = layer
-        return view
+        let v = UIView(); v.backgroundColor = .black
+        let l = AVPlayerLayer(player: player)
+        l.videoGravity = gravity
+        v.layer.addSublayer(l)
+        context.coordinator.layer = l
+        return v
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.layer?.frame = uiView.bounds
-        context.coordinator.layer?.videoGravity = resizeMode
+    func updateUIView(_ v: UIView, context: Context) {
+        context.coordinator.layer?.frame       = v.bounds
+        context.coordinator.layer?.videoGravity = gravity
     }
 
-    func makeCoordinator() -> Coordinator {
-        return Coordinator()
-    }
-    
-    class Coordinator {
-        var layer: AVPlayerLayer?
-    }
+    func makeCoordinator() -> C { C() }
+    class C { var layer: AVPlayerLayer? }
 }
 
-// MARK: - Main Player View
+// MARK: - NativePlayerView
 struct NativePlayerView: View {
     let channel: Channel
-    
+
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var coordinator = NativePlayerCoordinator()
-    
-    @State private var showControls = true
-    @State private var resizeMode: AVLayerVideoGravity = .resizeAspect
-    @State private var hideTimer: Timer?
-    @State private var isApixResolving = false
-    
+    @StateObject private var vm = NativePlayerCoordinator()
+
+    @State private var showCtrl  = true
+    @State private var gravity: AVLayerVideoGravity = .resizeAspect
+    @State private var timer: Timer?
+
+    @State private var showQuality = false
+    @State private var showServers = false
+    @State private var showAudio   = false
+    @State private var isResolving = false
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
-            PlayerVideoLayer(player: coordinator.player, resizeMode: resizeMode)
+
+            PlayerVideoLayer(player: vm.player, gravity: gravity)
                 .ignoresSafeArea()
-            
-            if coordinator.isBuffering && coordinator.errorMessage == nil && !isApixResolving {
+
+            // Buffering
+            if vm.isBuffering && vm.errorMessage == nil && !isResolving {
+                Circle().stroke(AppTheme.gold, lineWidth: 3)
+                    .frame(width: 52, height: 52)
+                    .rotationEffect(.degrees(vm.isBuffering ? 360 : 0))
+                    .animation(.linear(duration: 1).repeatForever(autoreverses: false),
+                               value: vm.isBuffering)
+                    .opacity(vm.isBuffering ? 1 : 0)
                 ProgressView()
                     .progressViewStyle(.circular)
-                    .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
-                    .scaleEffect(1.8)
+                    .tint(AppTheme.gold)
+                    .scaleEffect(1.6)
             }
-            
-            if let error = coordinator.errorMessage {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 50))
-                        .foregroundColor(.red)
-                    Text(error)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Text("رجوع")
-                            .padding(.horizontal, 30)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.2))
-                            .cornerRadius(8)
-                            .foregroundColor(.white)
-                    }
-                }
-                .background(Color.black.opacity(0.8))
-                .ignoresSafeArea()
-            }
-            
-            if isApixResolving {
-                Color.black.opacity(0.6).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
-                        .scaleEffect(1.4)
+
+            // Resolving apix
+            if isResolving {
+                Color.black.opacity(0.55).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView().tint(AppTheme.gold).scaleEffect(1.4)
                     Text("جاري تحميل الرابط...")
                         .foregroundStyle(.white)
+                        .font(.system(size: 14, weight: .medium))
                 }
             }
-            
-            if showControls && coordinator.errorMessage == nil && !isApixResolving {
-                controlsOverlay
+
+            // Error
+            if let err = vm.errorMessage {
+                Color.black.opacity(0.85).ignoresSafeArea()
+                VStack(spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 52)).foregroundStyle(.red)
+                    Text(err).foregroundStyle(.white)
+                        .multilineTextAlignment(.center).padding(.horizontal, 32)
+                    Button("رجوع") { dismiss() }
+                        .padding(.horizontal, 32).padding(.vertical, 12)
+                        .background(AppTheme.gold).foregroundStyle(.black)
+                        .fontWeight(.bold)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+
+            // Controls
+            if showCtrl && vm.errorMessage == nil && !isResolving {
+                controlsLayer
+                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
             }
         }
-        .onTapGesture {
-            toggleControls()
-        }
+        .contentShape(Rectangle())
+        .onTapGesture { toggleCtrl() }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear {
-            forceLandscape()
-            startTimer()
-        }
-        .task {
-            let pUrl = channel.playbackURL ?? ""
-            if ApixStreamResolverIOS.isApixStream(pUrl) {
-                isApixResolving = true
-                if let cfg = await ApixStreamResolverIOS.resolve(pUrl) {
-                    coordinator.setupFromApix(cfg, fallbackTitle: channel.name)
-                } else {
-                    coordinator.setup(channel: channel)
-                }
-                isApixResolving = false
-            } else {
-                coordinator.setup(channel: channel)
-            }
-        }
-        .onDisappear {
-            forcePortrait()
-            coordinator.cleanupAll()
-            hideTimer?.invalidate()
-        }
+        .onAppear { forceLandscape(); resetTimer() }
+        .onDisappear { forcePortrait(); vm.cleanAll(); timer?.invalidate() }
+        .task { await resolveAndPlay() }
+        .sheet(isPresented: $showQuality) { qualitySheet }
+        .sheet(isPresented: $showServers)  { serverSheet  }
+        .sheet(isPresented: $showAudio)    { audioSheet   }
     }
-    
-    private var controlsOverlay: some View {
+
+    // ── Controls Layer ─────────────────────────────────────────────────
+    private var controlsLayer: some View {
         ZStack {
+            // الخلفية
             VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 100)
+                LinearGradient(colors: [.black.opacity(0.75), .clear],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: 110)
                 Spacer()
-                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 130)
+                LinearGradient(colors: [.clear, .black.opacity(0.85)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: 140)
             }
             .ignoresSafeArea()
-            
-            VStack {
+
+            VStack(spacing: 0) {
+                // Top bar
                 HStack {
-                    PlayerIconButton(type: .back, size: 36) {
-                        dismiss()
+                    CircleIconBtn(icon: "chevron.left", size: 36) {
+                        vm.player.pause(); dismiss()
                     }
                     Spacer()
-                    Text(coordinator.title)
+                    Text(vm.title)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Spacer().frame(width: 36)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+
                 Spacer()
-                
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        Text(formatTime(coordinator.currentTime))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
-                        
-                        PlayerProgressSlider(
-                            value: coordinator.duration > 0 ? coordinator.currentTime / coordinator.duration : 0,
-                            onScrubbing: { fraction in
-                                startTimer()
-                                coordinator.seekTo(fraction: fraction)
-                            }
-                        )
-                        .frame(height: 16)
-                        
-                        Text(formatTime(coordinator.duration))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
+
+                // Center controls — مطابق للأندرويد
+                HStack(spacing: 52) {
+                    CircleIconBtn(icon: "gobackward.10", size: 42) {
+                        vm.seek(by: -10); resetTimer()
                     }
-                    
-                    Spacer().frame(height: 4)
-                    
-                    HStack {
-                        HStack(spacing: 24) {
-                            PlayerIconButton(type: .rewind, size: 38) {
-                                coordinator.seek(by: -10)
-                                startTimer()
-                            }
-                            PlayerIconButton(type: coordinator.isPlaying ? .pause : .play, size: 44, isLarge: true) {
-                                coordinator.togglePlay()
-                                startTimer()
-                            }
-                            PlayerIconButton(type: .forward, size: 38) {
-                                coordinator.seek(by: 10)
-                                startTimer()
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 20) {
-                            PlayerIconButton(type: .resize, size: 32) {
-                                resizeMode = (resizeMode == .resizeAspect) ? .resizeAspectFill : .resizeAspect
-                                startTimer()
-                            }
-                        }
+                    CircleIconBtn(icon: vm.isPlaying ? "pause.fill" : "play.fill",
+                                  size: 52, large: true) {
+                        vm.togglePlay(); resetTimer()
+                    }
+                    CircleIconBtn(icon: "goforward.10", size: 42) {
+                        vm.seek(by: 10); resetTimer()
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+
+                Spacer()
+
+                // Bottom area
+                VStack(spacing: 6) {
+                    // Slider + times
+                    HStack(spacing: 10) {
+                        Text(fmtTime(vm.currentTime))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white)
+                        IOSProgressSlider(
+                            value: vm.duration > 0 ? vm.currentTime / vm.duration : 0
+                        ) { vm.seekTo(fraction: $0); resetTimer() }
+                        Text(fmtTime(vm.duration))
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 20)
+
+                    // Bottom buttons row
+                    HStack {
+                        Spacer()
+
+                        if !vm.audioSources.isEmpty {
+                            SmallIconBtn(icon: "music.note") { showAudio = true }
+                        }
+                        if vm.servers.count > 1 {
+                            SmallIconBtn(icon: "server.rack") { showServers = true }
+                        }
+                        SmallIconBtn(icon: "slider.horizontal.3") { showQuality = true }
+                        SmallIconBtn(
+                            icon: gravity == .resizeAspect
+                                ? "arrow.up.left.and.arrow.down.right"
+                                : "arrow.down.right.and.arrow.up.left"
+                        ) {
+                            gravity = gravity == .resizeAspect
+                                ? .resizeAspectFill : .resizeAspect
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 18)
+                }
             }
         }
-        .transition(.opacity)
     }
-    
-    private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showControls.toggle()
-        }
-        if showControls {
-            startTimer()
-        }
-    }
-    
-    private func startTimer() {
-        hideTimer?.invalidate()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                self.showControls = false
+
+    // ── Sheets ──────────────────────────────────────────────────────────
+    private var qualitySheet: some View {
+        IOSPlayerSheet(title: "الجودة") {
+            ForEach(Array(vm.qualities.enumerated()), id: \.offset) { i, q in
+                IOSSheetRow(title: q.label, selected: i == vm.currentQuality) {
+                    vm.setQuality(i); showQuality = false
+                }
             }
         }
     }
-    
-    private func formatTime(_ seconds: Double) -> String {
-        guard seconds.isFinite && seconds > 0 else { return "00:00" }
-        let h = Int(seconds) / 3600
-        let m = (Int(seconds) % 3600) / 60
-        let s = Int(seconds) % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
+
+    private var serverSheet: some View {
+        IOSPlayerSheet(title: "السيرفرات") {
+            ForEach(Array(vm.servers.enumerated()), id: \.offset) { i, s in
+                IOSSheetRow(title: s.name, selected: i == vm.currentSrv) {
+                    vm.loadServer(i); showServers = false
+                }
+            }
+        }
+    }
+
+    private var audioSheet: some View {
+        IOSPlayerSheet(title: "مصادر الصوت") {
+            ForEach(vm.audioSources) { src in
+                IOSSheetRow(title: src.name, selected: false) {
+                    vm.load(url: src.url, headers: [:], clearKey: nil)
+                    showAudio = false
+                }
+            }
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    private func resolveAndPlay() async {
+        let urlStr = channel.playbackURL?.absoluteString ?? ""
+        if ApixStreamResolverIOS.isApixStream(urlStr) {
+            isResolving = true
+            if let cfg = await ApixStreamResolverIOS.resolve(urlStr) {
+                vm.setupFromApix(cfg, fallbackTitle: channel.name)
+            } else {
+                vm.setup(channel: channel)
+            }
+            isResolving = false
         } else {
-            return String(format: "%02d:%02d", m, s)
+            vm.setup(channel: channel)
         }
     }
-    
+
+    private func toggleCtrl() {
+        withAnimation { showCtrl.toggle() }
+        if showCtrl { resetTimer() }
+    }
+
+    private func resetTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in
+            withAnimation { showCtrl = false }
+        }
+    }
+
+    private func fmtTime(_ s: Double) -> String {
+        guard s.isFinite && s > 0 else { return "00:00" }
+        let h = Int(s)/3600, m = (Int(s)%3600)/60, sec = Int(s)%60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, sec)
+            : String(format: "%02d:%02d", m, sec)
+    }
+
     private func forceLandscape() {
-        if #available(iOS 16.0, *) {
-            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+        if #available(iOS 16, *) {
+            guard let sc = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+            sc.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
         }
     }
-    
+
     private func forcePortrait() {
-        if #available(iOS 16.0, *) {
-            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+        if #available(iOS 16, *) {
+            guard let sc = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+            sc.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
         }
     }
 }
 
-// MARK: - Custom Slider
-struct PlayerProgressSlider: View {
-    let value: Double
-    let onScrubbing: (Double) -> Void
-    @State private var dragValue: Double? = nil
-    
-    var body: some View {
-        GeometryReader { geo in
-            let displayValue = dragValue ?? value
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.25))
-                    .frame(height: 4)
-                Capsule()
-                    .fill(Color(red: 229/255, green: 9/255, blue: 20/255))
-                    .frame(width: max(0, geo.size.width * CGFloat(displayValue)), height: 4)
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 14, height: 14)
-                    .offset(x: max(0, min(geo.size.width - 14, (geo.size.width * CGFloat(displayValue)) - 7)))
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        let fraction = min(max(0, v.location.x / geo.size.width), 1)
-                        self.dragValue = fraction
-                    }
-                    .onEnded { v in
-                        let fraction = min(max(0, v.location.x / geo.size.width), 1)
-                        self.onScrubbing(fraction)
-                        self.dragValue = nil
-                    }
-            )
-        }
-    }
-}
+// MARK: - Sub-views (مطابقة لتصميم الأندرويد)
 
-// MARK: - Custom Icons
-enum PlayerIconType {
-    case play
-    case pause
-    case forward
-    case rewind
-    case back
-    case resize
-}
-
-struct PlayerIconButton: View {
-    let type: PlayerIconType
+struct CircleIconBtn: View {
+    let icon: String
     var size: CGFloat = 44
-    var isLarge: Bool = false
+    var large = false
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white, lineWidth: isLarge ? 2 : 1.5)
-                    .background(Circle().fill(Color.black.opacity(0.1)))
-                    .frame(width: size, height: size)
-                
-                PlayerIconPath(type: type)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    .frame(width: 24, height: 24)
-            }
-            .contentShape(Circle())
+            Image(systemName: icon)
+                .font(.system(size: size * (large ? 0.55 : 0.5), weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: size, height: size)
+                .background(Circle().fill(.white.opacity(0.12)))
+                .overlay(Circle().stroke(.white.opacity(large ? 0.4 : 0.2), lineWidth: large ? 2 : 1))
         }
+        .buttonStyle(.plain)
     }
 }
 
-struct PlayerIconPath: Shape {
-    let type: PlayerIconType
-    
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let scaleX = rect.width / 24
-        let scaleY = rect.height / 24
-        
-        switch type {
-        case .play:
-            p.move(to: CGPoint(x: 9 * scaleX, y: 6 * scaleY))
-            p.addLine(to: CGPoint(x: 9 * scaleX, y: 18 * scaleY))
-            p.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY))
-            p.closeSubpath()
-            
-        case .pause:
-            p.move(to: CGPoint(x: 8 * scaleX, y: 6 * scaleY))
-            p.addLine(to: CGPoint(x: 8 * scaleX, y: 18 * scaleY))
-            p.move(to: CGPoint(x: 16 * scaleX, y: 6 * scaleY))
-            p.addLine(to: CGPoint(x: 16 * scaleX, y: 18 * scaleY))
-            
-        case .forward:
-            p.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            p.addLine(to: CGPoint(x: 14 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-            p.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            p.addLine(to: CGPoint(x: 20 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-            
-        case .rewind:
-            p.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            p.addLine(to: CGPoint(x: 10 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-            p.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            p.addLine(to: CGPoint(x: 4 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-            
-        case .back:
-            p.move(to: CGPoint(x: 19 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
-            p.move(to: CGPoint(x: 12 * scaleX, y: 19 * scaleY))
-            p.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
-            p.addLine(to: CGPoint(x: 12 * scaleX, y: 5 * scaleY))
-            
-        case .resize:
-            p.move(to: CGPoint(x: 15 * scaleX, y: 3 * scaleY))
-            p.addLine(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
-            p.addLine(to: CGPoint(x: 21 * scaleX, y: 9 * scaleY))
-            p.move(to: CGPoint(x: 9 * scaleX, y: 21 * scaleY))
-            p.addLine(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
-            p.addLine(to: CGPoint(x: 3 * scaleX, y: 15 * scaleY))
-            p.move(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
-            p.addLine(to: CGPoint(x: 14 * scaleX, y: 10 * scaleY))
-            p.move(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
-            p.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
+struct SmallIconBtn: View {
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
         }
-        return p
+        .buttonStyle(.plain)
+    }
+}
+
+struct IOSProgressSlider: View {
+    let value: Double
+    let onEnd: (Double) -> Void
+    @State private var drag: Double? = nil
+
+    var body: some View {
+        GeometryReader { g in
+            let v = drag ?? value
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.25)).frame(height: 4)
+                Capsule().fill(AppTheme.gold)
+                    .frame(width: g.size.width * v, height: 4)
+                Circle().fill(.white)
+                    .frame(width: 14, height: 14)
+                    .offset(x: g.size.width * v - 7)
+            }
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { d in drag = min(max(d.location.x / g.size.width, 0), 1) }
+                .onEnded   { d in
+                    let f = min(max(d.location.x / g.size.width, 0), 1)
+                    onEnd(f); drag = nil
+                }
+            )
+        }
+        .frame(height: 20)
+    }
+}
+
+struct IOSPlayerSheet<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List { content }
+                .listStyle(.plain).background(AppTheme.background)
+                .scrollContentBackground(.hidden)
+                .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("إغلاق") { dismiss() }.foregroundStyle(AppTheme.gold)
+                    }
+                }
+        }
+        .presentationDetents([.medium])
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct IOSSheetRow: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .foregroundStyle(selected ? AppTheme.gold : .white)
+                    .fontWeight(selected ? .bold : .regular)
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(AppTheme.gold)
+                }
+            }
+            .padding(.vertical, 4).contentShape(Rectangle())
+        }
+        .listRowBackground(AppTheme.surface)
+    }
+}
+
+// make load() accessible
+extension NativePlayerCoordinator {
+    func load(url: String, headers: [String: String], clearKey: String?) {
+        cleanAll()
+        errorMessage = nil; isBuffering = true; currentTime = 0; duration = 0
+        guard let u = URL(string: url) else { errorMessage = "رابط غير صالح"; return }
+        var opts: [String: Any] = [:]
+        if !headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = headers }
+        let item = AVPlayerItem(asset: AVURLAsset(url: u, options: opts.isEmpty ? nil : opts))
+        player.replaceCurrentItem(with: item)
+        observe(item)
+        player.play()
     }
 }
