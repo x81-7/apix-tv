@@ -23,6 +23,16 @@ struct PlayerAudioSource: Identifiable {
     let url: String
 }
 
+// MARK: - Icons Enum
+enum PlayerIconType {
+    case play
+    case pause
+    case forward
+    case rewind
+    case back
+    case resize
+}
+
 // MARK: - Coordinator
 @MainActor
 final class NativePlayerCoordinator: ObservableObject {
@@ -66,12 +76,12 @@ final class NativePlayerCoordinator: ObservableObject {
         self.title = channel.name
         var newServers: [PlayerServer] = []
         
-        let primaryUrlString = channel.playbackURL ?? ""
+        let primaryUrlString = channel.playbackURL?.absoluteString ?? ""
         if !primaryUrlString.isEmpty {
             newServers.append(PlayerServer(name: "Server 1", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
-        if let backupUrlString = channel.backupURL, !backupUrlString.isEmpty {
+        if let backupUrlString = channel.backupURL?.absoluteString, !backupUrlString.isEmpty {
             newServers.append(PlayerServer(name: "Backup", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
@@ -492,7 +502,7 @@ struct NativePlayerView: View {
     }
     
     private func resolveAndPlay() async {
-        let urlString = channel.playbackURL ?? ""
+        let urlString = channel.playbackURL?.absoluteString ?? ""
         if ApixStreamResolverIOS.isApixStream(urlString) {
             self.isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
