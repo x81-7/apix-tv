@@ -76,7 +76,7 @@ final class NativePlayerCoordinator: ObservableObject {
         self.title = channel.name
         var newServers: [PlayerServer] = []
         
-        let primaryUrlString = channel.playbackURL?.absoluteString ?? ""
+        let primaryUrlString = channel.playbackURL ?? ""
         if !primaryUrlString.isEmpty {
             newServers.append(PlayerServer(name: "Server 1", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
@@ -502,7 +502,7 @@ struct NativePlayerView: View {
     }
     
     private func resolveAndPlay() async {
-        let urlString = channel.playbackURL?.absoluteString ?? ""
+        let urlString = channel.playbackURL ?? ""
         if ApixStreamResolverIOS.isApixStream(urlString) {
             self.isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
