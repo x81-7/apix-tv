@@ -25,12 +25,7 @@ struct PlayerAudioSource: Identifiable {
 
 // MARK: - Icons Enum
 enum PlayerIconType {
-    case play
-    case pause
-    case forward
-    case rewind
-    case back
-    case resize
+    case play, pause, forward, rewind, back, resize, settings
 }
 
 // MARK: - Coordinator
@@ -48,13 +43,13 @@ final class NativePlayerCoordinator: ObservableObject {
     @Published var servers: [PlayerServer] = []
     @Published var currentServerIndex = 0
     
+    // تم تحويل الجودات إلى سرعات اتصال (محدِّدات باندويث) لأن AVPlayer لا يكشف الـ Resolutions
     @Published var qualities: [PlayerQuality] = [
-        PlayerQuality(label: "Auto", bitrate: 0),
-        PlayerQuality(label: "4K", bitrate: 20_000_000),
-        PlayerQuality(label: "1080p", bitrate: 8_000_000),
-        PlayerQuality(label: "720p", bitrate: 4_000_000),
-        PlayerQuality(label: "480p", bitrate: 1_500_000),
-        PlayerQuality(label: "360p", bitrate: 800_000)
+        PlayerQuality(label: "تلقائي", bitrate: 0),
+        PlayerQuality(label: "عالي جداً", bitrate: 10_000_000),
+        PlayerQuality(label: "عالي", bitrate: 5_000_000),
+        PlayerQuality(label: "متوسط", bitrate: 2_000_000),
+        PlayerQuality(label: "ضعيف", bitrate: 800_000)
     ]
     @Published var currentQualityIndex = 0
     @Published var audioSources: [PlayerAudioSource] = []
@@ -73,16 +68,16 @@ final class NativePlayerCoordinator: ObservableObject {
     }
     
     func setup(channel: Channel) {
-        self.title = channel.name
+        self.title = channel.name // استخدام اسم القناة دائماً
         var newServers: [PlayerServer] = []
         
-        let primaryUrlString = channel.playbackURL ?? ""
+        let primaryUrlString = channel.playbackURL?.absoluteString ?? ""
         if !primaryUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "Server 1", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+            newServers.append(PlayerServer(name: "السيرفر الأساسي", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
         if let backupUrlString = channel.backupURL?.absoluteString, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "Backup", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+            newServers.append(PlayerServer(name: "السيرفر البديل", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
         self.servers = newServers
@@ -91,7 +86,7 @@ final class NativePlayerCoordinator: ObservableObject {
         if !self.servers.isEmpty {
             self.loadServer(index: 0)
         } else {
-            self.errorMessage = "No valid URLs found"
+            self.errorMessage = "لا توجد روابط صالحة للتشغيل"
             self.isBuffering = false
         }
     }
@@ -99,11 +94,11 @@ final class NativePlayerCoordinator: ObservableObject {
     func setupFromApix(_ config: ApixResolvedConfig, fallbackTitle: String) {
         self.title = config.title ?? fallbackTitle
         var newServers: [PlayerServer] = [
-            PlayerServer(name: "Server 1", url: config.url, headers: config.headers, clearKey: config.clearKey)
+            PlayerServer(name: "السيرفر الأساسي", url: config.url, headers: config.headers, clearKey: config.clearKey)
         ]
         
         if let backupUrlString = config.backupUrl, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "Backup", url: backupUrlString, headers: config.headers, clearKey: config.clearKey))
+            newServers.append(PlayerServer(name: "السيرفر البديل", url: backupUrlString, headers: config.headers, clearKey: config.clearKey))
         }
         
         self.servers = newServers
@@ -131,7 +126,7 @@ final class NativePlayerCoordinator: ObservableObject {
         self.duration = 0
         
         guard let validUrl = URL(string: url) else {
-            self.errorMessage = "Invalid stream URL"
+            self.errorMessage = "الرابط غير صالح"
             return
         }
         
@@ -159,10 +154,9 @@ final class NativePlayerCoordinator: ObservableObject {
                     let itemDuration = item.duration.seconds
                     self.duration = itemDuration.isNaN || itemDuration.isInfinite ? 0 : itemDuration
                 case .failed:
-                    self.errorMessage = item.error?.localizedDescription ?? "Playback failed"
+                    self.errorMessage = item.error?.localizedDescription ?? "حدث خطأ أثناء التشغيل"
                     self.isBuffering = false
-                default:
-                    break
+                default: break
                 }
             }.store(in: &cancellables)
         
@@ -177,6 +171,12 @@ final class NativePlayerCoordinator: ObservableObject {
                 if status == .waitingToPlayAtSpecifiedRate {
                     self.isBuffering = true
                 }
+            }.store(in: &cancellables)
+        
+        NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.isBuffering = true
             }.store(in: &cancellables)
         
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
@@ -227,40 +227,34 @@ final class NativePlayerCoordinator: ObservableObject {
         self.player.pause()
         self.player.replaceCurrentItem(with: nil)
     }
-    
-    deinit {
-        if let observer = self.timeObserver {
-            self.player.removeTimeObserver(observer)
-        }
+}
+
+// MARK: - Video Layer (الحل الجذري لمشكلة الشاشة السوداء)
+// استخدام UIView مخصص يمتلك AVPlayerLayer كطبقة أساسية يضمن تحديث الأبعاد دائماً
+class PlayerUIView: UIView {
+    var playerLayer: AVPlayerLayer {
+        return layer as! AVPlayerLayer
+    }
+    override class var layerClass: AnyClass {
+        return AVPlayerLayer.self
     }
 }
 
-// MARK: - Video Layer
 struct PlayerVideoLayer: UIViewRepresentable {
     let player: AVPlayer
     let gravity: AVLayerVideoGravity
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> PlayerUIView {
+        let view = PlayerUIView()
         view.backgroundColor = .black
-        let layer = AVPlayerLayer(player: player)
-        layer.videoGravity = gravity
-        view.layer.addSublayer(layer)
-        context.coordinator.layer = layer
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = gravity
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.layer?.frame = uiView.bounds
-        context.coordinator.layer?.videoGravity = gravity
-    }
-
-    func makeCoordinator() -> Coordinator {
-        return Coordinator()
-    }
-    
-    class Coordinator {
-        var layer: AVPlayerLayer?
+    func updateUIView(_ uiView: PlayerUIView, context: Context) {
+        uiView.playerLayer.player = player
+        uiView.playerLayer.videoGravity = gravity
     }
 }
 
@@ -276,9 +270,8 @@ struct NativePlayerView: View {
     @State private var hideTimer: Timer?
     @State private var isResolving: Bool = false
     
-    @State private var showQualitySheet: Bool = false
+    @State private var showSettingsSheet: Bool = false
     @State private var showServerSheet: Bool = false
-    @State private var showAudioSheet: Bool = false
     
     var body: some View {
         ZStack {
@@ -287,18 +280,12 @@ struct NativePlayerView: View {
             PlayerVideoLayer(player: viewModel.player, gravity: videoGravity)
                 .ignoresSafeArea()
             
+            // مؤشر التحميل المركزي (مطابق لطلبك)
             if viewModel.isBuffering && viewModel.errorMessage == nil && !isResolving {
-                Circle()
-                    .stroke(Color(red: 229/255, green: 9/255, blue: 20/255), lineWidth: 3)
-                    .frame(width: 52, height: 52)
-                    .rotationEffect(.degrees(viewModel.isBuffering ? 360 : 0))
-                    .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: viewModel.isBuffering)
-                    .opacity(viewModel.isBuffering ? 1 : 0)
-                
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
-                    .scaleEffect(1.6)
+                    .scaleEffect(1.8)
             }
             
             if isResolving {
@@ -307,7 +294,7 @@ struct NativePlayerView: View {
                     ProgressView()
                         .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
                         .scaleEffect(1.4)
-                    Text("Loading Stream...")
+                    Text("جاري استخراج الرابط...")
                         .foregroundStyle(.white)
                         .font(.system(size: 14, weight: .medium))
                 }
@@ -326,7 +313,7 @@ struct NativePlayerView: View {
                     Button(action: {
                         dismiss()
                     }) {
-                        Text("Close")
+                        Text("إغلاق")
                             .padding(.horizontal, 30)
                             .padding(.vertical, 12)
                             .background(Color(red: 229/255, green: 9/255, blue: 20/255))
@@ -360,69 +347,51 @@ struct NativePlayerView: View {
         .task {
             await self.resolveAndPlay()
         }
-        .sheet(isPresented: $showQualitySheet) {
+        .sheet(isPresented: $showSettingsSheet) {
             qualitySheetContent
         }
         .sheet(isPresented: $showServerSheet) {
             serverSheetContent
         }
-        .sheet(isPresented: $showAudioSheet) {
-            audioSheetContent
-        }
     }
     
+    // MARK: - تصميم الواجهة المطابق لصورة (235304.jpg)
     private var controlsLayer: some View {
         ZStack {
+            // التظليل الأسود التدريجي
             VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(0.75), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 110)
+                LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 100)
                 Spacer()
-                LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 140)
+                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 120)
             }
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
+                // الشريط العلوي: زر الرجوع يساراً، اسم القناة يميناً
                 HStack {
-                    CircleIconButton(iconType: .back, size: 36) {
+                    PlayerIconButton(type: .back, size: 32) {
                         self.viewModel.player.pause()
                         self.dismiss()
                     }
                     Spacer()
-                    Text(viewModel.title)
-                        .font(.system(size: 16, weight: .bold))
+                    Text(channel.name) // استخدام اسم القناة وليس السيرفر
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer()
-                    Spacer().frame(width: 36)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 14)
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
                 
                 Spacer()
                 
-                HStack(spacing: 52) {
-                    CircleIconButton(iconType: .rewind, size: 42) {
-                        self.viewModel.seek(by: -10)
-                        self.resetTimer()
-                    }
-                    CircleIconButton(iconType: viewModel.isPlaying ? .pause : .play, size: 52, isLarge: true) {
-                        self.viewModel.togglePlay()
-                        self.resetTimer()
-                    }
-                    CircleIconButton(iconType: .forward, size: 42) {
-                        self.viewModel.seek(by: 10)
-                        self.resetTimer()
-                    }
-                }
-                
-                Spacer()
-                
-                VStack(spacing: 6) {
-                    HStack(spacing: 10) {
+                // المنطقة السفلية
+                VStack(spacing: 12) {
+                    // الصف الأول: الأوقات وشريط التقدم
+                    HStack(spacing: 12) {
                         Text(formatTime(viewModel.currentTime))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
                             .foregroundColor(.white)
                         
                         let progressValue = viewModel.duration > 0 ? (viewModel.currentTime / viewModel.duration) : 0
@@ -430,79 +399,88 @@ struct NativePlayerView: View {
                             self.viewModel.seekTo(fraction: fraction)
                             self.resetTimer()
                         }
+                        .frame(height: 16)
                         
                         Text(formatTime(viewModel.duration))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     
+                    // الصف الثاني: أزرار التحكم يساراً، والإعدادات يميناً
                     HStack {
+                        // أزرار التحكم (يسار)
+                        HStack(spacing: 24) {
+                            PlayerIconButton(type: .rewind, size: 28) {
+                                self.viewModel.seek(by: -10)
+                                self.resetTimer()
+                            }
+                            PlayerIconButton(type: viewModel.isPlaying ? .pause : .play, size: 28) {
+                                self.viewModel.togglePlay()
+                                self.resetTimer()
+                            }
+                            PlayerIconButton(type: .forward, size: 28) {
+                                self.viewModel.seek(by: 10)
+                                self.resetTimer()
+                            }
+                        }
+                        
                         Spacer()
                         
-                        if !viewModel.audioSources.isEmpty {
-                            SmallIconBtn(systemName: "music.note") {
-                                self.showAudioSheet = true
+                        // أزرار الإعدادات (يمين)
+                        HStack(spacing: 24) {
+                            if viewModel.servers.count > 1 {
+                                SmallIconBtn(systemName: "server.rack") {
+                                    self.showServerSheet = true
+                                    self.hideTimer?.invalidate()
+                                }
                             }
-                        }
-                        
-                        if viewModel.servers.count > 1 {
-                            SmallIconBtn(systemName: "server.rack") {
-                                self.showServerSheet = true
+                            
+                            PlayerIconButton(type: .settings, size: 28) {
+                                self.showSettingsSheet = true
+                                self.hideTimer?.invalidate()
                             }
-                        }
-                        
-                        SmallIconBtn(systemName: "slider.horizontal.3") {
-                            self.showQualitySheet = true
-                        }
-                        
-                        let isAspect = videoGravity == .resizeAspect
-                        SmallIconBtn(systemName: isAspect ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") {
-                            self.videoGravity = isAspect ? .resizeAspectFill : .resizeAspect
+                            
+                            PlayerIconButton(type: .resize, size: 28) {
+                                let isAspect = videoGravity == .resizeAspect
+                                self.videoGravity = isAspect ? .resizeAspectFill : .resizeAspect
+                                self.resetTimer()
+                            }
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 18)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
             }
         }
     }
     
     private var qualitySheetContent: some View {
-        IOSPlayerSheet(title: "Quality") {
+        IOSPlayerSheet(title: "الجودة") {
             ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, quality in
                 IOSSheetRow(title: quality.label, isSelected: index == viewModel.currentQualityIndex) {
                     self.viewModel.setQuality(index: index)
-                    self.showQualitySheet = false
+                    self.showSettingsSheet = false
+                    self.resetTimer()
                 }
             }
         }
     }
 
     private var serverSheetContent: some View {
-        IOSPlayerSheet(title: "Servers") {
+        IOSPlayerSheet(title: "السيرفرات") {
             ForEach(Array(viewModel.servers.enumerated()), id: \.offset) { index, server in
                 IOSSheetRow(title: server.name, isSelected: index == viewModel.currentServerIndex) {
                     self.viewModel.loadServer(index: index)
                     self.showServerSheet = false
-                }
-            }
-        }
-    }
-
-    private var audioSheetContent: some View {
-        IOSPlayerSheet(title: "Audio Sources") {
-            ForEach(viewModel.audioSources) { source in
-                IOSSheetRow(title: source.name, isSelected: false) {
-                    self.viewModel.load(url: source.url, headers: [:], clearKey: nil)
-                    self.showAudioSheet = false
+                    self.resetTimer()
                 }
             }
         }
     }
     
     private func resolveAndPlay() async {
-        let urlString = channel.playbackURL ?? ""
+        let urlString = channel.playbackURL?.absoluteString ?? ""
         if ApixStreamResolverIOS.isApixStream(urlString) {
             self.isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
@@ -566,25 +544,17 @@ struct NativePlayerView: View {
 }
 
 // MARK: - UI Components
-struct CircleIconButton: View {
-    let iconType: PlayerIconType
-    var size: CGFloat = 44
-    var isLarge: Bool = false
+struct PlayerIconButton: View {
+    let type: PlayerIconType
+    var size: CGFloat = 28
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(isLarge ? 0.4 : 0.2), lineWidth: isLarge ? 2 : 1)
-                    .background(Circle().fill(Color.white.opacity(0.12)))
-                    .frame(width: size, height: size)
-                
-                PlayerIconPath(type: iconType)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: isLarge ? 2 : 1.5, lineCap: .round, lineJoin: .round))
-                    .frame(width: size * (isLarge ? 0.55 : 0.5), height: size * (isLarge ? 0.55 : 0.5))
-            }
-            .contentShape(Circle())
+            PlayerIconPath(type: type)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -597,9 +567,9 @@ struct SmallIconBtn: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 19, weight: .semibold))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundColor(.white)
-                .frame(width: 36, height: 36)
+                .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
     }
@@ -619,11 +589,11 @@ struct IOSProgressSlider: View {
             
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.25))
-                    .frame(height: 4)
+                    .fill(Color.white.opacity(0.3))
+                    .frame(height: 3)
                 Capsule()
                     .fill(Color(red: 229/255, green: 9/255, blue: 20/255))
-                    .frame(width: sliderWidth, height: 4)
+                    .frame(width: sliderWidth, height: 3)
                 Circle()
                     .fill(Color.white)
                     .frame(width: 14, height: 14)
@@ -643,7 +613,6 @@ struct IOSProgressSlider: View {
                     }
             )
         }
-        .frame(height: 20)
     }
 }
 
@@ -664,7 +633,7 @@ struct IOSPlayerSheet<Content: View>: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") {
+                    Button("إغلاق") {
                         dismiss()
                     }
                     .foregroundColor(Color(red: 229/255, green: 9/255, blue: 20/255))
@@ -693,14 +662,14 @@ struct IOSSheetRow: View {
                         .foregroundColor(Color(red: 229/255, green: 9/255, blue: 20/255))
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .listRowBackground(Color(red: 26/255, green: 26/255, blue: 26/255))
     }
 }
 
-// MARK: - Paths
+// MARK: - Paths (رسم الأيقونات بدقة لتطابق تصميم 235304.jpg)
 struct PlayerIconPath: Shape {
     let type: PlayerIconType
     
@@ -711,29 +680,29 @@ struct PlayerIconPath: Shape {
         
         switch type {
         case .play:
-            path.move(to: CGPoint(x: 9 * scaleX, y: 6 * scaleY))
-            path.addLine(to: CGPoint(x: 9 * scaleX, y: 18 * scaleY))
-            path.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY))
+            path.move(to: CGPoint(x: 8 * scaleX, y: 5 * scaleY))
+            path.addLine(to: CGPoint(x: 8 * scaleX, y: 19 * scaleY))
+            path.addLine(to: CGPoint(x: 19 * scaleX, y: 12 * scaleY))
             path.closeSubpath()
         case .pause:
-            path.move(to: CGPoint(x: 8 * scaleX, y: 6 * scaleY))
-            path.addLine(to: CGPoint(x: 8 * scaleX, y: 18 * scaleY))
-            path.move(to: CGPoint(x: 16 * scaleX, y: 6 * scaleY))
-            path.addLine(to: CGPoint(x: 16 * scaleX, y: 18 * scaleY))
+            path.move(to: CGPoint(x: 8 * scaleX, y: 5 * scaleY))
+            path.addLine(to: CGPoint(x: 8 * scaleX, y: 19 * scaleY))
+            path.move(to: CGPoint(x: 16 * scaleX, y: 5 * scaleY))
+            path.addLine(to: CGPoint(x: 16 * scaleX, y: 19 * scaleY))
         case .forward:
-            path.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 14 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-            path.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 20 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
+            path.move(to: CGPoint(x: 7 * scaleX, y: 7 * scaleY))
+            path.addLine(to: CGPoint(x: 12 * scaleX, y: 12 * scaleY))
+            path.addLine(to: CGPoint(x: 7 * scaleX, y: 17 * scaleY))
+            path.move(to: CGPoint(x: 13 * scaleX, y: 7 * scaleY))
+            path.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY))
+            path.addLine(to: CGPoint(x: 13 * scaleX, y: 17 * scaleY))
         case .rewind:
-            path.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 10 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-            path.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 4 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
+            path.move(to: CGPoint(x: 17 * scaleX, y: 7 * scaleY))
+            path.addLine(to: CGPoint(x: 12 * scaleX, y: 12 * scaleY))
+            path.addLine(to: CGPoint(x: 17 * scaleX, y: 17 * scaleY))
+            path.move(to: CGPoint(x: 11 * scaleX, y: 7 * scaleY))
+            path.addLine(to: CGPoint(x: 6 * scaleX, y: 12 * scaleY))
+            path.addLine(to: CGPoint(x: 11 * scaleX, y: 17 * scaleY))
         case .back:
             path.move(to: CGPoint(x: 19 * scaleX, y: 12 * scaleY))
             path.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
@@ -741,16 +710,43 @@ struct PlayerIconPath: Shape {
             path.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
             path.addLine(to: CGPoint(x: 12 * scaleX, y: 5 * scaleY))
         case .resize:
-            path.move(to: CGPoint(x: 15 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 9 * scaleY))
-            path.move(to: CGPoint(x: 9 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 15 * scaleY))
-            path.move(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
+            path.move(to: CGPoint(x: 16 * scaleX, y: 4 * scaleY))
+            path.addLine(to: CGPoint(x: 20 * scaleX, y: 4 * scaleY))
+            path.addLine(to: CGPoint(x: 20 * scaleX, y: 8 * scaleY))
+            path.move(to: CGPoint(x: 8 * scaleX, y: 20 * scaleY))
+            path.addLine(to: CGPoint(x: 4 * scaleX, y: 20 * scaleY))
+            path.addLine(to: CGPoint(x: 4 * scaleX, y: 16 * scaleY))
+            path.move(to: CGPoint(x: 20 * scaleX, y: 4 * scaleY))
             path.addLine(to: CGPoint(x: 14 * scaleX, y: 10 * scaleY))
-            path.move(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
+            path.move(to: CGPoint(x: 4 * scaleX, y: 20 * scaleY))
             path.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
+        case .settings:
+            path.move(to: CGPoint(x: 12 * scaleX, y: 8 * scaleY))
+            path.addCurve(to: CGPoint(x: 16 * scaleX, y: 12 * scaleY), control1: CGPoint(x: 14.2 * scaleX, y: 8 * scaleY), control2: CGPoint(x: 16 * scaleX, y: 9.8 * scaleY))
+            path.addCurve(to: CGPoint(x: 12 * scaleX, y: 16 * scaleY), control1: CGPoint(x: 16 * scaleX, y: 14.2 * scaleY), control2: CGPoint(x: 14.2 * scaleX, y: 16 * scaleY))
+            path.addCurve(to: CGPoint(x: 8 * scaleX, y: 12 * scaleY), control1: CGPoint(x: 9.8 * scaleX, y: 16 * scaleY), control2: CGPoint(x: 8 * scaleX, y: 14.2 * scaleY))
+            path.addCurve(to: CGPoint(x: 12 * scaleX, y: 8 * scaleY), control1: CGPoint(x: 8 * scaleX, y: 9.8 * scaleY), control2: CGPoint(x: 9.8 * scaleX, y: 8 * scaleY))
+            path.move(to: CGPoint(x: 19.4 * scaleX, y: 13 * scaleY))
+            path.addLine(to: CGPoint(x: 21.3 * scaleX, y: 14.5 * scaleY))
+            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 18.5 * scaleY))
+            path.addLine(to: CGPoint(x: 16.8 * scaleX, y: 17.5 * scaleY))
+            path.addLine(to: CGPoint(x: 14.5 * scaleX, y: 21 * scaleY))
+            path.addLine(to: CGPoint(x: 9.5 * scaleX, y: 21 * scaleY))
+            path.addLine(to: CGPoint(x: 7.2 * scaleX, y: 17.5 * scaleY))
+            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 18.5 * scaleY))
+            path.addLine(to: CGPoint(x: 2.7 * scaleX, y: 14.5 * scaleY))
+            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 13 * scaleY))
+            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 11 * scaleY))
+            path.addLine(to: CGPoint(x: 2.7 * scaleX, y: 9.5 * scaleY))
+            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 5.5 * scaleY))
+            path.addLine(to: CGPoint(x: 7.2 * scaleX, y: 6.5 * scaleY))
+            path.addLine(to: CGPoint(x: 9.5 * scaleX, y: 3 * scaleY))
+            path.addLine(to: CGPoint(x: 14.5 * scaleX, y: 3 * scaleY))
+            path.addLine(to: CGPoint(x: 16.8 * scaleX, y: 6.5 * scaleY))
+            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 5.5 * scaleY))
+            path.addLine(to: CGPoint(x: 21.3 * scaleX, y: 9.5 * scaleY))
+            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 11 * scaleY))
+            path.closeSubpath()
         }
         return path
     }
