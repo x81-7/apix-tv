@@ -2,9 +2,9 @@ import SwiftUI
 import AVKit
 import Combine
 
-// MARK: - 1. Player Coordinator (إدارة محرك AVPlayer والتزامن)
+// MARK: - 1. Player Coordinator (إدارة محرك AVPlayer)
 @MainActor
-final class ApixPlayerCoordinator: ObservableObject {
+final class NativePlayerCoordinator: ObservableObject {
     let player = AVPlayer()
     
     @Published var isPlaying = false
@@ -18,19 +18,29 @@ final class ApixPlayerCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
-        // فرض تشغيل الصوت وفك قيود الآيفون الصامت
+        // إصلاح تحذير البلوتوث وتفعيل الصوت الإجباري
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetooth, .allowAirPlay])
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetoothHFP, .allowAirPlay])
             try session.setActive(true)
         } catch {
             print("AVAudioSession Setup Failed: \(error.localizedDescription)")
         }
     }
     
-    func loadStream(url urlString: String, title: String, headers: [String: String]) {
-        self.title = title
-        cleanup()
+    func setup(channel: Channel) {
+        title = channel.name
+        let primaryUrl = channel.playbackURL ?? ""
+        loadURL(primaryUrl, headers: channel.effectiveHeaders)
+    }
+
+    func setupFromApix(_ cfg: ApixResolvedConfig, fallbackTitle: String) {
+        title = cfg.title ?? fallbackTitle
+        loadURL(cfg.url, headers: cfg.headers)
+    }
+    
+    private func loadURL(_ urlString: String, headers: [String: String]) {
+        cleanupAll()
         isBuffering = true
         errorMessage = nil
         
@@ -39,13 +49,12 @@ final class ApixPlayerCoordinator: ObservableObject {
             return
         }
         
-        // تمرير الهيدرز (اليوزر ايجنت وغيره)
         var options: [String: Any] = [:]
         if !headers.isEmpty {
             options["AVURLAssetHTTPHeaderFieldsKey"] = headers
         }
         
-        let asset = AVURLAsset(url: url, options: options)
+        let asset = AVURLAsset(url: url, options: options.isEmpty ? nil : options)
         let item = AVPlayerItem(asset: asset)
         
         player.replaceCurrentItem(with: item)
@@ -54,7 +63,6 @@ final class ApixPlayerCoordinator: ObservableObject {
     }
     
     private func setupObservers(for item: AVPlayerItem) {
-        // مراقبة حالة التحميل
         item.publisher(for: \.status)
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
@@ -69,13 +77,11 @@ final class ApixPlayerCoordinator: ObservableObject {
                 }
             }.store(in: &cancellables)
         
-        // مراقبة حالة التقطيع (Stalled)
         NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.isBuffering = true }
             .store(in: &cancellables)
         
-        // مراقبة التشغيل والإيقاف المؤقت الفعلي
         player.publisher(for: \.timeControlStatus)
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
@@ -83,11 +89,13 @@ final class ApixPlayerCoordinator: ObservableObject {
                 if status == .playing { self?.isBuffering = false }
             }.store(in: &cancellables)
         
-        // تحديث شريط التقدم كل نصف ثانية
+        // إصلاح تحذير التزامن (Concurrency) الخاص بـ Swift 6
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
             guard let self = self else { return }
-            if self.player.timeControlStatus == .playing {
-                self.currentTime = time.seconds
+            Task { @MainActor in
+                if self.player.timeControlStatus == .playing {
+                    self.currentTime = time.seconds
+                }
             }
         }
     }
@@ -106,23 +114,22 @@ final class ApixPlayerCoordinator: ObservableObject {
         let targetTime = duration * fraction
         let target = CMTime(seconds: targetTime, preferredTimescale: 600)
         player.seek(to: target) { [weak self] _ in
-            self?.currentTime = targetTime
+            Task { @MainActor in self?.currentTime = targetTime }
         }
     }
     
-    func cleanup() {
+    func cleanupAll() {
         if let obs = timeObserver {
             player.removeTimeObserver(obs)
             timeObserver = nil
         }
         cancellables.removeAll()
         player.pause()
-        player.replaceCurrentItem(with: nil)
     }
 }
 
-// MARK: - 2. Video Layer (طبقة العرض)
-struct ApixVideoLayer: UIViewRepresentable {
+// MARK: - 2. Video Layer
+struct PlayerVideoLayer: UIViewRepresentable {
     let player: AVPlayer
     let resizeMode: AVLayerVideoGravity
 
@@ -146,36 +153,31 @@ struct ApixVideoLayer: UIViewRepresentable {
 }
 
 // MARK: - 3. Main Player View (الواجهة الرئيسية)
-struct ApixPlayerView: View {
-    @Environment(\.dismiss) private var dismiss
-    @StateObject private var coordinator = ApixPlayerCoordinator()
+struct NativePlayerView: View {
+    let channel: Channel // متوافق مع RootView.swift
     
-    // المتغيرات القادمة من الـ Resolver
-    let streamUrl: String
-    let streamTitle: String
-    let streamHeaders: [String: String]
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var coordinator = NativePlayerCoordinator()
     
     @State private var showControls = true
     @State private var resizeMode: AVLayerVideoGravity = .resizeAspect
     @State private var hideTimer: Timer?
+    @State private var isApixResolving = false
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            // 1. طبقة الفيديو
-            ApixVideoLayer(player: coordinator.player, resizeMode: resizeMode)
+            PlayerVideoLayer(player: coordinator.player, resizeMode: resizeMode)
                 .ignoresSafeArea()
             
-            // 2. مؤشر التحميل
-            if coordinator.isBuffering && coordinator.errorMessage == nil {
+            if coordinator.isBuffering && coordinator.errorMessage == nil && !isApixResolving {
                 ProgressView()
                     .progressViewStyle(.circular)
-                    .tint(Color(red: 229/255, green: 9/255, blue: 20/255)) // الأحمر
+                    .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
                     .scaleEffect(1.8)
             }
             
-            // 3. رسالة الخطأ
             if let error = coordinator.errorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 50)).foregroundColor(.red)
@@ -187,8 +189,15 @@ struct ApixPlayerView: View {
                 .background(Color.black.opacity(0.8)).ignoresSafeArea()
             }
             
-            // 4. طبقة التحكم (تطابق الأندرويد)
-            if showControls && coordinator.errorMessage == nil {
+            if isApixResolving {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView().tint(Color(red: 229/255, green: 9/255, blue: 20/255)).scaleEffect(1.4)
+                    Text("جاري تحميل الرابط...").foregroundStyle(.white)
+                }
+            }
+            
+            if showControls && coordinator.errorMessage == nil && !isApixResolving {
                 controlsOverlay
             }
         }
@@ -197,28 +206,39 @@ struct ApixPlayerView: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             forceLandscape()
-            coordinator.loadStream(url: streamUrl, title: streamTitle, headers: streamHeaders)
             startTimer()
+        }
+        .task {
+            // معالجة روابط Apix والاستخراج
+            let pUrl = channel.playbackURL ?? ""
+            if ApixStreamResolverIOS.isApixStream(pUrl) {
+                isApixResolving = true
+                if let cfg = await ApixStreamResolverIOS.resolve(pUrl) {
+                    coordinator.setupFromApix(cfg, fallbackTitle: channel.name)
+                } else {
+                    coordinator.setup(channel: channel) // خطة بديلة
+                }
+                isApixResolving = false
+            } else {
+                coordinator.setup(channel: channel)
+            }
         }
         .onDisappear {
             forcePortrait()
-            coordinator.cleanup()
+            coordinator.cleanupAll()
             hideTimer?.invalidate()
         }
     }
     
     private var controlsOverlay: some View {
         ZStack {
-            // التدرجات اللونية (Gradients)
             VStack(spacing: 0) {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom).frame(height: 100)
                 Spacer()
                 LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom).frame(height: 130)
             }.ignoresSafeArea()
             
-            // الأزرار والنصوص
             VStack {
-                // الشريط العلوي
                 HStack {
                     ApixIconButton(type: .back, size: 36) { dismiss() }
                     Spacer()
@@ -231,9 +251,7 @@ struct ApixPlayerView: View {
                 
                 Spacer()
                 
-                // الشريط السفلي (التقدم + الأزرار)
                 VStack(spacing: 8) {
-                    // شريط التقدم والوقت
                     HStack(spacing: 12) {
                         Text(formatTime(coordinator.currentTime)).font(.system(size: 14, weight: .medium)).foregroundColor(.white)
                         
@@ -251,7 +269,6 @@ struct ApixPlayerView: View {
                     
                     Spacer().frame(height: 4)
                     
-                    // أزرار التحكم
                     HStack {
                         HStack(spacing: 24) {
                             ApixIconButton(type: .rewind, size: 38) { coordinator.seek(by: -10); startTimer() }
@@ -275,7 +292,6 @@ struct ApixPlayerView: View {
         .transition(.opacity)
     }
     
-    // دوال مساعدة
     private func toggleControls() {
         withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
         if showControls { startTimer() }
@@ -315,27 +331,20 @@ struct ApixPlayerView: View {
     }
 }
 
-// MARK: - 4. Custom Slider (لحل مشكلة ارتداد الشريط)
+// MARK: - 4. Custom Slider
 struct ApixSlider: View {
     let value: Double
     let onScrubbing: (Double) -> Void
-    
     @State private var dragValue: Double? = nil
     
     var body: some View {
         GeometryReader { geo in
             let displayValue = dragValue ?? value
-            
             ZStack(alignment: .leading) {
-                // الخلفية الشفافة
                 Capsule().fill(Color.white.opacity(0.25)).frame(height: 4)
-                
-                // الشريط الأحمر الممتلئ (يطابق الأندرويد)
                 Capsule()
                     .fill(Color(red: 229/255, green: 9/255, blue: 20/255))
                     .frame(width: max(0, geo.size.width * CGFloat(displayValue)), height: 4)
-                
-                // النقطة البيضاء
                 Circle()
                     .fill(Color.white)
                     .frame(width: 14, height: 14)
@@ -344,10 +353,7 @@ struct ApixSlider: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        let fraction = min(max(0, v.location.x / geo.size.width), 1)
-                        dragValue = fraction
-                    }
+                    .onChanged { v in dragValue = min(max(0, v.location.x / geo.size.width), 1) }
                     .onEnded { v in
                         let fraction = min(max(0, v.location.x / geo.size.width), 1)
                         onScrubbing(fraction)
@@ -358,7 +364,7 @@ struct ApixSlider: View {
     }
 }
 
-// MARK: - 5. Custom Icons (رسم دقيق مطابق لـ Compose ImageVector)
+// MARK: - 5. Custom Icons
 enum ApixIconType { case play, pause, forward, rewind, back, resize }
 
 struct ApixIconButton: View {
@@ -370,13 +376,11 @@ struct ApixIconButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // الدائرة الخارجية (Stroke + Background)
                 Circle()
                     .stroke(Color.white, lineWidth: isLarge ? 2 : 1.5)
                     .background(Circle().fill(Color.black.opacity(0.1)))
                     .frame(width: size, height: size)
                 
-                // مسار الرسمة المخصص (Paths)
                 IconPath(type: type)
                     .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                     .frame(width: 24, height: 24)
@@ -388,42 +392,25 @@ struct ApixIconButton: View {
 
 struct IconPath: Shape {
     let type: ApixIconType
-    
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        // الحجم الافتراضي لـ Viewport في الأندرويد كان 24x24
-        let scaleX = rect.width / 24
-        let scaleY = rect.height / 24
+        let scaleX = rect.width / 24; let scaleY = rect.height / 24
         
         switch type {
         case .play:
-            p.move(to: CGPoint(x: 8 * scaleX, y: 6 * scaleY))
-            p.addLine(to: CGPoint(x: 8 * scaleX, y: 18 * scaleY))
-            p.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY))
-            p.closeSubpath()
-            
+            p.move(to: CGPoint(x: 9 * scaleX, y: 6 * scaleY)); p.addLine(to: CGPoint(x: 9 * scaleX, y: 18 * scaleY)); p.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY)); p.closeSubpath()
         case .pause:
-            // العمود الأيسر
-            p.move(to: CGPoint(x: 6 * scaleX, y: 7 * scaleY))
-            p.addArc(center: CGPoint(x: 8 * scaleX, y: 7 * scaleY), radius: 2 * scaleX, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-            p.addLine(to: CGPoint(x: 10 * scaleX, y: 17 * scaleY))
-            // تبسيط المسار ليتطابق مع شكل الإيقاف
-            p = Path()
             p.move(to: CGPoint(x: 8 * scaleX, y: 6 * scaleY)); p.addLine(to: CGPoint(x: 8 * scaleX, y: 18 * scaleY))
             p.move(to: CGPoint(x: 16 * scaleX, y: 6 * scaleY)); p.addLine(to: CGPoint(x: 16 * scaleX, y: 18 * scaleY))
-            
         case .forward:
             p.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY)); p.addLine(to: CGPoint(x: 14 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
             p.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY)); p.addLine(to: CGPoint(x: 20 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-            
         case .rewind:
             p.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY)); p.addLine(to: CGPoint(x: 10 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
             p.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY)); p.addLine(to: CGPoint(x: 4 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-            
         case .back:
             p.move(to: CGPoint(x: 19 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
             p.move(to: CGPoint(x: 12 * scaleX, y: 19 * scaleY)); p.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY)); p.addLine(to: CGPoint(x: 12 * scaleX, y: 5 * scaleY))
-            
         case .resize:
             p.move(to: CGPoint(x: 15 * scaleX, y: 3 * scaleY)); p.addLine(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY)); p.addLine(to: CGPoint(x: 21 * scaleX, y: 9 * scaleY))
             p.move(to: CGPoint(x: 9 * scaleX, y: 21 * scaleY)); p.addLine(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY)); p.addLine(to: CGPoint(x: 3 * scaleX, y: 15 * scaleY))
