@@ -21,10 +21,29 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
-      - name: Inject Cloud secrets into Info.plist
+      - name: Inject Secure Keys into Source Code
         working-directory: ios
         env:
-          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          EXTERNAL_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
+          INTERNAL_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+        run: |
+          echo "Injecting encryption secrets directly into Swift source code..."
+          mkdir -p APiXTV/Services
+          SECRETS_FILE="APiXTV/Services/AppSecrets.swift"
+          
+          cat <<EOF > $SECRETS_FILE
+          import Foundation
+
+          enum AppSecrets {
+              static let externalKey = "$EXTERNAL_KEY"
+              static let internalKey = "$INTERNAL_KEY"
+          }
+          EOF
+          echo "Secrets successfully embedded into AppSecrets.swift"
+
+      - name: Inject Cloud settings into Info.plist
+        working-directory: ios
+        env:
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_ANON_KEY: ${{ secrets.CLOUD_ANON_KEY }}
         run: |
@@ -39,7 +58,6 @@ jobs:
               || /usr/libexec/PlistBuddy -c "Add :$key string $val" "$PLIST"
             echo "Injected $key"
           }
-          set_or_add APIX_ENCRYPTION_KEY "$ENCRYPTION_SECRET_KEY"
           set_or_add APIX_CLOUD_URL "$CLOUD_URL"
           set_or_add APIX_CLOUD_ANON_KEY "$CLOUD_ANON_KEY"
 
