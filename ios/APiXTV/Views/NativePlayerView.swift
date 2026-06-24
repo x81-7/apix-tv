@@ -25,7 +25,13 @@ struct PlayerAudioSource: Identifiable {
 
 // MARK: - Icons Enum
 enum PlayerIconType {
-    case play, pause, forward, rewind, back, resize, settings
+    case play
+    case pause
+    case forward
+    case rewind
+    case back
+    case resize
+    case settings
 }
 
 // MARK: - Coordinator
@@ -43,13 +49,13 @@ final class NativePlayerCoordinator: ObservableObject {
     @Published var servers: [PlayerServer] = []
     @Published var currentServerIndex = 0
     
-    // تم تحويل الجودات إلى سرعات اتصال (محدِّدات باندويث) لأن AVPlayer لا يكشف الـ Resolutions
     @Published var qualities: [PlayerQuality] = [
-        PlayerQuality(label: "تلقائي", bitrate: 0),
-        PlayerQuality(label: "عالي جداً", bitrate: 10_000_000),
-        PlayerQuality(label: "عالي", bitrate: 5_000_000),
-        PlayerQuality(label: "متوسط", bitrate: 2_000_000),
-        PlayerQuality(label: "ضعيف", bitrate: 800_000)
+        PlayerQuality(label: "Auto", bitrate: 0),
+        PlayerQuality(label: "4K", bitrate: 20_000_000),
+        PlayerQuality(label: "1080p", bitrate: 8_000_000),
+        PlayerQuality(label: "720p", bitrate: 4_000_000),
+        PlayerQuality(label: "480p", bitrate: 1_500_000),
+        PlayerQuality(label: "360p", bitrate: 800_000)
     ]
     @Published var currentQualityIndex = 0
     @Published var audioSources: [PlayerAudioSource] = []
@@ -68,16 +74,16 @@ final class NativePlayerCoordinator: ObservableObject {
     }
     
     func setup(channel: Channel) {
-        self.title = channel.name // استخدام اسم القناة دائماً
+        self.title = channel.name
         var newServers: [PlayerServer] = []
         
-        let primaryUrlString = channel.playbackURL?.absoluteString ?? ""
+        let primaryUrlString = channel.playbackURL ?? ""
         if !primaryUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر الأساسي", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+            newServers.append(PlayerServer(name: "Server 1", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
         if let backupUrlString = channel.backupURL?.absoluteString, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر البديل", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+            newServers.append(PlayerServer(name: "Backup", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
         }
         
         self.servers = newServers
@@ -86,7 +92,7 @@ final class NativePlayerCoordinator: ObservableObject {
         if !self.servers.isEmpty {
             self.loadServer(index: 0)
         } else {
-            self.errorMessage = "لا توجد روابط صالحة للتشغيل"
+            self.errorMessage = "No valid URLs found"
             self.isBuffering = false
         }
     }
@@ -94,11 +100,11 @@ final class NativePlayerCoordinator: ObservableObject {
     func setupFromApix(_ config: ApixResolvedConfig, fallbackTitle: String) {
         self.title = config.title ?? fallbackTitle
         var newServers: [PlayerServer] = [
-            PlayerServer(name: "السيرفر الأساسي", url: config.url, headers: config.headers, clearKey: config.clearKey)
+            PlayerServer(name: "Server 1", url: config.url, headers: config.headers, clearKey: config.clearKey)
         ]
         
         if let backupUrlString = config.backupUrl, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر البديل", url: backupUrlString, headers: config.headers, clearKey: config.clearKey))
+            newServers.append(PlayerServer(name: "Backup", url: backupUrlString, headers: config.headers, clearKey: config.clearKey))
         }
         
         self.servers = newServers
@@ -126,7 +132,7 @@ final class NativePlayerCoordinator: ObservableObject {
         self.duration = 0
         
         guard let validUrl = URL(string: url) else {
-            self.errorMessage = "الرابط غير صالح"
+            self.errorMessage = "Invalid stream URL"
             return
         }
         
@@ -154,9 +160,10 @@ final class NativePlayerCoordinator: ObservableObject {
                     let itemDuration = item.duration.seconds
                     self.duration = itemDuration.isNaN || itemDuration.isInfinite ? 0 : itemDuration
                 case .failed:
-                    self.errorMessage = item.error?.localizedDescription ?? "حدث خطأ أثناء التشغيل"
+                    self.errorMessage = item.error?.localizedDescription ?? "Playback failed"
                     self.isBuffering = false
-                default: break
+                default:
+                    break
                 }
             }.store(in: &cancellables)
         
@@ -227,10 +234,15 @@ final class NativePlayerCoordinator: ObservableObject {
         self.player.pause()
         self.player.replaceCurrentItem(with: nil)
     }
+    
+    deinit {
+        if let observer = self.timeObserver {
+            self.player.removeTimeObserver(observer)
+        }
+    }
 }
 
-// MARK: - Video Layer (الحل الجذري لمشكلة الشاشة السوداء)
-// استخدام UIView مخصص يمتلك AVPlayerLayer كطبقة أساسية يضمن تحديث الأبعاد دائماً
+// MARK: - Video Layer
 class PlayerUIView: UIView {
     var playerLayer: AVPlayerLayer {
         return layer as! AVPlayerLayer
@@ -280,7 +292,6 @@ struct NativePlayerView: View {
             PlayerVideoLayer(player: viewModel.player, gravity: videoGravity)
                 .ignoresSafeArea()
             
-            // مؤشر التحميل المركزي (مطابق لطلبك)
             if viewModel.isBuffering && viewModel.errorMessage == nil && !isResolving {
                 ProgressView()
                     .progressViewStyle(.circular)
@@ -294,7 +305,7 @@ struct NativePlayerView: View {
                     ProgressView()
                         .tint(Color(red: 229/255, green: 9/255, blue: 20/255))
                         .scaleEffect(1.4)
-                    Text("جاري استخراج الرابط...")
+                    Text("Loading Stream...")
                         .foregroundStyle(.white)
                         .font(.system(size: 14, weight: .medium))
                 }
@@ -313,7 +324,7 @@ struct NativePlayerView: View {
                     Button(action: {
                         dismiss()
                     }) {
-                        Text("إغلاق")
+                        Text("Close")
                             .padding(.horizontal, 30)
                             .padding(.vertical, 12)
                             .background(Color(red: 229/255, green: 9/255, blue: 20/255))
@@ -355,10 +366,8 @@ struct NativePlayerView: View {
         }
     }
     
-    // MARK: - تصميم الواجهة المطابق لصورة (235304.jpg)
     private var controlsLayer: some View {
         ZStack {
-            // التظليل الأسود التدريجي
             VStack(spacing: 0) {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: 100)
@@ -369,14 +378,13 @@ struct NativePlayerView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // الشريط العلوي: زر الرجوع يساراً، اسم القناة يميناً
                 HStack {
                     PlayerIconButton(type: .back, size: 32) {
                         self.viewModel.player.pause()
                         self.dismiss()
                     }
                     Spacer()
-                    Text(channel.name) // استخدام اسم القناة وليس السيرفر
+                    Text(channel.name)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
@@ -386,9 +394,7 @@ struct NativePlayerView: View {
                 
                 Spacer()
                 
-                // المنطقة السفلية
                 VStack(spacing: 12) {
-                    // الصف الأول: الأوقات وشريط التقدم
                     HStack(spacing: 12) {
                         Text(formatTime(viewModel.currentTime))
                             .font(.system(size: 14, weight: .medium, design: .monospaced))
@@ -407,9 +413,7 @@ struct NativePlayerView: View {
                     }
                     .padding(.horizontal, 24)
                     
-                    // الصف الثاني: أزرار التحكم يساراً، والإعدادات يميناً
                     HStack {
-                        // أزرار التحكم (يسار)
                         HStack(spacing: 24) {
                             PlayerIconButton(type: .rewind, size: 28) {
                                 self.viewModel.seek(by: -10)
@@ -427,7 +431,6 @@ struct NativePlayerView: View {
                         
                         Spacer()
                         
-                        // أزرار الإعدادات (يمين)
                         HStack(spacing: 24) {
                             if viewModel.servers.count > 1 {
                                 SmallIconBtn(systemName: "server.rack") {
@@ -456,7 +459,7 @@ struct NativePlayerView: View {
     }
     
     private var qualitySheetContent: some View {
-        IOSPlayerSheet(title: "الجودة") {
+        IOSPlayerSheet(title: "Quality") {
             ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, quality in
                 IOSSheetRow(title: quality.label, isSelected: index == viewModel.currentQualityIndex) {
                     self.viewModel.setQuality(index: index)
@@ -468,7 +471,7 @@ struct NativePlayerView: View {
     }
 
     private var serverSheetContent: some View {
-        IOSPlayerSheet(title: "السيرفرات") {
+        IOSPlayerSheet(title: "Servers") {
             ForEach(Array(viewModel.servers.enumerated()), id: \.offset) { index, server in
                 IOSSheetRow(title: server.name, isSelected: index == viewModel.currentServerIndex) {
                     self.viewModel.loadServer(index: index)
@@ -480,7 +483,7 @@ struct NativePlayerView: View {
     }
     
     private func resolveAndPlay() async {
-        let urlString = channel.playbackURL?.absoluteString ?? ""
+        let urlString = channel.playbackURL ?? ""
         if ApixStreamResolverIOS.isApixStream(urlString) {
             self.isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
@@ -633,7 +636,7 @@ struct IOSPlayerSheet<Content: View>: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("إغلاق") {
+                    Button("Close") {
                         dismiss()
                     }
                     .foregroundColor(Color(red: 229/255, green: 9/255, blue: 20/255))
@@ -669,7 +672,7 @@ struct IOSSheetRow: View {
     }
 }
 
-// MARK: - Paths (رسم الأيقونات بدقة لتطابق تصميم 235304.jpg)
+// MARK: - Paths
 struct PlayerIconPath: Shape {
     let type: PlayerIconType
     
