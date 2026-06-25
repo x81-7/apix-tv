@@ -152,6 +152,16 @@ public final class LocalStreamServer extends NanoHTTPD {
         } catch (Exception ignored) {}
     }
 
+    public static void clearCache() {
+        if (urlMap != null) {
+            urlMap.clear();
+        }
+        if (upstreamHeaders != null) {
+            upstreamHeaders.clear();
+        }
+        Log.d(TAG, "Proxy cache completely destroyed!");
+    }
+
     public static void setHeaders(Map<String, String> headers) {
         upstreamHeaders = headers != null ? headers : new HashMap<>();
     }
@@ -175,7 +185,15 @@ public final class LocalStreamServer extends NanoHTTPD {
     public static String wrap(String realUrl) {
         if (shouldBypass(realUrl)) return realUrl;
         ensureStarted();
-        return "http://" + HOST + ":" + PORT + "/play?id=" + storeUrl(realUrl);
+        
+        // إضافة الامتداد الوهمي للـ ID لكي يتعرف المشغل على الصيغة فوراً
+        String ext = "";
+        String lowerUrl = realUrl.toLowerCase();
+        if (lowerUrl.contains(".mpd") || lowerUrl.contains("format=mpd")) ext = ".mpd";
+        else if (lowerUrl.contains(".m3u8")) ext = ".m3u8";
+        else if (lowerUrl.contains(".ts")) ext = ".ts";
+
+        return "http://" + HOST + ":" + PORT + "/play?id=" + storeUrl(realUrl) + ext;
     }
 
     // ───────────────────────────── serve ─────────────────────────────
@@ -221,8 +239,12 @@ public final class LocalStreamServer extends NanoHTTPD {
             }
 
             if ("/play".equals(uri)) {
-                String id = session.getParms().get("id");
-                if (id == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "missing id");
+                String rawId = session.getParms().get("id");
+                if (rawId == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "missing id");
+
+
+                String id = rawId.replace(".mpd", "").replace(".m3u8", "").replace(".ts", "");
+                
                 CacheEntry entry = urlMap.get(id);
                 if (entry == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "expired id");
                 return serveManifest(entry.url, session, method);
