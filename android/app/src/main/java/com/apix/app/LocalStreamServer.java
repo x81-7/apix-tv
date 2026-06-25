@@ -150,8 +150,12 @@ public final class LocalStreamServer extends NanoHTTPD {
     }
 
     public static void clearCache() {
-        if (urlMap != null) urlMap.clear();
-        if (upstreamHeaders != null) upstreamHeaders.clear();
+        if (urlMap != null) {
+            urlMap.clear();
+        }
+        if (upstreamHeaders != null) {
+            upstreamHeaders.clear();
+        }
         Log.d(TAG, "Proxy cache completely destroyed!");
     }
 
@@ -181,15 +185,11 @@ public final class LocalStreamServer extends NanoHTTPD {
         
         String ext = "";
         String lowerUrl = realUrl.toLowerCase();
-        int q = lowerUrl.indexOf('?');
-        String path = q >= 0 ? lowerUrl.substring(0, q) : lowerUrl;
-        
-        if (path.endsWith(".mpd") || lowerUrl.contains("format=mpd")) ext = ".mpd";
-        else if (path.endsWith(".m3u8")) ext = ".m3u8";
-        else if (path.endsWith(".ts")) ext = ".ts";
+        if (lowerUrl.contains(".mpd") || lowerUrl.contains("format=mpd")) ext = ".mpd";
+        else if (lowerUrl.contains(".m3u8")) ext = ".m3u8";
+        else if (lowerUrl.contains(".ts")) ext = ".ts";
 
-        // استخدام مسار /master/ مع الامتداد لإقناع المشغل أنه ملف حقيقي وليس Proxy
-        return "http://" + HOST + ":" + PORT + "/master/" + storeUrl(realUrl) + ext;
+        return "http://" + HOST + ":" + PORT + "/play?id=" + storeUrl(realUrl) + ext;
     }
 
     @Override
@@ -232,11 +232,11 @@ public final class LocalStreamServer extends NanoHTTPD {
                 return servePassthrough(targetUrl, session, method);
             }
 
-            // استقبال الروابط الوهمية وإزالة الامتداد
-            if (uri.startsWith("/master/")) {
-                String idWithExt = uri.substring(8);
-                int dotIndex = idWithExt.indexOf('.');
-                String id = (dotIndex > 0) ? idWithExt.substring(0, dotIndex) : idWithExt;
+            if ("/play".equals(uri)) {
+                String rawId = session.getParms().get("id");
+                if (rawId == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "missing id");
+
+                String id = rawId.replace(".mpd", "").replace(".m3u8", "").replace(".ts", "");
                 
                 CacheEntry entry = urlMap.get(id);
                 if (entry == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "expired id");
@@ -255,8 +255,7 @@ public final class LocalStreamServer extends NanoHTTPD {
         
         if (session != null && session.getHeaders() != null) {
             Map<String, String> clientHeaders = session.getHeaders();
-            // تم إزالة هيدر accept-encoding نهائياً لمنع السيرفر من تشفير M3U8 بالـ Gzip
-            String[] passthroughHeaders = {"cookie", "authorization", "origin", "referer", "user-agent"};
+            String[] passthroughHeaders = {"cookie", "authorization", "origin", "referer", "user-agent", "accept-encoding"};
             for (String h : passthroughHeaders) {
                 if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
             }
@@ -319,6 +318,9 @@ public final class LocalStreamServer extends NanoHTTPD {
             String proxyBaseUrl = "http://" + HOST + ":" + PORT + "/proxy/" + baseId + "/";
 
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            // --- سر حل مشكلة الـ DRM والشاشة السوداء ---
+            factory.setNamespaceAware(true); // حماية الـ Namespaces الخاصة بالتشفير من الضياع
+            
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
@@ -334,7 +336,7 @@ public final class LocalStreamServer extends NanoHTTPD {
             NodeList rootChildren = root.getChildNodes();
             for (int i = 0; i < rootChildren.getLength(); i++) {
                 Node child = rootChildren.item(i);
-                if (child.getNodeType() == Node.ELEMENT_NODE && "BaseURL".equals(child.getNodeName())) {
+                if (child.getNodeType() == Node.ELEMENT_NODE && "BaseURL".equals(child.getLocalName())) {
                     child.setTextContent(proxyBaseUrl);
                     hasRootBaseUrl = true;
                     break;
@@ -354,8 +356,7 @@ public final class LocalStreamServer extends NanoHTTPD {
             return writer.toString();
 
         } catch (Exception e) {
-            Log.e(TAG, "DOM parsing failed, returning raw manifest to avoid crashing", e);
-            // حماية إضافية: في حال فشل الـ XML، نرجع الملف حتى لا يسقط المشغل
+            Log.e(TAG, "DOM parsing failed, falling back", e);
             return xmlBody;
         }
     }
@@ -363,9 +364,9 @@ public final class LocalStreamServer extends NanoHTTPD {
     private void traverseAndRewriteNodes(Node node) {
         if (node.getNodeType() == Node.ELEMENT_NODE) {
             Element el = (Element) node;
-            String tagName = el.getTagName();
+            String tagName = el.getLocalName() != null ? el.getLocalName() : el.getTagName();
 
-            if (!("BaseURL".equals(tagName) && node.getParentNode() != null && "MPD".equals(node.getParentNode().getNodeName()))) {
+            if (!("BaseURL".equals(tagName) && node.getParentNode() != null && "MPD".equals(node.getParentNode().getLocalName()))) {
                 if ("BaseURL".equals(tagName) || "Location".equals(tagName) || "SegmentURL".equals(tagName)) {
                     String content = el.getTextContent().trim();
                     if (content.startsWith("http://") || content.startsWith("https://")) {
@@ -374,12 +375,17 @@ public final class LocalStreamServer extends NanoHTTPD {
                 }
             }
 
-            String[] attrs = {"media", "initialization", "sourceURL", "index", "xlink:href"};
+            String[] attrs = {"media", "initialization", "sourceURL", "index", "href"};
             for (String attr : attrs) {
                 if (el.hasAttribute(attr)) {
                     String val = el.getAttribute(attr);
                     if (val.startsWith("http://") || val.startsWith("https://")) {
                         el.setAttribute(attr, encryptUrlAndCreateProxyPath(val));
+                    }
+                } else if (el.hasAttributeNS("http://www.w3.org/1999/xlink", "href")) {
+                    String val = el.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+                    if (val.startsWith("http://") || val.startsWith("https://")) {
+                        el.setAttributeNS("http://www.w3.org/1999/xlink", "href", encryptUrlAndCreateProxyPath(val));
                     }
                 }
             }
@@ -422,7 +428,6 @@ public final class LocalStreamServer extends NanoHTTPD {
         
         if (session != null && session.getHeaders() != null) {
             Map<String, String> clientHeaders = session.getHeaders();
-            // تم إزالة هيدر accept-encoding هنا أيضاً
             String[] criticalHeaders = {"range", "cookie", "authorization", "origin", "referer", "user-agent", "if-none-match", "if-modified-since"};
             for (String h : criticalHeaders) {
                 if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
