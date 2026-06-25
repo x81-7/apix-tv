@@ -42,7 +42,6 @@ import okhttp3.ConnectionPool;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 public final class LocalStreamServer extends NanoHTTPD {
@@ -66,7 +65,7 @@ public final class LocalStreamServer extends NanoHTTPD {
 
     private static final ConcurrentHashMap<String, CacheEntry> urlMap = new ConcurrentHashMap<>();
     private static ScheduledExecutorService cleanupExecutor;
-    private static final long CACHE_TTL_MS = TimeUnit.MINUTES.toMillis(15); // 15 دقيقة صلاحية للرابط
+    private static final long CACHE_TTL_MS = TimeUnit.MINUTES.toMillis(15);
 
     // ── 2. طبقة الـ Retries & Exponential Backoff (Circuit Breaker مبسط) ──
     private static final Interceptor retryInterceptor = chain -> {
@@ -79,11 +78,9 @@ public final class LocalStreamServer extends NanoHTTPD {
         while (tryCount < maxRetries) {
             try {
                 response = chain.proceed(request);
-                // الخروج إذا نجح الطلب أو كان خطأ من العميل (4xx)
                 if (response.isSuccessful() || (response.code() >= 400 && response.code() < 500)) {
                     return response;
                 }
-                // إغلاق الاستجابة الفاشلة (5xx) للتحضير للمحاولة التالية
                 response.close();
             } catch (IOException e) {
                 exception = e;
@@ -91,12 +88,11 @@ public final class LocalStreamServer extends NanoHTTPD {
             
             tryCount++;
             if (tryCount < maxRetries) {
-                // Exponential Backoff: 500ms -> 1000ms
                 try { Thread.sleep((long) Math.pow(2, tryCount) * 250); } catch (InterruptedException ignored) {}
             }
         }
         if (exception != null) throw exception;
-        return chain.proceed(request); // المحاولة الأخيرة
+        return chain.proceed(request);
     };
 
     // ── 3. محرك HTTP متقدم مع Connection Pool و Timeouts متكيفة ──
@@ -140,7 +136,7 @@ public final class LocalStreamServer extends NanoHTTPD {
                 INSTANCE = new LocalStreamServer();
             }
             if (!INSTANCE.isAlive()) {
-                INSTANCE.start(SOCKET_READ_TIMEOUT, true); // استخدام Async Streaming في NanoHTTPD
+                INSTANCE.start(SOCKET_READ_TIMEOUT, true);
                 Log.d(TAG, "Enterprise Proxy started on http://" + HOST + ":" + PORT);
             }
         } catch (Exception e) {
@@ -170,7 +166,6 @@ public final class LocalStreamServer extends NanoHTTPD {
 
     private static String storeUrl(String realUrl) {
         if (realUrl == null || realUrl.isEmpty()) return "";
-        // نستخدم الرابط كاملاً (بما في ذلك Tokens) لضمان عدم حدوث تداخل
         String id = UUID.nameUUIDFromBytes((APP_SALT + realUrl).getBytes(StandardCharsets.UTF_8)).toString().replace("-", "");
         long expireTime = System.currentTimeMillis() + CACHE_TTL_MS;
         urlMap.put(id, new CacheEntry(realUrl, expireTime));
@@ -190,7 +185,6 @@ public final class LocalStreamServer extends NanoHTTPD {
         try {
             Method method = session.getMethod();
 
-            // ── 4. دعم طلبات الـ OPTIONS والـ HEAD بشكل سليم ──
             if (Method.OPTIONS.equals(method)) {
                 fi.iki.elonen.NanoHTTPD.Response resp = newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.OK, "text/plain", "");
                 resp.addHeader("Access-Control-Allow-Origin", "*");
@@ -259,12 +253,12 @@ public final class LocalStreamServer extends NanoHTTPD {
 
         if (Method.HEAD.equals(method)) reqBuilder.head();
 
-        // استخدام مهلة أقصر لقوائم التشغيل (Adaptive Timeouts)
         OkHttpClient manifestClient = httpClient.newBuilder()
                 .readTimeout(10, TimeUnit.SECONDS)
                 .build();
 
-        try (Response response = manifestClient.newCall(reqBuilder.build()).execute()) {
+        // ── استخدام okhttp3.Response صراحة لمنع التعارض ──
+        try (okhttp3.Response response = manifestClient.newCall(reqBuilder.build()).execute()) {
             int code = response.code();
             if (!response.isSuccessful()) {
                 return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) != null ? fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) : fi.iki.elonen.NanoHTTPD.Response.Status.INTERNAL_ERROR, "text/plain", "upstream error " + code);
@@ -300,7 +294,6 @@ public final class LocalStreamServer extends NanoHTTPD {
         return "http://" + HOST + ":" + PORT + "/proxy/" + id + "/" + path;
     }
 
-    // ── 5. سد ثغرات الـ XML وتأمين الـ DOM Parser بشكل نهائي ──
     private String rewriteDash(String xmlBody, String manifestUrl) {
         try {
             String baseDir = manifestUrl;
@@ -313,7 +306,6 @@ public final class LocalStreamServer extends NanoHTTPD {
             String proxyBaseUrl = "http://" + HOST + ":" + PORT + "/proxy/" + baseId + "/";
 
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            // XEE & XXE Hardening
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
@@ -325,7 +317,6 @@ public final class LocalStreamServer extends NanoHTTPD {
 
             Element root = doc.getDocumentElement();
             
-            // تجنب مضاعفة الـ BaseURL الجذري وإرباك ملفات الـ MPD متعددة المستويات
             boolean hasRootBaseUrl = false;
             NodeList rootChildren = root.getChildNodes();
             for (int i = 0; i < rootChildren.getLength(); i++) {
@@ -360,7 +351,6 @@ public final class LocalStreamServer extends NanoHTTPD {
             Element el = (Element) node;
             String tagName = el.getTagName();
 
-            // تجاوز BaseURL الجذري لأنه تمت معالجته بالفعل
             if (!("BaseURL".equals(tagName) && node.getParentNode() != null && "MPD".equals(node.getParentNode().getNodeName()))) {
                 if ("BaseURL".equals(tagName) || "Location".equals(tagName) || "SegmentURL".equals(tagName)) {
                     String content = el.getTextContent().trim();
@@ -431,7 +421,8 @@ public final class LocalStreamServer extends NanoHTTPD {
 
         if (Method.HEAD.equals(method)) reqBuilder.head();
 
-        Response response = httpClient.newCall(reqBuilder.build()).execute();
+        // ── استخدام okhttp3.Response صراحة لمنع التعارض ──
+        okhttp3.Response response = httpClient.newCall(reqBuilder.build()).execute();
         int code = response.code();
         
         if (Method.HEAD.equals(method)) {
@@ -449,7 +440,7 @@ public final class LocalStreamServer extends NanoHTTPD {
         ResponseBody body = response.body();
         InputStream upstreamIn = body != null ? body.byteStream() : new ByteArrayInputStream(new byte[0]);
         
-        final Response finalResponse = response;
+        final okhttp3.Response finalResponse = response;
         InputStream safeIn = new FilterInputStream(upstreamIn) {
             @Override
             public void close() throws IOException {
@@ -478,5 +469,17 @@ public final class LocalStreamServer extends NanoHTTPD {
         
         resp.addHeader("Access-Control-Allow-Origin", "*");
         return resp;
+    }
+
+    // ── دالة resolve المفقودة التي سببت الفشل ──
+    private static String resolve(String base, String ref) {
+        if (ref == null || ref.isEmpty()) return base;
+        String low = ref.toLowerCase();
+        if (low.startsWith("http://") || low.startsWith("https://")) return ref;
+        try {
+            return URI.create(base).resolve(ref).toString();
+        } catch (Exception e) {
+            return ref;
+        }
     }
 }
