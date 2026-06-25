@@ -23,42 +23,16 @@ import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
 
-// itags الخاصة بالصوت فقط — نتجاهلها
-private val AUDIO_ONLY_ITAGS = setOf(
-    "139", "140", "141", // AAC audio
-    "171", "172",         // Vorbis audio
-    "249", "250", "251"  // Opus audio (WebM)
-)
-
-// itags المدمجة (فيديو + صوت) — هذه الأفضل لـ ExoPlayer
-private val MUXED_ITAGS = setOf("18", "22", "37", "59", "78")
-
-private fun isMuxedStream(url: String): Boolean {
-    val itag = Regex("[?&]itag=(\\d+)").find(url)?.groupValues?.getOrNull(1)
-    return itag != null && itag in MUXED_ITAGS
-}
-
-private fun isAudioOnlyStream(url: String): Boolean {
-    val itag = Regex("[?&]itag=(\\d+)").find(url)?.groupValues?.getOrNull(1)
-    if (itag != null && itag in AUDIO_ONLY_ITAGS) return true
-    if (url.contains("mime=audio")) return true
-    return false
-}
-
-private fun isSabrStream(url: String): Boolean =
-    url.contains("sabr=1") || url.contains("rqh=1")
+// خدعة الـ iOS لإجبار يوتيوب على تقديم روابط HLS نظيفة ومدمجة
+private const val MAGIC_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
 private fun cleanVideoUrl(url: String): String {
-    // نحذف المعاملات الإشكالية التي تمنع ExoPlayer من التشغيل
     return url
         .replace(Regex("[?&]range=[^&]*"), "")
         .replace(Regex("[?&]rn=[^&]*"), "")
         .replace(Regex("[?&]rbuf=[^&]*"), "")
         .replace(Regex("[?&]ump=[^&]*"), "")
         .replace(Regex("[?&]sabr=[^&]*"), "")
-        .replace(Regex("[?&]rqh=[^&]*"), "")
-        .replace(Regex("[?&]alr=[^&]*"), "")
-        .replace(Regex("[?&]cpn=[^&]*"), "")
         .replace(Regex("&&+"), "&")
         .replace(Regex("[?&]$"), "")
 }
@@ -78,10 +52,10 @@ fun YouTubeSnifferScreen(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var sniffFound by remember { mutableStateOf(false) }
 
-    // مؤقت أمان 30 ثانية
+    // مؤقت أمان 20 ثانية (أكثر من كافية)
     LaunchedEffect(phase) {
         if (phase != "sniffing") return@LaunchedEffect
-        delay(30_000)
+        delay(20_000)
         if (!sniffFound) {
             phase = "error"
             statusMsg = "تعذر سحب الفيديو — تأكد من الرابط أو اتصالك"
@@ -93,7 +67,7 @@ fun YouTubeSnifferScreen(
             val playerConfig = config.copy(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
-                    userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+                    userAgent = MAGIC_USER_AGENT, // يجب إرسال نفس هوية الآيفون للمشغل لتجنب حظر 403
                     referer   = "https://m.youtube.com/"
                 )
             )
@@ -105,10 +79,9 @@ fun YouTubeSnifferScreen(
                 val fullUrl = remember(youtubeUrl) {
                     when {
                         youtubeUrl.contains("youtu.be/") ->
-                            "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999"
+                            "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999" // تخطي قيود العمر
                         youtubeUrl.contains("youtube.com/shorts/") ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com")
-                                .replace("/shorts/", "/watch?v=")
+                            youtubeUrl.replace("www.youtube.com", "m.youtube.com").replace("/shorts/", "/watch?v=")
                         else ->
                             youtubeUrl.replace("www.youtube.com", "m.youtube.com")
                     }
@@ -117,15 +90,16 @@ fun YouTubeSnifferScreen(
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(1, 1)
+                            layoutParams = ViewGroup.LayoutParams(1, 1) // متصفح الظل (مخفي)
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
-                                mediaPlaybackRequiresUserGesture = false
+                                mediaPlaybackRequiresUserGesture = false // السماح بالتشغيل التلقائي
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
-                                cacheMode = WebSettings.LOAD_DEFAULT
+                                userAgentString = MAGIC_USER_AGENT // تطبيق خدعة الآيفون هنا!
+                                cacheMode = WebSettings.LOAD_NO_CACHE
                             }
+                            
                             CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
@@ -136,141 +110,54 @@ fun YouTubeSnifferScreen(
                                 ): WebResourceResponse? {
                                     val reqUrl = request?.url?.toString() ?: return null
 
-                                    // إذا وجدنا رابطاً بالفعل لا نحتاج المزيد
                                     if (sniffFound) return null
 
-                                    if (reqUrl.contains("videoplayback")) {
+                                    // 1. اصطياد روابط HLS (الكنز الذي سيعطينا إياه يوتيوب بفضل خدعة الآيفون)
+                                    val isHls = reqUrl.contains("manifest.googlevideo.com") || reqUrl.contains(".m3u8")
+                                    
+                                    // 2. اصطياد الروابط العادية المدمجة (مع تجاهل روابط الصوت فقط)
+                                    val isVideoPlayback = reqUrl.contains("videoplayback")
+                                    val isAudioOnly = reqUrl.contains("mime=audio") || reqUrl.contains("itag=140")
 
-                                        // 1. الأولوية القصوى: روابط مدمجة (فيديو+صوت)
-                                        if (isMuxedStream(reqUrl) && !isAudioOnlyStream(reqUrl)) {
-                                            sniffFound = true
-                                            val clean = cleanVideoUrl(reqUrl)
-                                            view?.post {
-                                                finalStreamUrl = clean
-                                                onStreamReady(clean)
-                                                phase = "playing"
-                                                view.stopLoading()
-                                                view.destroy()
-                                                webViewRef = null
-                                            }
-                                            return null
-                                        }
-
-                                        // 2. رابط عادي بدون SABR وبدون صوت فقط
-                                        if (!isSabrStream(reqUrl) && !isAudioOnlyStream(reqUrl)) {
-                                            sniffFound = true
-                                            val clean = cleanVideoUrl(reqUrl)
-                                            view?.post {
-                                                finalStreamUrl = clean
-                                                onStreamReady(clean)
-                                                phase = "playing"
-                                                view.stopLoading()
-                                                view.destroy()
-                                                webViewRef = null
-                                            }
-                                            return null
-                                        }
-
-                                        // 3. SABR مقبول كآخر ملجأ إذا لم نجد شيئاً آخر
-                                        // (نحفظه لاحتمال الاستخدام إذا لم يظهر أي رابط آخر)
-                                        if (!isAudioOnlyStream(reqUrl) && finalStreamUrl.isEmpty()) {
-                                            val clean = cleanVideoUrl(reqUrl)
-                                            view?.post { finalStreamUrl = clean }
-                                        }
-                                    }
-
-                                    // فحص HLS manifest (أفضل للبث المباشر)
-                                    if ((reqUrl.contains("manifest.googlevideo.com") ||
-                                         reqUrl.contains(".m3u8")) && !sniffFound) {
+                                    if ((isHls || (isVideoPlayback && !isAudioOnly)) && !sniffFound) {
                                         sniffFound = true
+                                        val clean = cleanVideoUrl(reqUrl)
+                                        
                                         view?.post {
-                                            finalStreamUrl = reqUrl
-                                            onStreamReady(reqUrl)
+                                            finalStreamUrl = clean
+                                            onStreamReady(clean)
                                             phase = "playing"
                                             view.stopLoading()
                                             view.destroy()
                                             webViewRef = null
                                         }
                                     }
-
-                                    return null
+                                    return super.shouldInterceptRequest(view, request)
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
 
-                                    // JS متقدم يجبر يوتيوب على استخدام البث القديم
+                                    // حقن JS بسيط وفعال لتشغيل الفيديو فوراً وبدون تعقيد كلاود
                                     val js = """
                                         (function() {
-                                            try {
-                                                // محاولة إجبار YouTube على استخدام itag=22 (720p مدمج)
-                                                if (window.yt && window.yt.config_) {
-                                                    var cfg = window.yt.config_;
-                                                    if (cfg.EXPERIMENT_FLAGS) {
-                                                        cfg.EXPERIMENT_FLAGS.html5_sabr_ump = false;
-                                                        cfg.EXPERIMENT_FLAGS.html5_enable_sabr_ump = false;
-                                                        cfg.EXPERIMENT_FLAGS.html5_disable_sabr = true;
-                                                    }
-                                                }
-                                            } catch(e) {}
-                                            
                                             var attempts = 0;
                                             function tryPlay() {
                                                 attempts++;
                                                 var v = document.querySelector('video');
                                                 if (v) {
-                                                    v.muted = true;
-                                                    v.volume = 0;
+                                                    v.muted = true; // يجب كتم الصوت ليسمح المتصفح بالتشغيل التلقائي
                                                     v.play().catch(function(){});
                                                 }
-                                                // محاولة النقر على أزرار التشغيل المختلفة
-                                                var btns = [
-                                                    document.querySelector('.ytp-large-play-button'),
-                                                    document.querySelector('button[aria-label="Play"]'),
-                                                    document.querySelector('.ytp-play-button'),
-                                                    document.querySelector('[data-title-no-tooltip="Play"]')
-                                                ];
-                                                btns.forEach(function(b) { if(b) b.click(); });
+                                                var playBtn = document.querySelector('.ytp-large-play-button');
+                                                if (playBtn) playBtn.click();
                                                 
-                                                // محاولة الوصول للبيانات عبر يوتيوب API
-                                                if (!window._apix_sniff_tried) {
-                                                    window._apix_sniff_tried = true;
-                                                    try {
-                                                        var p = document.getElementById('movie_player');
-                                                        if (p && p.getVideoData) {
-                                                            var d = p.getVideoData();
-                                                            if (d && d.video_id) {
-                                                                p.playVideo();
-                                                            }
-                                                        }
-                                                    } catch(e) {}
-                                                }
-                                                
-                                                if (attempts < 10) setTimeout(tryPlay, 1500);
+                                                if (attempts < 8) setTimeout(tryPlay, 1000);
                                             }
-                                            setTimeout(tryPlay, 800);
+                                            setTimeout(tryPlay, 500);
                                         })();
                                     """.trimIndent()
                                     view?.evaluateJavascript(js, null)
-                                }
-
-                                override fun onReceivedError(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                    error: WebResourceError?
-                                ) {
-                                    // إذا كان لدينا رابط محفوظ نستخدمه حتى مع وجود خطأ
-                                    if (!sniffFound && finalStreamUrl.isNotEmpty()) {
-                                        sniffFound = true
-                                        val saved = finalStreamUrl
-                                        view?.post {
-                                            onStreamReady(saved)
-                                            phase = "playing"
-                                            view.stopLoading()
-                                            view.destroy()
-                                            webViewRef = null
-                                        }
-                                    }
                                 }
                             }
 
@@ -288,24 +175,9 @@ fun YouTubeSnifferScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = MediumRed,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(52.dp)
-                    )
+                    CircularProgressIndicator(color = MediumRed, strokeWidth = 3.dp, modifier = Modifier.size(52.dp))
                     Spacer(Modifier.height(20.dp))
-                    Text(
-                        "جاري تحميل الفيديو...",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "يوتيوب",
-                        color = Color(0xFFAAAAAA),
-                        fontSize = 13.sp
-                    )
+                    Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -319,19 +191,13 @@ fun YouTubeSnifferScreen(
         }
 
         "error" -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Error, null, tint = MediumRed, modifier = Modifier.size(64.dp))
                     Spacer(Modifier.height(16.dp))
                     Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(24.dp))
-                    Button(
-                        onClick = onBack,
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold)
-                    ) {
+                    Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Gold)) {
                         Text("رجوع", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
