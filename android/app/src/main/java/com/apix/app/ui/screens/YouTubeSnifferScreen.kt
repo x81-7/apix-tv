@@ -67,9 +67,14 @@ fun YouTubeSnifferScreen(
             val playerConfig = config.copy(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
-                    userAgent = MAGIC_USER_AGENT, // يجب إرسال نفس هوية الآيفون للمشغل لتجنب حظر 403
+                    userAgent = MAGIC_USER_AGENT,
                     referer   = "https://m.youtube.com/"
-                )
+                ),
+                // إجبار المشغل على تجاهل أي حماية DRM قادمة من القنوات السابقة
+                drm = null,
+                drmLicenseHeaders = null,
+                // إجبار المشغل على إخفاء أي ترجمة تخص القناة السابقة
+                subtitleUrl = null 
             )
             PlayerScreen(config = playerConfig, onBack = onBack)
         }
