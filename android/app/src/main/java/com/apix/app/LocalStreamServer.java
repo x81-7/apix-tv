@@ -4,71 +4,144 @@ import android.util.Log;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
-import java.net.URL;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
 import fi.iki.elonen.NanoHTTPD;
+import okhttp3.ConnectionPool;
+import okhttp3.Interceptor;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
-/**
- * LocalStreamServer — an on-device IPTV proxy.
- *
- * <p>Goal: never hand the real upstream IPTV URLs (origin host, tokens, keys)
- * to the ExoPlayer media stack or to any external player, so they cannot be
- * sniffed from logs or the player's network layer. Everything the player sees
- * is {@code http://127.0.0.1:8080/...}.
- *
- * <p>How it works:
- * <ul>
- *   <li>{@code /play?url=<b64>} — fetches an HLS (.m3u8) or DASH (.mpd) manifest
- *       from the real origin and rewrites every inner reference
- *       (segments / keys / sub-playlists) to point back at this proxy via
- *       {@code /chunk?url=<b64>}. Relative paths are resolved against the
- *       original manifest URL before being re-encoded.</li>
- *   <li>{@code /chunk?url=<b64>} — streams an arbitrary upstream resource
- *       (segment / key / nested manifest) straight through. Nested manifests
- *       are themselves rewritten so multi-variant playlists keep working.</li>
- * </ul>
- *
- * <p>Smart bypass: progressive files (.mp4 / .mkv) are NOT proxied — see
- * {@link #shouldBypass(String)} — because buffering large monolithic files
- * through the local server would blow up memory. Those play directly.
- *
- * <p>The original URL is base64-url-encoded in the {@code url} query param so
- * query strings / tokens inside it survive transport intact.
- */
 public final class LocalStreamServer extends NanoHTTPD {
 
-    private static final String TAG  = "LocalProxy";
-    public  static final int    PORT = 8080;
-    public  static final String HOST = "127.0.0.1";
+    private static final String TAG = "LocalProxy";
+    public static final int PORT = 8080;
+    public static final String HOST = "127.0.0.1";
+    private static final String APP_SALT = "Apix_Enterprise_Salt_2026_"; 
+
+    private static final Pattern HLS_URI_PATTERN = Pattern.compile("URI=['\"]([^'\"]+)['\"]");
+
+    // ── 1. إدارة الذاكرة الاحترافية (TTL Cache & Background Cleaner) ──
+    private static class CacheEntry {
+        final String url;
+        final long expireAt;
+        CacheEntry(String url, long expireAt) {
+            this.url = url;
+            this.expireAt = expireAt;
+        }
+    }
+
+    private static final ConcurrentHashMap<String, CacheEntry> urlMap = new ConcurrentHashMap<>();
+    private static ScheduledExecutorService cleanupExecutor;
+    private static final long CACHE_TTL_MS = TimeUnit.MINUTES.toMillis(15); // 15 دقيقة صلاحية للرابط
+
+    // ── 2. طبقة الـ Retries & Exponential Backoff (Circuit Breaker مبسط) ──
+    private static final Interceptor retryInterceptor = chain -> {
+        Request request = chain.request();
+        okhttp3.Response response = null;
+        IOException exception = null;
+        int tryCount = 0;
+        int maxRetries = 3;
+
+        while (tryCount < maxRetries) {
+            try {
+                response = chain.proceed(request);
+                // الخروج إذا نجح الطلب أو كان خطأ من العميل (4xx)
+                if (response.isSuccessful() || (response.code() >= 400 && response.code() < 500)) {
+                    return response;
+                }
+                // إغلاق الاستجابة الفاشلة (5xx) للتحضير للمحاولة التالية
+                response.close();
+            } catch (IOException e) {
+                exception = e;
+            }
+            
+            tryCount++;
+            if (tryCount < maxRetries) {
+                // Exponential Backoff: 500ms -> 1000ms
+                try { Thread.sleep((long) Math.pow(2, tryCount) * 250); } catch (InterruptedException ignored) {}
+            }
+        }
+        if (exception != null) throw exception;
+        return chain.proceed(request); // المحاولة الأخيرة
+    };
+
+    // ── 3. محرك HTTP متقدم مع Connection Pool و Timeouts متكيفة ──
+    private static final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectionPool(new ConnectionPool(20, 5, TimeUnit.MINUTES))
+            .addInterceptor(retryInterceptor)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .build();
 
     private static LocalStreamServer INSTANCE;
-
-    /** Optional per-stream upstream headers (UA / Referer / Cookie / Origin). */
     private static volatile Map<String, String> upstreamHeaders = new HashMap<>();
 
     private LocalStreamServer() {
         super(HOST, PORT);
+        startCleanupTask();
     }
 
-    /** Start (idempotent) and return the running instance. */
+    private void startCleanupTask() {
+        if (cleanupExecutor == null || cleanupExecutor.isShutdown()) {
+            cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
+            cleanupExecutor.scheduleAtFixedRate(() -> {
+                long now = System.currentTimeMillis();
+                Iterator<Map.Entry<String, CacheEntry>> it = urlMap.entrySet().iterator();
+                while (it.hasNext()) {
+                    if (now > it.next().getValue().expireAt) {
+                        it.remove();
+                    }
+                }
+            }, 5, 5, TimeUnit.MINUTES);
+        }
+    }
+
     public static synchronized LocalStreamServer ensureStarted() {
         try {
             if (INSTANCE == null) {
                 INSTANCE = new LocalStreamServer();
             }
             if (!INSTANCE.isAlive()) {
-                INSTANCE.start(SOCKET_READ_TIMEOUT, false);
-                Log.d(TAG, "started on http://" + HOST + ":" + PORT);
+                INSTANCE.start(SOCKET_READ_TIMEOUT, true); // استخدام Async Streaming في NanoHTTPD
+                Log.d(TAG, "Enterprise Proxy started on http://" + HOST + ":" + PORT);
             }
         } catch (Exception e) {
             Log.e(TAG, "start failed", e);
@@ -78,19 +151,15 @@ public final class LocalStreamServer extends NanoHTTPD {
 
     public static synchronized void shutdownServer() {
         try {
+            if (cleanupExecutor != null) cleanupExecutor.shutdownNow();
             if (INSTANCE != null && INSTANCE.isAlive()) INSTANCE.stop();
         } catch (Exception ignored) {}
     }
 
-    /** Set the upstream request headers used for every proxied fetch. */
     public static void setHeaders(Map<String, String> headers) {
         upstreamHeaders = headers != null ? headers : new HashMap<>();
     }
 
-    /**
-     * True when the URL must skip the proxy and play directly (progressive
-     * containers). Keeps the local server limited to manifest-based streams.
-     */
     public static boolean shouldBypass(String url) {
         if (url == null) return true;
         String u = url.toLowerCase();
@@ -99,238 +168,315 @@ public final class LocalStreamServer extends NanoHTTPD {
         return path.endsWith(".mp4") || path.endsWith(".mkv");
     }
 
-    /**
-     * Wrap a real stream URL into a local-proxy URL. Returns the original URL
-     * unchanged when it should be bypassed (.mp4 / .mkv).
-     */
+    private static String storeUrl(String realUrl) {
+        if (realUrl == null || realUrl.isEmpty()) return "";
+        // نستخدم الرابط كاملاً (بما في ذلك Tokens) لضمان عدم حدوث تداخل
+        String id = UUID.nameUUIDFromBytes((APP_SALT + realUrl).getBytes(StandardCharsets.UTF_8)).toString().replace("-", "");
+        long expireTime = System.currentTimeMillis() + CACHE_TTL_MS;
+        urlMap.put(id, new CacheEntry(realUrl, expireTime));
+        return id;
+    }
+
     public static String wrap(String realUrl) {
         if (shouldBypass(realUrl)) return realUrl;
         ensureStarted();
-        return "http://" + HOST + ":" + PORT + "/play?url=" + enc(realUrl);
+        return "http://" + HOST + ":" + PORT + "/play?id=" + storeUrl(realUrl);
     }
 
     // ───────────────────────────── serve ─────────────────────────────
 
     @Override
-    public Response serve(IHTTPSession session) {
+    public fi.iki.elonen.NanoHTTPD.Response serve(IHTTPSession session) {
         try {
+            Method method = session.getMethod();
+
+            // ── 4. دعم طلبات الـ OPTIONS والـ HEAD بشكل سليم ──
+            if (Method.OPTIONS.equals(method)) {
+                fi.iki.elonen.NanoHTTPD.Response resp = newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.OK, "text/plain", "");
+                resp.addHeader("Access-Control-Allow-Origin", "*");
+                resp.addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+                return resp;
+            }
+
             String uri = session.getUri();
-            Map<String, String> params = session.getParms();
-            String b64 = params.get("url");
-            String real = b64 != null ? dec(b64) : null;
-            if (real == null || real.isEmpty()) {
-                return newFixedLengthResponse(Response.Status.BAD_REQUEST,
-                        "text/plain", "missing url");
+            
+            if (uri.startsWith("/proxy/")) {
+                String remainder = uri.substring(7);
+                int slashIdx = remainder.indexOf('/');
+                if (slashIdx < 0) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "invalid path");
+                
+                String id = remainder.substring(0, slashIdx);
+                String path = remainder.substring(slashIdx + 1);
+                
+                CacheEntry entry = urlMap.get(id);
+                if (entry == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "expired session");
+
+                String baseUrl = entry.url;
+                String targetUrl;
+                try {
+                    targetUrl = URI.create(baseUrl).resolve(path).toString();
+                } catch (Exception e) {
+                    targetUrl = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + path;
+                }
+
+                if (session.getQueryParameterString() != null && !session.getQueryParameterString().isEmpty()) {
+                    targetUrl += (targetUrl.contains("?") ? "&" : "?") + session.getQueryParameterString();
+                }
+
+                return servePassthrough(targetUrl, session, method);
             }
 
             if ("/play".equals(uri)) {
-                return serveManifest(real);
-            } else if ("/chunk".equals(uri)) {
-                // Nested manifests must be rewritten too; binaries pass through.
-                if (isManifest(real)) return serveManifest(real);
-                return servePassthrough(real);
+                String id = session.getParms().get("id");
+                if (id == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "missing id");
+                CacheEntry entry = urlMap.get(id);
+                if (entry == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "expired id");
+                return serveManifest(entry.url, session, method);
             }
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "not found");
+
+            return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "not found");
         } catch (Exception e) {
             Log.e(TAG, "serve error", e);
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                    "text/plain", "proxy error");
+            return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.INTERNAL_ERROR, "text/plain", "proxy error");
         }
     }
 
     // ─────────────────────── manifest rewriting ───────────────────────
 
-    private Response serveManifest(String manifestUrl) throws Exception {
-        HttpURLConnection conn = openUpstream(manifestUrl);
-        int code = conn.getResponseCode();
-        if (code < 200 || code >= 300) {
-            return newFixedLengthResponse(Response.Status.lookup(code) != null
-                    ? Response.Status.lookup(code) : Response.Status.INTERNAL_ERROR,
-                    "text/plain", "upstream " + code);
+    private fi.iki.elonen.NanoHTTPD.Response serveManifest(String manifestUrl, IHTTPSession session, Method method) throws Exception {
+        Request.Builder reqBuilder = new Request.Builder().url(manifestUrl);
+        
+        if (session != null && session.getHeaders() != null) {
+            Map<String, String> clientHeaders = session.getHeaders();
+            String[] passthroughHeaders = {"cookie", "authorization", "origin", "referer", "user-agent", "accept-encoding"};
+            for (String h : passthroughHeaders) {
+                if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
+            }
         }
-        String contentType = conn.getContentType();
-        StringBuilder sb = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(
-                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) sb.append(line).append('\n');
-        } finally {
-            conn.disconnect();
+        for (Map.Entry<String, String> e : upstreamHeaders.entrySet()) {
+            if (e.getKey() != null && e.getValue() != null) reqBuilder.header(e.getKey(), e.getValue());
         }
 
-        boolean dash = manifestUrl.toLowerCase().contains(".mpd")
-                || (contentType != null && contentType.contains("dash"));
-        String rewritten = dash
-                ? rewriteDash(sb.toString(), manifestUrl)
-                : rewriteHls(sb.toString(), manifestUrl);
+        if (Method.HEAD.equals(method)) reqBuilder.head();
 
-        String ct = dash ? "application/dash+xml" : "application/vnd.apple.mpegurl";
-        Response resp = newFixedLengthResponse(Response.Status.OK, ct, rewritten);
-        resp.addHeader("Access-Control-Allow-Origin", "*");
-        return resp;
+        // استخدام مهلة أقصر لقوائم التشغيل (Adaptive Timeouts)
+        OkHttpClient manifestClient = httpClient.newBuilder()
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build();
+
+        try (Response response = manifestClient.newCall(reqBuilder.build()).execute()) {
+            int code = response.code();
+            if (!response.isSuccessful()) {
+                return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) != null ? fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) : fi.iki.elonen.NanoHTTPD.Response.Status.INTERNAL_ERROR, "text/plain", "upstream error " + code);
+            }
+
+            if (Method.HEAD.equals(method)) {
+                fi.iki.elonen.NanoHTTPD.Response resp = newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.OK, response.header("Content-Type", "application/octet-stream"), "");
+                resp.addHeader("Access-Control-Allow-Origin", "*");
+                return resp;
+            }
+
+            ResponseBody body = response.body();
+            String rawContent = body != null ? body.string() : "";
+            String contentType = response.header("Content-Type", "");
+
+            boolean dash = manifestUrl.toLowerCase().contains(".mpd") || contentType.contains("dash");
+            String rewritten = dash ? rewriteDash(rawContent, manifestUrl) : rewriteHls(rawContent, manifestUrl);
+
+            String ct = dash ? "application/dash+xml" : "application/vnd.apple.mpegurl";
+            fi.iki.elonen.NanoHTTPD.Response resp = newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.OK, ct, rewritten);
+            resp.addHeader("Access-Control-Allow-Origin", "*");
+            resp.addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            return resp;
+        }
     }
 
-    /** Rewrite an HLS playlist: URIs on their own lines + URI="..." attributes. */
-    private String rewriteHls(String body, String base) {
+    private String encryptUrlAndCreateProxyPath(String absoluteUrl) {
+        int lastSlash = absoluteUrl.lastIndexOf('/');
+        String base = lastSlash >= 0 ? absoluteUrl.substring(0, lastSlash + 1) : absoluteUrl + "/";
+        String path = lastSlash >= 0 ? absoluteUrl.substring(lastSlash + 1) : "";
+        
+        String id = storeUrl(base);
+        return "http://" + HOST + ":" + PORT + "/proxy/" + id + "/" + path;
+    }
+
+    // ── 5. سد ثغرات الـ XML وتأمين الـ DOM Parser بشكل نهائي ──
+    private String rewriteDash(String xmlBody, String manifestUrl) {
+        try {
+            String baseDir = manifestUrl;
+            int q = baseDir.indexOf('?');
+            if (q >= 0) baseDir = baseDir.substring(0, q);
+            int lastSlash = baseDir.lastIndexOf('/');
+            baseDir = lastSlash >= 0 ? baseDir.substring(0, lastSlash + 1) : baseDir + "/";
+
+            String baseId = storeUrl(baseDir);
+            String proxyBaseUrl = "http://" + HOST + ":" + PORT + "/proxy/" + baseId + "/";
+
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            // XEE & XXE Hardening
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            Document doc = builder.parse(new InputSource(new StringReader(xmlBody)));
+
+            Element root = doc.getDocumentElement();
+            
+            // تجنب مضاعفة الـ BaseURL الجذري وإرباك ملفات الـ MPD متعددة المستويات
+            boolean hasRootBaseUrl = false;
+            NodeList rootChildren = root.getChildNodes();
+            for (int i = 0; i < rootChildren.getLength(); i++) {
+                Node child = rootChildren.item(i);
+                if (child.getNodeType() == Node.ELEMENT_NODE && "BaseURL".equals(child.getNodeName())) {
+                    child.setTextContent(proxyBaseUrl);
+                    hasRootBaseUrl = true;
+                    break;
+                }
+            }
+            if (!hasRootBaseUrl) {
+                Element localBase = doc.createElement("BaseURL");
+                localBase.setTextContent(proxyBaseUrl);
+                root.insertBefore(localBase, root.getFirstChild());
+            }
+
+            traverseAndRewriteNodes(root);
+
+            Transformer transformer = TransformerFactory.newInstance().newTransformer();
+            StringWriter writer = new StringWriter();
+            transformer.transform(new DOMSource(doc), new StreamResult(writer));
+            return writer.toString();
+
+        } catch (Exception e) {
+            Log.e(TAG, "DOM parsing failed, falling back", e);
+            return xmlBody;
+        }
+    }
+
+    private void traverseAndRewriteNodes(Node node) {
+        if (node.getNodeType() == Node.ELEMENT_NODE) {
+            Element el = (Element) node;
+            String tagName = el.getTagName();
+
+            // تجاوز BaseURL الجذري لأنه تمت معالجته بالفعل
+            if (!("BaseURL".equals(tagName) && node.getParentNode() != null && "MPD".equals(node.getParentNode().getNodeName()))) {
+                if ("BaseURL".equals(tagName) || "Location".equals(tagName) || "SegmentURL".equals(tagName)) {
+                    String content = el.getTextContent().trim();
+                    if (content.startsWith("http://") || content.startsWith("https://")) {
+                        el.setTextContent(encryptUrlAndCreateProxyPath(content));
+                    }
+                }
+            }
+
+            String[] attrs = {"media", "initialization", "sourceURL", "index", "xlink:href"};
+            for (String attr : attrs) {
+                if (el.hasAttribute(attr)) {
+                    String val = el.getAttribute(attr);
+                    if (val.startsWith("http://") || val.startsWith("https://")) {
+                        el.setAttribute(attr, encryptUrlAndCreateProxyPath(val));
+                    }
+                }
+            }
+        }
+
+        NodeList children = node.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            traverseAndRewriteNodes(children.item(i));
+        }
+    }
+
+    private String rewriteHls(String body, String manifestUrl) {
         String[] lines = body.split("\n", -1);
         StringBuilder out = new StringBuilder(body.length() + 256);
-        for (String raw : lines) {
-            String line = raw;
+        for (String line : lines) {
+            line = line.trim();
             if (line.isEmpty()) { out.append('\n'); continue; }
 
             if (line.startsWith("#")) {
-                // Rewrite URI="..." occurrences (EXT-X-KEY, MEDIA, MAP, etc.)
-                line = rewriteAttrUris(line, base);
-                out.append(line).append('\n');
-                continue;
+                Matcher m = HLS_URI_PATTERN.matcher(line);
+                StringBuffer sb = new StringBuffer();
+                while (m.find()) {
+                    String uri = m.group(1);
+                    String abs = resolve(manifestUrl, uri);
+                    String proxyPath = encryptUrlAndCreateProxyPath(abs);
+                    m.appendReplacement(sb, "URI=\"" + Matcher.quoteReplacement(proxyPath) + "\"");
+                }
+                m.appendTail(sb);
+                out.append(sb.toString()).append('\n');
+            } else {
+                String abs = resolve(manifestUrl, line);
+                out.append(encryptUrlAndCreateProxyPath(abs)).append('\n');
             }
-            // A bare resource line (segment or sub-playlist).
-            String abs = resolve(base, line.trim());
-            out.append("/chunk?url=").append(enc(abs)).append('\n');
         }
         return out.toString();
     }
 
-    private String rewriteAttrUris(String line, String base) {
-        int idx = 0;
-        StringBuilder sb = new StringBuilder();
-        while (true) {
-            int u = line.indexOf("URI=\"", idx);
-            if (u < 0) { sb.append(line.substring(idx)); break; }
-            int start = u + 5;
-            int end = line.indexOf('"', start);
-            if (end < 0) { sb.append(line.substring(idx)); break; }
-            String inner = line.substring(start, end);
-            String abs = resolve(base, inner);
-            sb.append(line, idx, start)
-              .append("/chunk?url=").append(enc(abs));
-            sb.append('"');
-            idx = end + 1;
-        }
-        return sb.toString();
-    }
-
-    /** Rewrite DASH MPD: BaseURL + media/initialization template attributes. */
-    private String rewriteDash(String body, String base) {
-        String out = body;
-        // <BaseURL>...</BaseURL>
-        out = replaceTagContent(out, "BaseURL", base);
-        // media="..." initialization="..." in SegmentTemplate
-        out = replaceXmlAttr(out, "media", base);
-        out = replaceXmlAttr(out, "initialization", base);
-        return out;
-    }
-
-    private String replaceTagContent(String xml, String tag, String base) {
-        String open = "<" + tag + ">";
-        String close = "</" + tag + ">";
-        StringBuilder sb = new StringBuilder();
-        int idx = 0;
-        while (true) {
-            int o = xml.indexOf(open, idx);
-            if (o < 0) { sb.append(xml.substring(idx)); break; }
-            int c = xml.indexOf(close, o);
-            if (c < 0) { sb.append(xml.substring(idx)); break; }
-            String inner = xml.substring(o + open.length(), c).trim();
-            String abs = resolve(base, inner);
-            sb.append(xml, idx, o + open.length())
-              .append("http://").append(HOST).append(':').append(PORT)
-              .append("/chunk?url=").append(enc(abs));
-            idx = c;
-        }
-        return sb.toString();
-    }
-
-    private String replaceXmlAttr(String xml, String attr, String base) {
-        String key = attr + "=\"";
-        StringBuilder sb = new StringBuilder();
-        int idx = 0;
-        while (true) {
-            int a = xml.indexOf(key, idx);
-            if (a < 0) { sb.append(xml.substring(idx)); break; }
-            int start = a + key.length();
-            int end = xml.indexOf('"', start);
-            if (end < 0) { sb.append(xml.substring(idx)); break; }
-            String inner = xml.substring(start, end);
-            // DASH templates contain $Number$ / $RepresentationID$ — keep them,
-            // but still resolve relative host. We only re-root absolute-ish ones.
-            String abs = resolve(base, inner);
-            sb.append(xml, idx, start)
-              .append("http://").append(HOST).append(':').append(PORT)
-              .append("/chunk?url=").append(enc(abs));
-            sb.append('"');
-            idx = end + 1;
-        }
-        return sb.toString();
-    }
-
     // ───────────────────────── passthrough ─────────────────────────
 
-    private Response servePassthrough(String url) throws Exception {
-        HttpURLConnection conn = openUpstream(url);
-        int code = conn.getResponseCode();
-        InputStream in = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
-        if (in == null) in = new ByteArrayInputStream(new byte[0]);
-        String ct = conn.getContentType();
-        if (ct == null) ct = "application/octet-stream";
-        long len = conn.getContentLengthLong();
-        Response resp = (len >= 0)
-                ? newFixedLengthResponse(Response.Status.OK, ct, in, len)
-                : newChunkedResponse(Response.Status.OK, ct, in);
-        resp.addHeader("Access-Control-Allow-Origin", "*");
-        return resp;
-    }
-
-    // ───────────────────────────── helpers ─────────────────────────────
-
-    private HttpURLConnection openUpstream(String url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(20000);
-        conn.setInstanceFollowRedirects(true);
-        Map<String, String> h = upstreamHeaders;
-        if (h != null) {
-            for (Map.Entry<String, String> e : h.entrySet()) {
-                if (e.getKey() != null && e.getValue() != null) {
-                    conn.setRequestProperty(e.getKey(), e.getValue());
-                }
+    private fi.iki.elonen.NanoHTTPD.Response servePassthrough(String url, IHTTPSession session, Method method) throws Exception {
+        Request.Builder reqBuilder = new Request.Builder().url(url);
+        
+        if (session != null && session.getHeaders() != null) {
+            Map<String, String> clientHeaders = session.getHeaders();
+            String[] criticalHeaders = {"range", "cookie", "authorization", "origin", "referer", "user-agent", "if-none-match", "if-modified-since"};
+            for (String h : criticalHeaders) {
+                if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
             }
         }
-        return conn;
-    }
-
-    private static boolean isManifest(String url) {
-        String u = url.toLowerCase();
-        int q = u.indexOf('?');
-        String path = q >= 0 ? u.substring(0, q) : u;
-        return path.endsWith(".m3u8") || path.endsWith(".mpd");
-    }
-
-    /** Resolve a possibly-relative reference against the manifest base URL. */
-    private static String resolve(String base, String ref) {
-        if (ref == null || ref.isEmpty()) return base;
-        String low = ref.toLowerCase();
-        if (low.startsWith("http://") || low.startsWith("https://")) return ref;
-        try {
-            return URI.create(base).resolve(ref).toString();
-        } catch (Exception e) {
-            return ref;
+        for (Map.Entry<String, String> e : upstreamHeaders.entrySet()) {
+            if (e.getKey() != null && e.getValue() != null) reqBuilder.header(e.getKey(), e.getValue());
         }
-    }
 
-    private static String enc(String s) {
-        try {
-            return URLEncoder.encode(s, "UTF-8");
-        } catch (Exception e) {
-            return s;
-        }
-    }
+        if (Method.HEAD.equals(method)) reqBuilder.head();
 
-    private static String dec(String s) {
-        try {
-            return URLDecoder.decode(s, "UTF-8");
-        } catch (Exception e) {
-            return s;
+        Response response = httpClient.newCall(reqBuilder.build()).execute();
+        int code = response.code();
+        
+        if (Method.HEAD.equals(method)) {
+            fi.iki.elonen.NanoHTTPD.Response resp = newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) != null ? fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) : fi.iki.elonen.NanoHTTPD.Response.Status.OK, response.header("Content-Type", "application/octet-stream"), "");
+            for (String headerName : response.headers().names()) {
+                if (!headerName.equalsIgnoreCase("content-length") && !headerName.equalsIgnoreCase("content-type")) {
+                    resp.addHeader(headerName, response.header(headerName));
+                }
+            }
+            resp.addHeader("Access-Control-Allow-Origin", "*");
+            response.close();
+            return resp;
         }
+
+        ResponseBody body = response.body();
+        InputStream upstreamIn = body != null ? body.byteStream() : new ByteArrayInputStream(new byte[0]);
+        
+        final Response finalResponse = response;
+        InputStream safeIn = new FilterInputStream(upstreamIn) {
+            @Override
+            public void close() throws IOException {
+                super.close();
+                finalResponse.close();
+            }
+        };
+
+        String ct = response.header("Content-Type", "application/octet-stream");
+        long len = body != null ? body.contentLength() : -1;
+
+        fi.iki.elonen.NanoHTTPD.Response.IStatus status = (code == 206) ? fi.iki.elonen.NanoHTTPD.Response.Status.PARTIAL_CONTENT : fi.iki.elonen.NanoHTTPD.Response.Status.OK;
+        if (code >= 400) {
+            status = fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) != null ? fi.iki.elonen.NanoHTTPD.Response.Status.lookup(code) : fi.iki.elonen.NanoHTTPD.Response.Status.INTERNAL_ERROR;
+        }
+
+        fi.iki.elonen.NanoHTTPD.Response resp = (len >= 0) 
+                ? newFixedLengthResponse(status, ct, safeIn, len) 
+                : newChunkedResponse(status, ct, safeIn);
+
+        for (String headerName : response.headers().names()) {
+            if (!headerName.equalsIgnoreCase("content-length") && !headerName.equalsIgnoreCase("content-type")) {
+                resp.addHeader(headerName, response.header(headerName));
+            }
+        }
+        
+        resp.addHeader("Access-Control-Allow-Origin", "*");
+        return resp;
     }
 }
