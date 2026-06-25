@@ -550,7 +550,11 @@ fun PlayerScreen(
             // 127.0.0.1:8080 يعيد كتابة الروابط الداخلية لإخفاء المصدر الأصلي.
             // الملفات الثنائية (.mp4/.mkv) تتجاوز البروكسي تلقائياً (Bypass).
             var playUrl = streamUrl
-            if (cfg.useLocalProxy && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
+            
+            // [الحل الجذري ليوتيوب]: يوتيوب ينهار إذا مر عبر السيرفر المحلي بسبب الـ Chunking
+            val isYouTubeStream = streamUrl.contains("videoplayback") || streamUrl.contains("googlevideo.com")
+            
+            if (cfg.useLocalProxy && !isYouTubeStream && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val hdrs = HashMap<String, String>()
                     cfg.headers?.userAgent?.let { hdrs["User-Agent"] = it }
