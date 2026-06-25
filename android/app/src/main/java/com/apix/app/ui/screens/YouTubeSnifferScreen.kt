@@ -24,7 +24,7 @@ import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
 
 // خدعة الـ iOS لإجبار يوتيوب على تقديم روابط HLS نظيفة ومدمجة
-private const val MAGIC_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+private const val MAGIC_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15"
 
 private fun cleanVideoUrl(url: String): String {
     return url
