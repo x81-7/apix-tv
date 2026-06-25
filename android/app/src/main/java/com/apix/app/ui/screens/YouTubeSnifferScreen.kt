@@ -23,7 +23,7 @@ import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
 
-// خدعة الـ iOS لإجبار يوتيوب على تقديم روابط HLS نظيفة ومدمجة ومناسبة لـ ExoPlayer
+// خدعة الـ iOS لإجبار يوتيوب على تقديم HLS غير مشفر 
 private const val MAGIC_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
 private fun cleanVideoUrl(url: String): String {
@@ -69,7 +69,6 @@ fun YouTubeSnifferScreen(
                     userAgent = MAGIC_USER_AGENT,
                     referer   = "https://m.youtube.com/"
                 ),
-                // تصفير الـ DRM تماماً لكي لا تتداخل حماية القنوات السابقة مع يوتيوب
                 drm = null,
                 drmLicenseHeaders = null,
                 subtitleUrl = null 
@@ -93,7 +92,7 @@ fun YouTubeSnifferScreen(
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(1, 1)
+                            layoutParams = ViewGroup.LayoutParams(1, 1) 
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
@@ -115,7 +114,8 @@ fun YouTubeSnifferScreen(
 
                                     if (sniffFound) return null
 
-                                    val isHls = reqUrl.contains("manifest.googlevideo.com") || reqUrl.contains(".m3u8")
+                                    // --- السر هنا: نتجاهل الـ DASH تماماً لكي لا نحصل على فيديو مشفر يسبب خطأ DRM ---
+                                    val isHls = reqUrl.contains(".m3u8") // تم مسح manifest.googlevideo.com
                                     val isVideoPlayback = reqUrl.contains("videoplayback")
                                     val isAudioOnly = reqUrl.contains("mime=audio") || reqUrl.contains("itag=140")
 
