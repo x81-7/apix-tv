@@ -23,12 +23,18 @@ import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
 
-// خدعة المتصفح المكتبي لضمان استقرار روابط يوتيوب ومنع التقطيع
-private const val MAGIC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+// خدعة الـ iOS لإجبار يوتيوب على تقديم روابط HLS نظيفة ومدمجة ومناسبة لـ ExoPlayer
+private const val MAGIC_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
 private fun cleanVideoUrl(url: String): String {
-    // إيقاف إزالة البارامترات في يوتيوب لأن إزالتها تكسر توقيع (Signature) الرابط وتسبب 403 Forbidden
     return url
+        .replace(Regex("[?&]range=[^&]*"), "")
+        .replace(Regex("[?&]rn=[^&]*"), "")
+        .replace(Regex("[?&]rbuf=[^&]*"), "")
+        .replace(Regex("[?&]ump=[^&]*"), "")
+        .replace(Regex("[?&]sabr=[^&]*"), "")
+        .replace(Regex("&&+"), "&")
+        .replace(Regex("[?&]$"), "")
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -61,9 +67,9 @@ fun YouTubeSnifferScreen(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
                     userAgent = MAGIC_USER_AGENT,
-                    referer   = "https://www.youtube.com/",
-                    origin    = "https://www.youtube.com" // إضافة Origin إجبارية لحل مشكلة 403
+                    referer   = "https://m.youtube.com/"
                 ),
+                // تصفير الـ DRM تماماً لكي لا تتداخل حماية القنوات السابقة مع يوتيوب
                 drm = null,
                 drmLicenseHeaders = null,
                 subtitleUrl = null 
@@ -76,11 +82,11 @@ fun YouTubeSnifferScreen(
                 val fullUrl = remember(youtubeUrl) {
                     when {
                         youtubeUrl.contains("youtu.be/") ->
-                            "https://www.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999"
+                            "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999" 
                         youtubeUrl.contains("youtube.com/shorts/") ->
-                            youtubeUrl.replace("/shorts/", "/watch?v=")
+                            youtubeUrl.replace("www.youtube.com", "m.youtube.com").replace("/shorts/", "/watch?v=")
                         else ->
-                            youtubeUrl
+                            youtubeUrl.replace("www.youtube.com", "m.youtube.com")
                     }
                 }
 
@@ -91,9 +97,9 @@ fun YouTubeSnifferScreen(
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
-                                mediaPlaybackRequiresUserGesture = false
+                                mediaPlaybackRequiresUserGesture = false 
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = MAGIC_USER_AGENT
+                                userAgentString = MAGIC_USER_AGENT 
                                 cacheMode = WebSettings.LOAD_NO_CACHE
                             }
                             
@@ -138,7 +144,7 @@ fun YouTubeSnifferScreen(
                                                 attempts++;
                                                 var v = document.querySelector('video');
                                                 if (v) {
-                                                    v.muted = true;
+                                                    v.muted = true; 
                                                     v.play().catch(function(){});
                                                 }
                                                 var playBtn = document.querySelector('.ytp-large-play-button');
