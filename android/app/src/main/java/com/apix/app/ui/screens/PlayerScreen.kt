@@ -691,7 +691,8 @@ fun PlayerScreen(
             player.clearMediaItems()
             player.release()
             try {
-                com.apix.app.LocalStreamServer.setHeaders(HashMap())
+                // تدمير الكاش والمفاتيح بمجرد الخروج من القناة!
+                com.apix.app.LocalStreamServer.clearCache()
             } catch (e: Exception) {}
         }
     }
