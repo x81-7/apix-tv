@@ -70,8 +70,7 @@ jobs:
             2>&1 | tee build.log
           echo "=== RELEASE BUILD COMPLETED (APK + AAB) ==="
 
-      - name: Build Debug APK (fallback)
-        if: env.KEYSTORE_BASE64 == ''
+      - name: Build Debug APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
@@ -86,8 +85,8 @@ jobs:
         run: |
           set -o pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon assembleDebug --stacktrace --console=plain 2>&1 | tee build.log
-          echo "=== BUILD COMPLETED ==="
+          ./gradlew --no-daemon assembleDebug --stacktrace --console=plain 2>&1 | tee -a build.log
+          echo "=== DEBUG BUILD COMPLETED ==="
 
       - name: Show errors on failure
         if: failure()
@@ -130,9 +129,6 @@ jobs:
           retention-days: 30
 
       - name: Upload Debug APK
-        if: env.KEYSTORE_BASE64 == ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         uses: actions/upload-artifact@v4
         with:
           name: APiX-App
