@@ -545,15 +545,16 @@ fun PlayerScreen(
                 return
             }
 
-            // ── الحماية القصوى (Local Proxy) ──────────────────────────────
-            // عند تفعيلها، نمرر روابط القوائم (m3u8/mpd) عبر سيرفر محلي
-            // 127.0.0.1:8080 يعيد كتابة الروابط الداخلية لإخفاء المصدر الأصلي.
-            // الملفات الثنائية (.mp4/.mkv) تتجاوز البروكسي تلقائياً (Bypass).
             var playUrl = streamUrl
-            
-            // [الحل الجذري ليوتيوب]: يوتيوب ينهار إذا مر عبر السيرفر المحلي بسبب الـ Chunking
+
             val isYouTubeStream = streamUrl.contains("videoplayback") || streamUrl.contains("googlevideo.com")
-            
+
+            if (isYouTubeStream && (streamUrl.contains("manifest") || streamUrl.contains("m3u8"))) {
+                if (!playUrl.endsWith("#hls")) {
+                    playUrl += "#hls"
+                }
+            }
+
             if (cfg.useLocalProxy && !isYouTubeStream && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val hdrs = HashMap<String, String>()
@@ -568,6 +569,7 @@ fun PlayerScreen(
                     playUrl = com.apix.app.LocalStreamServer.wrap(streamUrl)
                 }
             }
+
 
             player.stop()
             player.clearMediaItems()
