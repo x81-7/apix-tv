@@ -1512,13 +1512,13 @@ private fun detectStreamFormat(url: String): String {
     val pathWithoutQuery = lower.substringBefore("?")
     
     return when {
-        // الحل الجذري: ترك روابط يوتيوب تعمل كـ DASH لكي يقرأ المشغل رخصة الـ Widevine DRM بدون أخطاء
-        lower.contains("manifest.googlevideo.com") || lower.contains("googlevideo.com") -> "dash"
+        // 1. روابط HLS المباشرة والصور الملغمة
+        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") || pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
         
-        // باقي الروابط كما هي
-        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") -> "hls"
-        pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
-        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") -> "dash"
+        // 2. روابط DASH الحقيقية وملفات Manifest فقط من يوتيوب
+        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") || lower.contains("manifest.googlevideo.com") -> "dash"
+        
+        // 3. أي رابط آخر (بما في ذلك videoplayback المباشر من يوتيوب) يتم تشغيله كفيديو عادي
         else -> "progressive"
     }
 }
