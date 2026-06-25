@@ -153,6 +153,7 @@ public class AppVerifier {
      * Returns null if passed, or error message string.
      */
     public String runCheck() {
+        if (com.apix.app.BuildConfig.DEBUG) return null;
         // 1. Live checks (Must run always)
         if (detectBlockedHash()) return "Blocked version detected";
         if (detectUnauthorizedVPN()) return "Unauthorized VPN detected";
@@ -181,6 +182,10 @@ public class AppVerifier {
     }
 
     public void runCheckAsync(VerifyCallback callback) {
+        if (com.apix.app.BuildConfig.DEBUG) {
+            if (callback != null) callback.onComplete(true, null);
+            return;
+        }
         if (!shouldRunCheck()) {
             if (callback != null) callback.onComplete(true, null);
             return;
@@ -201,6 +206,7 @@ public class AppVerifier {
     }
 
     public void startMonitor() {
+        if (com.apix.app.BuildConfig.DEBUG) return;
         if (running) return;
         running = true;
         
