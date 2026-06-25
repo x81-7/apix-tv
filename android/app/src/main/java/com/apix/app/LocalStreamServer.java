@@ -53,7 +53,6 @@ public final class LocalStreamServer extends NanoHTTPD {
 
     private static final Pattern HLS_URI_PATTERN = Pattern.compile("URI=['\"]([^'\"]+)['\"]");
 
-    // ── 1. إدارة الذاكرة الاحترافية (TTL Cache & Background Cleaner) ──
     private static class CacheEntry {
         final String url;
         final long expireAt;
@@ -67,7 +66,6 @@ public final class LocalStreamServer extends NanoHTTPD {
     private static ScheduledExecutorService cleanupExecutor;
     private static final long CACHE_TTL_MS = TimeUnit.MINUTES.toMillis(15);
 
-    // ── 2. طبقة الـ Retries & Exponential Backoff (Circuit Breaker مبسط) ──
     private static final Interceptor retryInterceptor = chain -> {
         Request request = chain.request();
         okhttp3.Response response = null;
@@ -95,7 +93,6 @@ public final class LocalStreamServer extends NanoHTTPD {
         return chain.proceed(request);
     };
 
-    // ── 3. محرك HTTP متقدم مع Connection Pool و Timeouts متكيفة ──
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
@@ -153,12 +150,8 @@ public final class LocalStreamServer extends NanoHTTPD {
     }
 
     public static void clearCache() {
-        if (urlMap != null) {
-            urlMap.clear();
-        }
-        if (upstreamHeaders != null) {
-            upstreamHeaders.clear();
-        }
+        if (urlMap != null) urlMap.clear();
+        if (upstreamHeaders != null) upstreamHeaders.clear();
         Log.d(TAG, "Proxy cache completely destroyed!");
     }
 
@@ -186,17 +179,18 @@ public final class LocalStreamServer extends NanoHTTPD {
         if (shouldBypass(realUrl)) return realUrl;
         ensureStarted();
         
-        // إضافة الامتداد الوهمي للـ ID لكي يتعرف المشغل على الصيغة فوراً
         String ext = "";
         String lowerUrl = realUrl.toLowerCase();
-        if (lowerUrl.contains(".mpd") || lowerUrl.contains("format=mpd")) ext = ".mpd";
-        else if (lowerUrl.contains(".m3u8")) ext = ".m3u8";
-        else if (lowerUrl.contains(".ts")) ext = ".ts";
+        int q = lowerUrl.indexOf('?');
+        String path = q >= 0 ? lowerUrl.substring(0, q) : lowerUrl;
+        
+        if (path.endsWith(".mpd") || lowerUrl.contains("format=mpd")) ext = ".mpd";
+        else if (path.endsWith(".m3u8")) ext = ".m3u8";
+        else if (path.endsWith(".ts")) ext = ".ts";
 
-        return "http://" + HOST + ":" + PORT + "/play?id=" + storeUrl(realUrl) + ext;
+        // استخدام مسار /master/ مع الامتداد لإقناع المشغل أنه ملف حقيقي وليس Proxy
+        return "http://" + HOST + ":" + PORT + "/master/" + storeUrl(realUrl) + ext;
     }
-
-    // ───────────────────────────── serve ─────────────────────────────
 
     @Override
     public fi.iki.elonen.NanoHTTPD.Response serve(IHTTPSession session) {
@@ -238,12 +232,11 @@ public final class LocalStreamServer extends NanoHTTPD {
                 return servePassthrough(targetUrl, session, method);
             }
 
-            if ("/play".equals(uri)) {
-                String rawId = session.getParms().get("id");
-                if (rawId == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.BAD_REQUEST, "text/plain", "missing id");
-
-
-                String id = rawId.replace(".mpd", "").replace(".m3u8", "").replace(".ts", "");
+            // استقبال الروابط الوهمية وإزالة الامتداد
+            if (uri.startsWith("/master/")) {
+                String idWithExt = uri.substring(8);
+                int dotIndex = idWithExt.indexOf('.');
+                String id = (dotIndex > 0) ? idWithExt.substring(0, dotIndex) : idWithExt;
                 
                 CacheEntry entry = urlMap.get(id);
                 if (entry == null) return newFixedLengthResponse(fi.iki.elonen.NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "expired id");
@@ -257,14 +250,13 @@ public final class LocalStreamServer extends NanoHTTPD {
         }
     }
 
-    // ─────────────────────── manifest rewriting ───────────────────────
-
     private fi.iki.elonen.NanoHTTPD.Response serveManifest(String manifestUrl, IHTTPSession session, Method method) throws Exception {
         Request.Builder reqBuilder = new Request.Builder().url(manifestUrl);
         
         if (session != null && session.getHeaders() != null) {
             Map<String, String> clientHeaders = session.getHeaders();
-            String[] passthroughHeaders = {"cookie", "authorization", "origin", "referer", "user-agent", "accept-encoding"};
+            // تم إزالة هيدر accept-encoding نهائياً لمنع السيرفر من تشفير M3U8 بالـ Gzip
+            String[] passthroughHeaders = {"cookie", "authorization", "origin", "referer", "user-agent"};
             for (String h : passthroughHeaders) {
                 if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
             }
@@ -279,7 +271,6 @@ public final class LocalStreamServer extends NanoHTTPD {
                 .readTimeout(10, TimeUnit.SECONDS)
                 .build();
 
-        // ── استخدام okhttp3.Response صراحة لمنع التعارض ──
         try (okhttp3.Response response = manifestClient.newCall(reqBuilder.build()).execute()) {
             int code = response.code();
             if (!response.isSuccessful()) {
@@ -363,7 +354,8 @@ public final class LocalStreamServer extends NanoHTTPD {
             return writer.toString();
 
         } catch (Exception e) {
-            Log.e(TAG, "DOM parsing failed, falling back", e);
+            Log.e(TAG, "DOM parsing failed, returning raw manifest to avoid crashing", e);
+            // حماية إضافية: في حال فشل الـ XML، نرجع الملف حتى لا يسقط المشغل
             return xmlBody;
         }
     }
@@ -425,13 +417,12 @@ public final class LocalStreamServer extends NanoHTTPD {
         return out.toString();
     }
 
-    // ───────────────────────── passthrough ─────────────────────────
-
     private fi.iki.elonen.NanoHTTPD.Response servePassthrough(String url, IHTTPSession session, Method method) throws Exception {
         Request.Builder reqBuilder = new Request.Builder().url(url);
         
         if (session != null && session.getHeaders() != null) {
             Map<String, String> clientHeaders = session.getHeaders();
+            // تم إزالة هيدر accept-encoding هنا أيضاً
             String[] criticalHeaders = {"range", "cookie", "authorization", "origin", "referer", "user-agent", "if-none-match", "if-modified-since"};
             for (String h : criticalHeaders) {
                 if (clientHeaders.containsKey(h)) reqBuilder.header(h, clientHeaders.get(h));
@@ -443,7 +434,6 @@ public final class LocalStreamServer extends NanoHTTPD {
 
         if (Method.HEAD.equals(method)) reqBuilder.head();
 
-        // ── استخدام okhttp3.Response صراحة لمنع التعارض ──
         okhttp3.Response response = httpClient.newCall(reqBuilder.build()).execute();
         int code = response.code();
         
@@ -493,7 +483,6 @@ public final class LocalStreamServer extends NanoHTTPD {
         return resp;
     }
 
-    // ── دالة resolve المفقودة التي سببت الفشل ──
     private static String resolve(String base, String ref) {
         if (ref == null || ref.isEmpty()) return base;
         String low = ref.toLowerCase();
