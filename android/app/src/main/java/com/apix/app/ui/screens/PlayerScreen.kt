@@ -1512,9 +1512,10 @@ private fun detectStreamFormat(url: String): String {
     val pathWithoutQuery = lower.substringBefore("?")
     
     return when {
-        // --- إجبار روابط يوتيوب على صيغة HLS لحل خطأ (CONTAINER_UNSUPPORTED) ---
-        lower.contains("manifest.googlevideo.com") -> "hls"
-        // ----------------------------------------------------------------------
+        // الحل الجذري: ترك روابط يوتيوب تعمل كـ DASH لكي يقرأ المشغل رخصة الـ Widevine DRM بدون أخطاء
+        lower.contains("manifest.googlevideo.com") || lower.contains("googlevideo.com") -> "dash"
+        
+        // باقي الروابط كما هي
         lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") -> "hls"
         pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
         pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") -> "dash"
