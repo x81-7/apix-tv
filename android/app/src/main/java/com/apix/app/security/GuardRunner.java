@@ -7,6 +7,7 @@ public final class GuardRunner {
     private static volatile boolean isMonitoring = false;
 
     public static String runAll(Context ctx) {
+        if (com.apix.app.BuildConfig.DEBUG) return null;
         String r;
         r = g2.check(ctx); if (r != null) return r;
         r = g1.check(ctx); if (r != null) return r;
@@ -15,6 +16,7 @@ public final class GuardRunner {
     }
 
     public static void startGlobalMonitor(final Context ctx) {
+        if (com.apix.app.BuildConfig.DEBUG) return;
         if (isMonitoring) return;
         isMonitoring = true;
 
