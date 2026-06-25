@@ -2,6 +2,8 @@ package com.apix.app.ui.screens
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Error
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.*
