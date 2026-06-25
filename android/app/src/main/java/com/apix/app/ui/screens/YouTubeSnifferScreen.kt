@@ -2,13 +2,12 @@ package com.apix.app.ui.screens
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Error
-import android.util.Log
 import android.view.ViewGroup
 import android.webkit.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,9 +34,8 @@ fun YouTubeSnifferScreen(
     modifier: Modifier = Modifier
 ) {
     // المراحل: sniffing (بحث) -> playing (تشغيل) -> error (خطأ)
-    // نبدأ فوراً بالبحث عبر متصفح الظل (تم إلغاء الـ API تماماً)
     var phase by remember { mutableStateOf("sniffing") }
-    var statusMsg by remember { mutableStateOf("جاري تخطي حماية يوتيوب...") }
+    var statusMsg by remember { mutableStateOf("يجري التحميل انتظر قليلا...") }
     var finalStreamUrl by remember { mutableStateOf("") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var sniffFound by remember { mutableStateOf(false) }
@@ -55,11 +53,11 @@ fun YouTubeSnifferScreen(
     when (phase) {
         "playing" -> {
             // ── السحر هنا: تسليم الرابط للمشغل الأصلي ──
-            // التصميم، الريموت، الجودات، كلها ستكون الخاصة بمشغلك الأساسي (ExoPlayer)
+            // تم توحيد الـ User-Agent ليتطابق مع المتصفح الخفي
             val playerConfig = config.copy(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
-                    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
                 )
             )
             PlayerScreen(config = playerConfig, onBack = onBack)
@@ -92,17 +90,25 @@ fun YouTubeSnifferScreen(
                                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                                     val reqUrl = request?.url?.toString() ?: return null
                                     
-                                    // شروط الاصطياد:
-                                    // 1. يحتوي على videoplayback (فيديو يوتيوب)
-                                    // 2. لا يحتوي على mime=audio (لتجنب اصطياد رابط الصوت فقط وظهور شاشة سوداء)
+                                    // شروط الاصطياد (تجنب روابط الصوت فقط)
                                     val isMuxedVideo = reqUrl.contains("videoplayback") && !reqUrl.contains("mime=audio")
                                     val isHls = reqUrl.contains("manifest.googlevideo.com") && reqUrl.contains("m3u8")
 
                                     if ((isMuxedVideo || isHls) && !sniffFound) {
                                         sniffFound = true
+                                        
+                                        // ── [تنظيف الرابط] من أوامر التقطيع لكي يقبله الإكسو بلاير ──
+                                        var cleanUrl = reqUrl
+                                        if (cleanUrl.contains("videoplayback")) {
+                                            cleanUrl = cleanUrl.replace(Regex("&range=[^&]*"), "")
+                                                             .replace(Regex("&rn=[^&]*"), "")
+                                                             .replace(Regex("&rbuf=[^&]*"), "")
+                                                             .replace(Regex("&ump=[^&]*"), "")
+                                        }
+                                        
                                         view?.post {
-                                            finalStreamUrl = reqUrl
-                                            onStreamReady(reqUrl)
+                                            finalStreamUrl = cleanUrl
+                                            onStreamReady(cleanUrl)
                                             phase = "playing" // الانتقال للمشغل فوراً
                                             
                                             // تنظيف الذاكرة وإغلاق المتصفح بعد الاصطياد
@@ -128,7 +134,7 @@ fun YouTubeSnifferScreen(
                     modifier = Modifier.size(1.dp)
                 )
 
-                // واجهة التحميل الاحترافية أثناء عمل المتصفح المخفي
+                // واجهة التحميل أثناء عمل المتصفح المخفي
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
