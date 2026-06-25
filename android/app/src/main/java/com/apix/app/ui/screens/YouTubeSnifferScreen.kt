@@ -17,228 +17,65 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.apix.app.data.PlayerConfig
-import com.apix.app.data.PlayerDrm
 import com.apix.app.data.PlayerHeaders
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 
-private const val YT_TAG = "YouTubePlayer"
-
-// ── استخراج Video ID من أي رابط يوتيوب ──────────────────────────
-private fun extractVideoId(url: String): String? {
-    return try {
-        val uri = Uri.parse(url)
-        val host = uri.host?.lowercase() ?: ""
-        when {
-            host.contains("youtu.be") ->
-                uri.lastPathSegment
-            host.contains("youtube.com") -> {
-                when {
-                    uri.pathSegments.contains("shorts") ->
-                        uri.pathSegments.getOrNull(uri.pathSegments.indexOf("shorts") + 1)
-                    uri.pathSegments.contains("embed") ->
-                        uri.pathSegments.getOrNull(uri.pathSegments.indexOf("embed") + 1)
-                    else ->
-                        uri.getQueryParameter("v")
-                }
-            }
-            else -> null
-        }?.replace(Regex("[^a-zA-Z0-9_-]"), "")?.take(11)
-    } catch (e: Exception) {
-        Log.w(YT_TAG, "extractVideoId failed", e)
-        null
-    }
-}
-
-// ── استدعاء InnerTube API ──────────────────────────────────────────
-private fun tryInnerTubeApi(videoId: String): String? {
-    // قائمة Clients للتجربة بالترتيب
-    val clients = listOf(
-        mapOf(
-            "clientName" to "ANDROID",
-            "clientVersion" to "19.09.37",
-            "androidSdkVersion" to 30,
-            "hl" to "en", "gl" to "US"
-        ),
-        mapOf(
-            "clientName" to "IOS",
-            "clientVersion" to "19.09.3",
-            "deviceMake" to "Apple",
-            "deviceModel" to "iPhone16,2",
-            "hl" to "en", "gl" to "US"
-        ),
-        mapOf(
-            "clientName" to "WEB",
-            "clientVersion" to "2.20260424.01.00",
-            "hl" to "en", "gl" to "US"
-        )
-    )
-
-    for (client in clients) {
-        try {
-            val clientJson = JSONObject(client)
-            val requestBody = JSONObject().apply {
-                put("context", JSONObject().apply {
-                    put("client", clientJson)
-                })
-                put("videoId", videoId)
-                put("contentCheckOk", true)
-                put("racyCheckOk", true)
-            }
-
-            val conn = URL("https://www.youtube.com/youtubei/v1/player").openConnection()
-                    as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12)")
-            conn.setRequestProperty("Origin", "https://www.youtube.com")
-            conn.doOutput = true
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
-
-            val writer = OutputStreamWriter(conn.outputStream)
-            writer.write(requestBody.toString())
-            writer.flush()
-            writer.close()
-
-            if (conn.responseCode != 200) continue
-
-            val resp = conn.inputStream.bufferedReader().readText()
-            val json = JSONObject(resp)
-            val streaming = json.optJSONObject("streamingData") ?: continue
-
-            // أولاً: HLS Manifest (للبث المباشر)
-            val hls = streaming.optString("hlsManifestUrl", "")
-            if (hls.isNotEmpty() && hls.startsWith("http")) {
-                Log.d(YT_TAG, "Got HLS from ${client["clientName"]}")
-                return hls
-            }
-
-            // ثانياً: Adaptive Formats (للمقاطع)
-            val adaptive = streaming.optJSONArray("adaptiveFormats")
-            if (adaptive != null) {
-                // اختر أعلى جودة فيديو
-                var bestUrl = ""
-                var bestHeight = 0
-                for (i in 0 until adaptive.length()) {
-                    val fmt = adaptive.getJSONObject(i)
-                    val mimeType = fmt.optString("mimeType", "")
-                    if (!mimeType.contains("video/")) continue
-                    val height = fmt.optInt("height", 0)
-                    val url = fmt.optString("url", "")
-                    if (height > bestHeight && url.isNotEmpty() && url.startsWith("http")) {
-                        bestHeight = height
-                        bestUrl = url
-                    }
-                }
-                if (bestUrl.isNotEmpty()) {
-                    Log.d(YT_TAG, "Got adaptive ${bestHeight}p from ${client["clientName"]}")
-                    return bestUrl
-                }
-            }
-
-            // ثالثاً: Formats العادية
-            val formats = streaming.optJSONArray("formats")
-            if (formats != null && formats.length() > 0) {
-                val url = formats.getJSONObject(0).optString("url", "")
-                if (url.isNotEmpty() && url.startsWith("http")) {
-                    Log.d(YT_TAG, "Got format from ${client["clientName"]}")
-                    return url
-                }
-            }
-
-        } catch (e: Exception) {
-            Log.w(YT_TAG, "Client ${client["clientName"]} failed: ${e.message}")
-        }
-    }
-    return null
-}
-
-// ── الشاشة الرئيسية ───────────────────────────────────────────────
+// ── الشاشة المستقلة: قناص يوتيوب (متصفح الظل فقط) ────────────────
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun YouTubeSnifferScreen(
     youtubeUrl: String,
     config: PlayerConfig,
     onBack: () -> Unit,
-    onStreamReady: (String) -> Unit = {}, // 👈 هذا هو السطر الذي أضفناه ليحل المشكلة
+    onStreamReady: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // مراحل: api_loading → api_success → sniffing → playing → error
-    var phase by remember { mutableStateOf("api_loading") }
-    var statusMsg by remember { mutableStateOf("جاري تحميل الفيديو...") }
+    // المراحل: sniffing (بحث) -> playing (تشغيل) -> error (خطأ)
+    // نبدأ فوراً بالبحث عبر متصفح الظل (تم إلغاء الـ API تماماً)
+    var phase by remember { mutableStateOf("sniffing") }
+    var statusMsg by remember { mutableStateOf("جاري تخطي حماية يوتيوب...") }
     var finalStreamUrl by remember { mutableStateOf("") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var sniffFound by remember { mutableStateOf(false) }
 
-    // المرحلة 1: محاولة InnerTube API في الخلفية
-    LaunchedEffect(youtubeUrl) {
-        val videoId = extractVideoId(youtubeUrl)
-        if (videoId.isNullOrEmpty()) {
-            statusMsg = "رابط يوتيوب غير صحيح"
-            phase = "error"
-            return@LaunchedEffect
-        }
-
-        statusMsg = "جاري الاتصال بيوتيوب..."
-        val url = withContext(Dispatchers.IO) { tryInnerTubeApi(videoId) }
-        if (!url.isNullOrEmpty()) {
-            finalStreamUrl = url
-            onStreamReady(url) // 👈 إبلاغ الأكتيفتي برابط البث
-            phase = "playing"
-        } else {
-            // الانتقال للمرحلة 2: WebView Sniffing
-            statusMsg = "جاري تحضير البث..."
-            phase = "sniffing"
-        }
-    }
-
-    // Timeout للـ Sniffing
+    // مؤقت الأمان (Timeout) في حال كان الرابط معطوباً أو النت ضعيف
     LaunchedEffect(phase) {
         if (phase != "sniffing") return@LaunchedEffect
-        delay(30000)
+        delay(20000) // ننتظر 20 ثانية كحد أقصى
         if (!sniffFound) {
             phase = "error"
-            statusMsg = "تعذر تحميل الفيديو — تحقق من الرابط"
+            statusMsg = "تعذر سحب الفيديو — تأكد من الرابط أو اتصالك"
         }
     }
 
     when (phase) {
         "playing" -> {
-            // تشغيل في ExoPlayer
+            // ── السحر هنا: تسليم الرابط للمشغل الأصلي ──
+            // التصميم، الريموت، الجودات، كلها ستكون الخاصة بمشغلك الأساسي (ExoPlayer)
             val playerConfig = config.copy(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
-                    userAgent = "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36"
+                    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
             )
             PlayerScreen(config = playerConfig, onBack = onBack)
         }
 
         "sniffing" -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black)
-            ) {
-                // WebView مخفي لاصطياد رابط videoplayback
+            Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+                
+                // تحضير الرابط ليكون نسخة الهاتف (أسرع في التحميل والسحب)
                 val fullUrl = remember(youtubeUrl) {
-                    when {
-                        youtubeUrl.contains("youtu.be/") -> {
-                            val id = Uri.parse(youtubeUrl).lastPathSegment
-                            "https://m.youtube.com/watch?v=$id"
-                        }
-                        youtubeUrl.contains("youtube.com") ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com")
-                        else -> youtubeUrl
+                    if (youtubeUrl.contains("youtu.be/")) {
+                        "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}"
+                    } else {
+                        youtubeUrl.replace("www.youtube.com", "m.youtube.com")
                     }
                 }
 
+                // المتصفح الخفي (حجمه بكسل واحد)
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
@@ -246,23 +83,27 @@ fun YouTubeSnifferScreen(
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
-                                mediaPlaybackRequiresUserGesture = false
-                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                                cacheMode = WebSettings.LOAD_DEFAULT
+                                mediaPlaybackRequiresUserGesture = false // مهم جداً: السماح للتشغيل بدون تدخل المستخدم
+                                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
                             }
                             webViewClient = object : WebViewClient() {
-                                override fun shouldInterceptRequest(
-                                    view: WebView?,
-                                    request: WebResourceRequest?
-                                ): WebResourceResponse? {
+                                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                                     val reqUrl = request?.url?.toString() ?: return null
-                                    if (reqUrl.contains("videoplayback") && !sniffFound) {
+                                    
+                                    // شروط الاصطياد:
+                                    // 1. يحتوي على videoplayback (فيديو يوتيوب)
+                                    // 2. لا يحتوي على mime=audio (لتجنب اصطياد رابط الصوت فقط وظهور شاشة سوداء)
+                                    val isMuxedVideo = reqUrl.contains("videoplayback") && !reqUrl.contains("mime=audio")
+                                    val isHls = reqUrl.contains("manifest.googlevideo.com") && reqUrl.contains("m3u8")
+
+                                    if ((isMuxedVideo || isHls) && !sniffFound) {
                                         sniffFound = true
                                         view?.post {
                                             finalStreamUrl = reqUrl
-                                            onStreamReady(reqUrl) // 👈 إبلاغ الأكتيفتي برابط البث
-                                            phase = "playing"
+                                            onStreamReady(reqUrl)
+                                            phase = "playing" // الانتقال للمشغل فوراً
+                                            
+                                            // تنظيف الذاكرة وإغلاق المتصفح بعد الاصطياد
                                             view.stopLoading()
                                             view.destroy()
                                             webViewRef = null
@@ -272,26 +113,8 @@ fun YouTubeSnifferScreen(
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    // محاولات متعددة لتشغيل الفيديو
-                                    val js = """
-                                        (function() {
-                                            var attempts = 0;
-                                            function tryPlay() {
-                                                attempts++;
-                                                var v = document.querySelector('video');
-                                                if (v) {
-                                                    v.muted = false;
-                                                    v.volume = 1.0;
-                                                    v.play().catch(function(){});
-                                                }
-                                                var btn = document.querySelector('.ytp-large-play-button, .ytp-play-button');
-                                                if (btn) btn.click();
-                                                if (attempts < 5) setTimeout(tryPlay, 1000);
-                                            }
-                                            setTimeout(tryPlay, 500);
-                                        })();
-                                    """.trimIndent()
+                                    // حقن سكربت يضغط على زر التشغيل ويكتم الصوت في الخلفية
+                                    val js = "(function(){ var a=0; function p(){ a++; var v=document.querySelector('video'); if(v){v.muted=true; v.play().catch(e=>console.log(e));} var b=document.querySelector('.ytp-large-play-button, .ytp-play-button'); if(b) b.click(); if(a<5) setTimeout(p,1000);} setTimeout(p,500); })();"
                                     view?.evaluateJavascript(js, null)
                                 }
                             }
@@ -303,64 +126,36 @@ fun YouTubeSnifferScreen(
                     modifier = Modifier.size(1.dp)
                 )
 
-                // واجهة التحميل
+                // واجهة التحميل الاحترافية أثناء عمل المتصفح المخفي
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = MediumRed,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(52.dp)
-                    )
+                    CircularProgressIndicator(color = MediumRed, strokeWidth = 3.dp, modifier = Modifier.size(52.dp))
                     Spacer(Modifier.height(20.dp))
                     Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text("يوتيوب", color = Color.Gray, fontSize = 12.sp)
                 }
             }
 
+            // تنظيف قوي عند الخروج المفاجئ
             DisposableEffect(Unit) {
-                onDispose {
+                onDispose { 
                     webViewRef?.stopLoading()
                     webViewRef?.destroy()
-                    webViewRef = null
-                }
-            }
-        }
-
-        "api_loading" -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(
-                        color = MediumRed,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(52.dp)
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    webViewRef = null 
                 }
             }
         }
 
         "error" -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("⚠️", fontSize = 48.sp)
+                    Icon(Icons.Default.Error, null, tint = MediumRed, modifier = Modifier.size(64.dp))
                     Spacer(Modifier.height(16.dp))
-                    Text(statusMsg, color = MediumRed, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(24.dp))
-                    Button(
-                        onClick = onBack,
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold)
-                    ) {
+                    Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Gold)) {
                         Text("رجوع", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
