@@ -23,18 +23,12 @@ import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
 
-// خدعة الـ iOS لإجبار يوتيوب على تقديم روابط HLS نظيفة ومدمجة
-private const val MAGIC_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15"
+// خدعة المتصفح المكتبي لضمان استقرار روابط يوتيوب ومنع التقطيع
+private const val MAGIC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 private fun cleanVideoUrl(url: String): String {
+    // إيقاف إزالة البارامترات في يوتيوب لأن إزالتها تكسر توقيع (Signature) الرابط وتسبب 403 Forbidden
     return url
-        .replace(Regex("[?&]range=[^&]*"), "")
-        .replace(Regex("[?&]rn=[^&]*"), "")
-        .replace(Regex("[?&]rbuf=[^&]*"), "")
-        .replace(Regex("[?&]ump=[^&]*"), "")
-        .replace(Regex("[?&]sabr=[^&]*"), "")
-        .replace(Regex("&&+"), "&")
-        .replace(Regex("[?&]$"), "")
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -52,7 +46,6 @@ fun YouTubeSnifferScreen(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var sniffFound by remember { mutableStateOf(false) }
 
-    // مؤقت أمان 20 ثانية (أكثر من كافية)
     LaunchedEffect(phase) {
         if (phase != "sniffing") return@LaunchedEffect
         delay(20_000)
@@ -68,12 +61,11 @@ fun YouTubeSnifferScreen(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
                     userAgent = MAGIC_USER_AGENT,
-                    referer   = "https://m.youtube.com/"
+                    referer   = "https://www.youtube.com/",
+                    origin    = "https://www.youtube.com" // إضافة Origin إجبارية لحل مشكلة 403
                 ),
-                // إجبار المشغل على تجاهل أي حماية DRM قادمة من القنوات السابقة
                 drm = null,
                 drmLicenseHeaders = null,
-                // إجبار المشغل على إخفاء أي ترجمة تخص القناة السابقة
                 subtitleUrl = null 
             )
             PlayerScreen(config = playerConfig, onBack = onBack)
@@ -84,24 +76,24 @@ fun YouTubeSnifferScreen(
                 val fullUrl = remember(youtubeUrl) {
                     when {
                         youtubeUrl.contains("youtu.be/") ->
-                            "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999" // تخطي قيود العمر
+                            "https://www.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999"
                         youtubeUrl.contains("youtube.com/shorts/") ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com").replace("/shorts/", "/watch?v=")
+                            youtubeUrl.replace("/shorts/", "/watch?v=")
                         else ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com")
+                            youtubeUrl
                     }
                 }
 
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(1, 1) // متصفح الظل (مخفي)
+                            layoutParams = ViewGroup.LayoutParams(1, 1)
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
-                                mediaPlaybackRequiresUserGesture = false // السماح بالتشغيل التلقائي
+                                mediaPlaybackRequiresUserGesture = false
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = MAGIC_USER_AGENT // تطبيق خدعة الآيفون هنا!
+                                userAgentString = MAGIC_USER_AGENT
                                 cacheMode = WebSettings.LOAD_NO_CACHE
                             }
                             
@@ -117,10 +109,7 @@ fun YouTubeSnifferScreen(
 
                                     if (sniffFound) return null
 
-                                    // 1. اصطياد روابط HLS (الكنز الذي سيعطينا إياه يوتيوب بفضل خدعة الآيفون)
                                     val isHls = reqUrl.contains("manifest.googlevideo.com") || reqUrl.contains(".m3u8")
-                                    
-                                    // 2. اصطياد الروابط العادية المدمجة (مع تجاهل روابط الصوت فقط)
                                     val isVideoPlayback = reqUrl.contains("videoplayback")
                                     val isAudioOnly = reqUrl.contains("mime=audio") || reqUrl.contains("itag=140")
 
@@ -142,8 +131,6 @@ fun YouTubeSnifferScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-
-                                    // حقن JS بسيط وفعال لتشغيل الفيديو فوراً وبدون تعقيد كلاود
                                     val js = """
                                         (function() {
                                             var attempts = 0;
@@ -151,7 +138,7 @@ fun YouTubeSnifferScreen(
                                                 attempts++;
                                                 var v = document.querySelector('video');
                                                 if (v) {
-                                                    v.muted = true; // يجب كتم الصوت ليسمح المتصفح بالتشغيل التلقائي
+                                                    v.muted = true;
                                                     v.play().catch(function(){});
                                                 }
                                                 var playBtn = document.querySelector('.ytp-large-play-button');
@@ -174,7 +161,6 @@ fun YouTubeSnifferScreen(
                     modifier = Modifier.size(1.dp)
                 )
 
-                // واجهة التحميل
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
