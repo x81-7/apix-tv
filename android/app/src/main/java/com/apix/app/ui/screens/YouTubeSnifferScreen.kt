@@ -3,7 +3,13 @@ package com.apix.app.ui.screens
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.view.ViewGroup
-import android.webkit.*
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -22,9 +28,12 @@ import com.apix.app.data.PlayerHeaders
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
+import android.view.View
+import androidx.core.net.toUri
 
-// خدعة الـ iOS لإجبار يوتيوب على تقديم HLS غير مشفر 
-private const val MAGIC_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+// خدعة iPhone/iOS لجلب مسارات HLS/Manifest أنظف من واجهة يوتيوب
+private const val MAGIC_USER_AGENT =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
 private fun cleanVideoUrl(url: String): String {
     return url
@@ -37,6 +46,53 @@ private fun cleanVideoUrl(url: String): String {
         .replace(Regex("[?&]$"), "")
 }
 
+private fun toMobileYouTubeUrl(input: String): String {
+    val u = input.trim()
+    return when {
+        u.contains("youtu.be/") -> {
+            val id = Uri.parse(u).lastPathSegment ?: ""
+            "https://m.youtube.com/watch?v=$id&bpctr=9999999999"
+        }
+
+        u.contains("youtube.com/shorts/") -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+                .replace("/shorts/", "/watch?v=")
+        }
+
+        u.contains("youtube.com/live/") -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+        }
+
+        else -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+        }
+    }
+}
+
+private fun isYouTubeLiveRequest(url: String): Boolean {
+    val lower = url.lowercase()
+    return lower.contains("source=yt_live_broadcast") ||
+            lower.contains("live=1") ||
+            lower.contains("live=dvr") ||
+            lower.contains("yt_live_broadcast") ||
+            lower.contains("watch?v=") && lower.contains("/live/")
+}
+
+private fun isPlayableSniffUrl(url: String): Boolean {
+    val lower = url.lowercase()
+    val path = lower.substringBefore("?")
+
+    val isHls = lower.contains(".m3u8") || path.endsWith(".m3u8") || lower.contains("format=m3u8")
+    val isDash = lower.contains(".mpd") || path.endsWith(".mpd") || lower.contains("format=mpd") || lower.contains("manifest.googlevideo.com")
+    val isVideoPlayback = lower.contains("videoplayback")
+    val isAudioOnly = lower.contains("mime=audio") || lower.contains("itag=140")
+
+    return isHls || isDash || (isVideoPlayback && !isAudioOnly)
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun YouTubeSnifferScreen(
@@ -47,7 +103,7 @@ fun YouTubeSnifferScreen(
     modifier: Modifier = Modifier
 ) {
     var phase by remember { mutableStateOf("sniffing") }
-    var statusMsg by remember { mutableStateOf("يجري التحميل انتظر قليلا...") }
+    var statusMsg by remember { mutableStateOf("يجري التحميل انتظر قليلاً...") }
     var finalStreamUrl by remember { mutableStateOf("") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var sniffFound by remember { mutableStateOf(false) }
@@ -67,41 +123,46 @@ fun YouTubeSnifferScreen(
                 url = finalStreamUrl,
                 headers = PlayerHeaders(
                     userAgent = MAGIC_USER_AGENT,
-                    referer   = "https://m.youtube.com/"
+                    referer = "https://m.youtube.com/"
                 ),
                 drm = null,
                 drmLicenseHeaders = null,
-                subtitleUrl = null 
+                subtitleUrl = null
             )
-            PlayerScreen(config = playerConfig, onBack = onBack)
+
+            PlayerScreen(
+                config = playerConfig,
+                onBack = onBack
+            )
         }
 
         "sniffing" -> {
-            Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
                 val fullUrl = remember(youtubeUrl) {
-                    when {
-                        youtubeUrl.contains("youtu.be/") ->
-                            "https://m.youtube.com/watch?v=${Uri.parse(youtubeUrl).lastPathSegment}&bpctr=9999999999" 
-                        youtubeUrl.contains("youtube.com/shorts/") ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com").replace("/shorts/", "/watch?v=")
-                        else ->
-                            youtubeUrl.replace("www.youtube.com", "m.youtube.com")
-                    }
+                    toMobileYouTubeUrl(youtubeUrl)
                 }
 
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(1, 1) 
+                            layoutParams = ViewGroup.LayoutParams(1, 1)
+
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
-                                mediaPlaybackRequiresUserGesture = false 
+                                mediaPlaybackRequiresUserGesture = false
                                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                userAgentString = MAGIC_USER_AGENT 
+                                userAgentString = MAGIC_USER_AGENT
                                 cacheMode = WebSettings.LOAD_NO_CACHE
+                                databaseEnabled = true
+                                allowFileAccess = false
+                                allowContentAccess = false
                             }
-                            
+
                             CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
@@ -111,18 +172,17 @@ fun YouTubeSnifferScreen(
                                     request: WebResourceRequest?
                                 ): WebResourceResponse? {
                                     val reqUrl = request?.url?.toString() ?: return null
-
                                     if (sniffFound) return null
 
-                                    // --- السر هنا: نتجاهل الـ DASH تماماً لكي لا نحصل على فيديو مشفر يسبب خطأ DRM ---
-                                    val isHls = reqUrl.contains(".m3u8") // تم مسح manifest.googlevideo.com
-                                    val isVideoPlayback = reqUrl.contains("videoplayback")
-                                    val isAudioOnly = reqUrl.contains("mime=audio") || reqUrl.contains("itag=140")
+                                    val live = isYouTubeLiveRequest(reqUrl)
+                                    val playable = isPlayableSniffUrl(reqUrl)
 
-                                    if ((isHls || (isVideoPlayback && !isAudioOnly)) && !sniffFound) {
+                                    if ((playable || live) && !sniffFound) {
                                         sniffFound = true
-                                        val clean = cleanVideoUrl(reqUrl)
-                                        
+
+                                        // في البث المباشر لا ننظّف الرابط كثيرًا
+                                        val clean = if (live) reqUrl else cleanVideoUrl(reqUrl)
+
                                         view?.post {
                                             finalStreamUrl = clean
                                             onStreamReady(clean)
@@ -132,11 +192,13 @@ fun YouTubeSnifferScreen(
                                             webViewRef = null
                                         }
                                     }
-                                    return super.shouldInterceptRequest(view, request)
+
+                                    return null
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
+
                                     val js = """
                                         (function() {
                                             var attempts = 0;
@@ -144,17 +206,27 @@ fun YouTubeSnifferScreen(
                                                 attempts++;
                                                 var v = document.querySelector('video');
                                                 if (v) {
-                                                    v.muted = true; 
+                                                    v.muted = true;
                                                     v.play().catch(function(){});
                                                 }
+
                                                 var playBtn = document.querySelector('.ytp-large-play-button');
                                                 if (playBtn) playBtn.click();
-                                                
-                                                if (attempts < 8) setTimeout(tryPlay, 1000);
+
+                                                var liveBadge = document.querySelector('.ytp-live-badge');
+                                                if (liveBadge) {
+                                                    var vv = document.querySelector('video');
+                                                    if (vv) {
+                                                        vv.play().catch(function(){});
+                                                    }
+                                                }
+
+                                                if (attempts < 10) setTimeout(tryPlay, 900);
                                             }
                                             setTimeout(tryPlay, 500);
                                         })();
                                     """.trimIndent()
+
                                     view?.evaluateJavascript(js, null)
                                 }
                             }
@@ -172,29 +244,62 @@ fun YouTubeSnifferScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(color = MediumRed, strokeWidth = 3.dp, modifier = Modifier.size(52.dp))
+                    CircularProgressIndicator(
+                        color = MediumRed,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(52.dp)
+                    )
                     Spacer(Modifier.height(20.dp))
-                    Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = statusMsg,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
             DisposableEffect(Unit) {
                 onDispose {
-                    webViewRef?.stopLoading()
-                    webViewRef?.destroy()
+                    try {
+                        webViewRef?.stopLoading()
+                        webViewRef?.loadUrl("about:blank")
+                        webViewRef?.clearHistory()
+                        webViewRef?.removeAllViews()
+                        webViewRef?.destroy()
+                    } catch (_: Throwable) {
+                    }
                     webViewRef = null
                 }
             }
         }
 
         "error" -> {
-            Box(modifier = modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Error, null, tint = MediumRed, modifier = Modifier.size(64.dp))
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MediumRed,
+                        modifier = Modifier.size(64.dp)
+                    )
                     Spacer(Modifier.height(16.dp))
-                    Text(statusMsg, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = statusMsg,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(24.dp))
-                    Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Gold)) {
+                    Button(
+                        onClick = onBack,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold)
+                    ) {
                         Text("رجوع", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
