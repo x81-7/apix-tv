@@ -1,5 +1,3 @@
-package com.apix.app.ui.screens
-
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.view.ViewGroup
@@ -28,10 +26,8 @@ import com.apix.app.data.PlayerHeaders
 import com.apix.app.ui.theme.Gold
 import com.apix.app.ui.theme.MediumRed
 import kotlinx.coroutines.delay
-import android.view.View
-import androidx.core.net.toUri
 
-// خدعة iPhone/iOS لجلب مسارات HLS/Manifest أنظف من واجهة يوتيوب
+// خدعة iPhone/iOS لجلب مسارات أنظف من واجهة يوتيوب
 private const val MAGIC_USER_AGENT =
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
@@ -53,18 +49,15 @@ private fun toMobileYouTubeUrl(input: String): String {
             val id = Uri.parse(u).lastPathSegment ?: ""
             "https://m.youtube.com/watch?v=$id&bpctr=9999999999"
         }
-
         u.contains("youtube.com/shorts/") -> {
             u.replace("www.youtube.com", "m.youtube.com")
                 .replace("youtube.com", "m.youtube.com")
                 .replace("/shorts/", "/watch?v=")
         }
-
         u.contains("youtube.com/live/") -> {
             u.replace("www.youtube.com", "m.youtube.com")
                 .replace("youtube.com", "m.youtube.com")
         }
-
         else -> {
             u.replace("www.youtube.com", "m.youtube.com")
                 .replace("youtube.com", "m.youtube.com")
@@ -78,7 +71,7 @@ private fun isYouTubeLiveRequest(url: String): Boolean {
             lower.contains("live=1") ||
             lower.contains("live=dvr") ||
             lower.contains("yt_live_broadcast") ||
-            lower.contains("watch?v=") && lower.contains("/live/")
+            lower.contains("/live/")
 }
 
 private fun isPlayableSniffUrl(url: String): Boolean {
@@ -130,6 +123,7 @@ fun YouTubeSnifferScreen(
                 subtitleUrl = null
             )
 
+            // تأكد من استدعاء شاشة المشغل الأصلية الخاصة بك هنا
             PlayerScreen(
                 config = playerConfig,
                 onBack = onBack
@@ -180,7 +174,6 @@ fun YouTubeSnifferScreen(
                                     if ((playable || live) && !sniffFound) {
                                         sniffFound = true
 
-                                        // في البث المباشر لا ننظّف الرابط كثيرًا
                                         val clean = if (live) reqUrl else cleanVideoUrl(reqUrl)
 
                                         view?.post {
