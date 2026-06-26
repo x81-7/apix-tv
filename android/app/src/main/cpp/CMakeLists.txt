@@ -36,6 +36,7 @@ add_library(v SHARED
     n1.cpp
     n2.cpp
     n3.cpp
+    n4.cpp
 )
 
 # ── vault.cpp يحصل على: جزء 1 من ENC + HMAC_P1 + CloudURL + AnonKey + SigHash
