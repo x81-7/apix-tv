@@ -43,14 +43,4 @@ object x {
     @JvmStatic fun hasVpn(): Boolean     = nv() != 0
     @JvmStatic fun hasDanger(): Boolean  = ne() != 0
     @JvmStatic fun hasRoot(): Boolean    = nr() != 0
-    // ── ──────────────────────
-private external fun nk1(): String
-private external fun nk2(): String
-private external fun nk3(): String
-private external fun nk4(status: String): Boolean
-
-@JvmStatic fun ks1(): String = nk1()
-@JvmStatic fun ks2(): String = nk2()
-@JvmStatic fun ks3(): String = nk3()
-@JvmStatic fun isBanned(status: String): Boolean = nk4(status)
 }
