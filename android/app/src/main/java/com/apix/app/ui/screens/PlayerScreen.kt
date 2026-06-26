@@ -101,6 +101,265 @@ fun isSystemInTvMode(): Boolean {
     return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
 }
 
+// ===== YouTube Sniffer (Added) =====
+
+private const val MAGIC_USER_AGENT =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+
+private fun cleanVideoUrl(url: String): String {
+    return url
+        .replace(Regex("[?&]range=[^&]*"), "")
+        .replace(Regex("[?&]rn=[^&]*"), "")
+        .replace(Regex("[?&]rbuf=[^&]*"), "")
+        .replace(Regex("[?&]ump=[^&]*"), "")
+        .replace(Regex("[?&]sabr=[^&]*"), "")
+        .replace(Regex("&&+"), "&")
+        .replace(Regex("[?&]$"), "")
+}
+
+private fun toMobileYouTubeUrl(input: String): String {
+    val u = input.trim()
+    return when {
+        u.contains("youtu.be/") -> {
+            val id = Uri.parse(u).lastPathSegment ?: ""
+            "https://m.youtube.com/watch?v=$id&bpctr=9999999999"
+        }
+        u.contains("youtube.com/shorts/") -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+                .replace("/shorts/", "/watch?v=")
+        }
+        u.contains("youtube.com/live/") -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+        }
+        else -> {
+            u.replace("www.youtube.com", "m.youtube.com")
+                .replace("youtube.com", "m.youtube.com")
+        }
+    }
+}
+
+private fun isYouTubeLiveRequest(url: String): Boolean {
+    val lower = url.lowercase()
+    return lower.contains("source=yt_live_broadcast") ||
+            lower.contains("live=1") ||
+            lower.contains("live=dvr") ||
+            lower.contains("yt_live_broadcast") ||
+            lower.contains("/live/")
+}
+
+private fun isPlayableSniffUrl(url: String): Boolean {
+    val lower = url.lowercase()
+    val path = lower.substringBefore("?")
+    val isHls = lower.contains(".m3u8") || path.endsWith(".m3u8") || lower.contains("format=m3u8")
+    val isDash = lower.contains(".mpd") || path.endsWith(".mpd") || lower.contains("format=mpd") || lower.contains("manifest.googlevideo.com")
+    val isVideoPlayback = lower.contains("videoplayback")
+    val isAudioOnly = lower.contains("mime=audio") || lower.contains("itag=140")
+    return isHls || isDash || (isVideoPlayback && !isAudioOnly)
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun YouTubeSnifferScreen(
+    youtubeUrl: String,
+    config: PlayerConfig,
+    onBack: () -> Unit,
+    onStreamReady: (String) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var phase by remember { mutableStateOf("sniffing") }
+    var statusMsg by remember { mutableStateOf("يجري التحميل انتظر قليلاً...") }
+    var finalStreamUrl by remember { mutableStateOf("") }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var sniffFound by remember { mutableStateOf(false) }
+
+    LaunchedEffect(phase) {
+        if (phase != "sniffing") return@LaunchedEffect
+        delay(20_000)
+        if (!sniffFound) {
+            phase = "error"
+            statusMsg = "تعذر سحب الفيديو — تأكد من الرابط أو اتصالك"
+        }
+    }
+
+    when (phase) {
+        "playing" -> {
+            val playerConfig = config.copy(
+                url = finalStreamUrl,
+                headers = PlayerHeaders(
+                    userAgent = MAGIC_USER_AGENT,
+                    referer = "https://m.youtube.com/"
+                ),
+                drm = null,
+                drmLicenseHeaders = null,
+                subtitleUrl = null
+            )
+
+            PlayerScreen(
+                config = playerConfig,
+                onBack = onBack
+            )
+        }
+        "sniffing" -> {
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                val fullUrl = remember(youtubeUrl) { toMobileYouTubeUrl(youtubeUrl) }
+
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(1, 1)
+
+                            settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                mediaPlaybackRequiresUserGesture = false
+                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                userAgentString = MAGIC_USER_AGENT
+                                cacheMode = WebSettings.LOAD_NO_CACHE
+                                databaseEnabled = true
+                                allowFileAccess = false
+                                allowContentAccess = false
+                            }
+
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): WebResourceResponse? {
+                                    val reqUrl = request?.url?.toString() ?: return null
+                                    if (sniffFound) return null
+
+                                    val live = isYouTubeLiveRequest(reqUrl)
+                                    val playable = isPlayableSniffUrl(reqUrl)
+
+                                    if ((playable || live) && !sniffFound) {
+                                        sniffFound = true
+                                        val clean = if (live) reqUrl else cleanVideoUrl(reqUrl)
+                                        view?.post {
+                                            finalStreamUrl = clean
+                                            onStreamReady(clean)
+                                            phase = "playing"
+                                            view.stopLoading()
+                                            view.destroy()
+                                            webViewRef = null
+                                        }
+                                    }
+                                    return null
+                                }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    val js = """
+                                        (function() {
+                                            var attempts = 0;
+                                            function tryPlay() {
+                                                attempts++;
+                                                var v = document.querySelector('video');
+                                                if (v) {
+                                                    v.muted = true;
+                                                    v.play().catch(function(){});
+                                                }
+
+                                                var playBtn = document.querySelector('.ytp-large-play-button');
+                                                if (playBtn) playBtn.click();
+
+                                                var liveBadge = document.querySelector('.ytp-live-badge');
+                                                if (liveBadge) {
+                                                    var vv = document.querySelector('video');
+                                                    if (vv) {
+                                                        vv.play().catch(function(){});
+                                                    }
+                                                }
+
+                                                if (attempts < 10) setTimeout(tryPlay, 900);
+                                            }
+                                            setTimeout(tryPlay, 500);
+                                        })();
+                                    """.trimIndent()
+                                    view?.evaluateJavascript(js, null)
+                                }
+                            }
+
+                            webChromeClient = WebChromeClient()
+                            webViewRef = this
+                            loadUrl(fullUrl)
+                        }
+                    },
+                    modifier = Modifier.size(1.dp)
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = MediumRed,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(52.dp)
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        text = statusMsg,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            DisposableEffect(Unit) {
+                onDispose {
+                    try {
+                        webViewRef?.stopLoading()
+                        webViewRef?.loadUrl("about:blank")
+                        webViewRef?.clearHistory()
+                        webViewRef?.removeAllViews()
+                        webViewRef?.destroy()
+                    } catch (_: Throwable) {}
+                    webViewRef = null
+                }
+            }
+        }
+        "error" -> {
+            Box(
+                modifier = modifier.fillMaxSize().background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MediumRed,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = statusMsg,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = onBack,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold)
+                    ) {
+                        Text("رجوع", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
 // ===== Custom Outline Icons =====
 
 private val PlayOutlineIcon: ImageVector by lazy {
@@ -896,7 +1155,7 @@ fun PlayerScreen(
                                     PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
                                 }
 
-                                if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                if (!resolvedConfig.fallbackServers.isNullOrEmpty()) {
                                     PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
                                 }
 
@@ -1466,15 +1725,23 @@ private fun getTrackLabel(format: Format): String {
 private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, streamUrl: String): MediaSource {
     val dataSourceFactory = buildDataSourceFactory(config)
     val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-    
-    val jsonKeys = resolveClearKeySync(config)
-    if (jsonKeys != null) {
-        val callback = LocalMediaDrmCallback(jsonKeys.toByteArray(StandardCharsets.UTF_8))
-        val drmSessionManager = DefaultDrmSessionManager.Builder()
-            .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
-            .setMultiSession(false)
-            .build(callback)
-        mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManager }
+
+    val lowerUrl = streamUrl.lowercase()
+    val isYouTubeLike = lowerUrl.contains("youtube.com") ||
+            lowerUrl.contains("youtu.be") ||
+            lowerUrl.contains("googlevideo.com")
+
+    // لا تطبق ClearKey أو أي DRM عام على يوتيوب/Googlevideo
+    if (!isYouTubeLike) {
+        val jsonKeys = resolveClearKeySync(config)
+        if (jsonKeys != null) {
+            val callback = LocalMediaDrmCallback(jsonKeys.toByteArray(StandardCharsets.UTF_8))
+            val drmSessionManager = DefaultDrmSessionManager.Builder()
+                .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                .setMultiSession(false)
+                .build(callback)
+            mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManager }
+        }
     }
 
     val mediaItemBuilder = MediaItem.Builder().setUri(Uri.parse(streamUrl))
@@ -1482,16 +1749,21 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
 
     when (format) {
         "dash" -> mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
-        "hls" -> mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        "hls"  -> mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
     }
 
     val drm = config.drm
-    if (drm != null && drm.scheme?.lowercase() == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
+    val scheme = drm?.scheme?.lowercase()
+
+    // Widevine فقط للمصادر العادية، وليس ليوتيوب
+    if (!isYouTubeLike && drm != null && scheme == "widevine" && !drm.licenseUrl.isNullOrEmpty()) {
         val drmBuilder = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
             .setLicenseUri(drm.licenseUrl)
+
         if (!config.drmLicenseHeaders.isNullOrEmpty()) {
             drmBuilder.setLicenseRequestHeaders(config.drmLicenseHeaders!!)
         }
+
         mediaItemBuilder.setDrmConfiguration(drmBuilder.build())
     }
 
@@ -1510,15 +1782,26 @@ private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, stre
 private fun detectStreamFormat(url: String): String {
     val lower = url.lowercase()
     val pathWithoutQuery = lower.substringBefore("?")
-    
+
+    val isLive = lower.contains("source=yt_live_broadcast") ||
+            lower.contains("live=1") ||
+            lower.contains("live=dvr") ||
+            lower.contains("yt_live_broadcast")
+
     return when {
-        // 1. روابط HLS المباشرة والصور الملغمة
-        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") || pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
-        
-        // 2. روابط DASH الحقيقية وملفات Manifest فقط من يوتيوب
-        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") || lower.contains("manifest.googlevideo.com") -> "dash"
-        
-        // 3. أي رابط آخر (بما في ذلك videoplayback المباشر من يوتيوب) يتم تشغيله كفيديو عادي
+        lower.endsWith("#hls") ||
+                pathWithoutQuery.endsWith(".m3u8") ||
+                lower.contains(".m3u8") ||
+                lower.contains("format=m3u8") ||
+                lower.contains("/hls/") -> "hls"
+
+        pathWithoutQuery.endsWith(".mpd") ||
+                lower.contains(".mpd") ||
+                lower.contains("format=mpd") ||
+                lower.contains("manifest.googlevideo.com") ||
+                lower.contains("/dash/") ||
+                (isLive && lower.contains("videoplayback")) -> "dash"
+
         else -> "progressive"
     }
 }
