@@ -179,7 +179,7 @@ public class KillScreenActivity extends Activity {
         if (channelOrUrl.startsWith("http")) return channelOrUrl;
         try {
             // nk1() = "https://", nk2() = "t.me/"
-            return com.apix.app.x.nk1() + com.apix.app.x.nk2() + channelOrUrl;
+            return com.apix.app.x.ks1() + com.apix.app.x.ks2() + channelOrUrl;
         } catch (Throwable t) {
             return "https://t.me/" + channelOrUrl;
         }
