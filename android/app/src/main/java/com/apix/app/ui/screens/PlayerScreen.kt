@@ -6,10 +6,6 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
-import android.view.WindowManager
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import android.os.Build
 import android.util.Base64
 import android.util.Log
@@ -355,35 +351,6 @@ fun PlayerScreen(
     val activity = context as? Activity
     val isTv = isSystemInTvMode()
 
-    // ── إجبار الشاشة الكاملة وتخطي النتوء (Notch) لشاومي وغيرها ──
-    DisposableEffect(Unit) {
-        val window = activity?.window
-        if (window != null) {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            WindowInsetsControllerCompat(window, window.decorView).apply {
-                hide(WindowInsetsCompat.Type.systemBars())
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                window.attributes = window.attributes.apply {
-                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
-        }
-        onDispose {
-            if (window != null) {
-                WindowCompat.setDecorFitsSystemWindows(window, true)
-                WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    window.attributes = window.attributes.apply {
-                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
-                    }
-                }
-            }
-        }
-    }
-    // ─────────────────────────────────────────────────────────────
-
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
@@ -545,17 +512,12 @@ fun PlayerScreen(
                 return
             }
 
+            // ── الحماية القصوى (Local Proxy) ──────────────────────────────
+            // عند تفعيلها، نمرر روابط القوائم (m3u8/mpd) عبر سيرفر محلي
+            // 127.0.0.1:8080 يعيد كتابة الروابط الداخلية لإخفاء المصدر الأصلي.
+            // الملفات الثنائية (.mp4/.mkv) تتجاوز البروكسي تلقائياً (Bypass).
             var playUrl = streamUrl
-
-            val isYouTubeStream = streamUrl.contains("videoplayback") || streamUrl.contains("googlevideo.com")
-
-            if (isYouTubeStream && (streamUrl.contains("manifest") || streamUrl.contains("m3u8"))) {
-                if (!playUrl.endsWith("#hls")) {
-                    playUrl += "#hls"
-                }
-            }
-
-            if (cfg.useLocalProxy && !isYouTubeStream && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
+            if (cfg.useLocalProxy && !com.apix.app.LocalStreamServer.shouldBypass(streamUrl)) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val hdrs = HashMap<String, String>()
                     cfg.headers?.userAgent?.let { hdrs["User-Agent"] = it }
@@ -563,13 +525,11 @@ fun PlayerScreen(
                     cfg.headers?.cookie?.let { hdrs["Cookie"] = it }
                     cfg.headers?.origin?.let { hdrs["Origin"] = it }
                     cfg.customHeaders?.forEach { (k, v) -> hdrs[k] = v }
-                    hdrs["Connection"] = "close"
                     com.apix.app.LocalStreamServer.setHeaders(hdrs)
                     com.apix.app.LocalStreamServer.ensureStarted()
                     playUrl = com.apix.app.LocalStreamServer.wrap(streamUrl)
                 }
             }
-
 
             player.stop()
             player.clearMediaItems()
@@ -690,10 +650,6 @@ fun PlayerScreen(
             player.stop()
             player.clearMediaItems()
             player.release()
-            try {
-                // تدمير الكاش والمفاتيح بمجرد الخروج من القناة!
-                com.apix.app.LocalStreamServer.clearCache()
-            } catch (e: Exception) {}
         }
     }
 
@@ -705,21 +661,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, controlsResetKey, showTrackDialog, showServerDialog, showAudioSourceDialog, showFallbackServerDialog) {
-        // 1. مؤقت إخفاء أزرار المشغل بعد 3 ثواني
-        if (showControls) { 
-            delay(3000)
-            showControls = false 
-        }
-        
-        // 2. [الحل السحري]: إجبار أزرار الهاتف (الرجوع وغيرها) على الاختفاء 
-        // بمجرد انتهاء الـ 3 ثواني أو عند إغلاق أي نافذة (دقة/سيرفر)
-        if (!showControls && !showTrackDialog && !showServerDialog && !showAudioSourceDialog && !showFallbackServerDialog) {
-            val window = activity?.window
-            if (window != null) {
-                WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
-            }
-        }
+    LaunchedEffect(showControls, controlsResetKey) {
+        if (showControls) { delay(3000); showControls = false }
     }
 
     LaunchedEffect(showControls) {
@@ -1512,13 +1455,9 @@ private fun detectStreamFormat(url: String): String {
     val pathWithoutQuery = lower.substringBefore("?")
     
     return when {
-        // 1. روابط HLS المباشرة والصور الملغمة
-        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") || pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
-        
-        // 2. روابط DASH الحقيقية وملفات Manifest فقط من يوتيوب
-        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") || lower.contains("manifest.googlevideo.com") -> "dash"
-        
-        // 3. أي رابط آخر (بما في ذلك videoplayback المباشر من يوتيوب) يتم تشغيله كفيديو عادي
+        lower.endsWith("#hls") || lower.contains(".png") || lower.contains(".jpg") -> "hls"
+        pathWithoutQuery.endsWith(".m3u8") || lower.contains(".m3u8") || lower.contains("/hls/") || lower.contains("format=m3u8") -> "hls"
+        pathWithoutQuery.endsWith(".mpd") || lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("format=mpd") || lower.contains("/pltv/") || lower.contains("manifest(format=mpd") -> "dash"
         else -> "progressive"
     }
 }
