@@ -59,11 +59,14 @@ public final class AdManager {
                 JSONObject adCfg = SupabaseDataManager.fetchAdConfig();
                 if (adCfg != null) {
                     ed.putBoolean(KEY_NETWORK_FORCE_EXTERNAL, adCfg.optBoolean("forceExternal", false));
-                    // حفظ إعدادات الإعلان في SharedPreferences للاستخدام لاحقاً بدون شبكة
                     ed.putBoolean("ads_enabled", adCfg.optBoolean("adsEnabled", false));
                     ed.putString("ads_gate_mode", adCfg.optString("gateMode", "app_open_each"));
                     ed.putString("ads_unit_id", adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", "")));
+                    // حفظ WebAd settings
+                    ed.putString("web_ad_url",        adCfg.optString("webAdUrl", ""));
+                    ed.putInt   ("web_ad_skip_after",  adCfg.optInt("webAdSkipAfter", 8));
+                    ed.putString("web_ad_seller_url",  adCfg.optString("sellerUrl", ""));
                     String unit = adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", ""));
                     if (!unit.isEmpty()) {
@@ -122,6 +125,19 @@ public final class AdManager {
                     + " unitId=" + (unitId.isEmpty() ? "EMPTY" : "SET")
                     + " appOpenDone=" + sp.getBoolean(KEY_APP_OPEN_DONE, false));
 
+                final String webAdUrl    = getWebAdUrl(fConfig, sp);
+                final int    webAdSkip   = getWebAdSkipAfter(fConfig, sp);
+                final String sellerUrl   = getSellerUrl(fConfig, sp);
+
+                Runnable afterAll = () -> {
+                    // WebAd آخر شيء قبل دخول التطبيق
+                    if (!webAdUrl.isEmpty()) {
+                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
+                    } else {
+                        callback.onAllowed();
+                    }
+                };
+
                 Runnable afterRewarded = () -> {
                     String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
                     boolean localOnAppOpen = "app_open".equalsIgnoreCase(trigger)
@@ -132,10 +148,10 @@ public final class AdManager {
                               .putBoolean(KEY_LOCAL_APP_OPEN_DONE, true)
                               .putLong("local_app_open_done_at", System.currentTimeMillis())
                               .apply();
-                            callback.onAllowed();
+                            afterAll.run();
                         });
                     } else {
-                        callback.onAllowed();
+                        afterAll.run();
                     }
                 };
 
@@ -178,9 +194,21 @@ public final class AdManager {
 
                 if (!rewardedFires && !localFires) { callback.onAllowed(); return; }
 
+                final String webAdUrl  = getWebAdUrl(fConfig, sp);
+                final int    webAdSkip = getWebAdSkipAfter(fConfig, sp);
+                final String sellerUrl = getSellerUrl(fConfig, sp);
+
+                Runnable afterAll = () -> {
+                    if (!webAdUrl.isEmpty()) {
+                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
+                    } else {
+                        callback.onAllowed();
+                    }
+                };
+
                 Runnable afterRewarded = () -> {
-                    if (localFires) showSequentialAds(activity, callback::onAllowed);
-                    else callback.onAllowed();
+                    if (localFires) showSequentialAds(activity, afterAll::run);
+                    else afterAll.run();
                 };
                 if (rewardedFires) {
                     String unitId = fConfig != null
@@ -248,7 +276,29 @@ public final class AdManager {
         return config.optBoolean("adsEnabled", false)
             && mode.equalsIgnoreCase(config.optString("gateMode", "app_open_once"));
     }
+// ── استخراج إعدادات WebAd من config ─────────────────────────────
+    private static String getWebAdUrl(JSONObject config, SharedPreferences sp) {
+        if (config != null) {
+            String u = config.optString("webAdUrl", "");
+            if (!u.isEmpty()) return u;
+        }
+        return sp.getString("web_ad_url", "");
+    }
 
+    private static int getWebAdSkipAfter(JSONObject config, SharedPreferences sp) {
+        if (config != null && config.has("webAdSkipAfter"))
+            return Math.max(3, config.optInt("webAdSkipAfter", 8));
+        return Math.max(3, sp.getInt("web_ad_skip_after", 8));
+    }
+
+    private static String getSellerUrl(JSONObject config, SharedPreferences sp) {
+        if (config != null) {
+            String u = config.optString("sellerUrl", "");
+            if (!u.isEmpty()) return u;
+        }
+        return sp.getString("web_ad_seller_url", "");
+    }
+    
     private static boolean isLockedChannel(JSONObject config, String channelId) {
         if (config == null || channelId == null) return false;
         JSONArray ids = config.optJSONArray("lockedChannelIds");
@@ -293,6 +343,7 @@ public final class AdManager {
         }
     }
 
+    // ── Bridge للـ SequentialAds (فيديو m3u8) ────────────────────────
     public static final class SequentialAdBridge {
         private static GateCallback pending;
         private SequentialAdBridge() {}
@@ -300,5 +351,23 @@ public final class AdManager {
         public static void complete() {
             if (pending != null) { GateCallback cb = pending; pending = null; cb.onAllowed(); }
         }
+    }
+
+    // ── Bridge للـ WebAd (صفحة ويب مع عداد) ─────────────────────────
+    public static final class WebAdBridge {
+        private static GateCallback pending;
+        private WebAdBridge() {}
+        public static void register(GateCallback cb) { pending = cb; }
+        public static void complete() {
+            if (pending != null) { GateCallback cb = pending; pending = null; cb.onAllowed(); }
+        }
+    }
+
+    // ── عرض إعلان الويب + callback عند التخطي ─────────────────────────
+    private static void showWebAd(Activity activity, String url, int skipAfter,
+                                   String sellerUrl, GateCallback callback) {
+        if (url == null || url.isEmpty()) { callback.onAllowed(); return; }
+        WebAdBridge.register(callback);
+        WebAdActivity.launchIfEnabled(activity, url, skipAfter, sellerUrl);
     }
 }
