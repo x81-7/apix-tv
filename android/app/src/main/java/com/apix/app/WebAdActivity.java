@@ -96,7 +96,10 @@ public class WebAdActivity extends AppCompatActivity {
         btnSkip.setEnabled(false);
         btnSkip.setFocusable(true);
         btnSkip.setText("تخطّي (" + remaining + ")");
-        btnSkip.setOnClickListener(v -> finish());
+        btnSkip.setOnClickListener(v -> {
+            AdManager.WebAdBridge.complete();
+            finish();
+        });
         btnSkip.setOnFocusChangeListener((v, has) -> v.setBackgroundColor(has ? 0xFFCBD5E1 : 0xFFE5E7EB));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
