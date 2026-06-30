@@ -1192,7 +1192,7 @@ fun AudioSpeedDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier
             .fillMaxWidth(0.45f)
-            .fillMaxHeight(if (isTv) 0.5f else 0.6f)
+            .fillMaxHeight(if (isTv) 0.55f else 0.85f)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF111111))
             .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
