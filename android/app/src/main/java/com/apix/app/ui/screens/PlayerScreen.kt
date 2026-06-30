@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.apix.app.ui.screens
 
 import android.app.Activity
@@ -1175,7 +1177,6 @@ fun AudioSourceDialog(
 }
 
 // ===== Audio Speed Settings Dialog =====
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AudioSpeedDialog(
     currentSpeed: Float,
