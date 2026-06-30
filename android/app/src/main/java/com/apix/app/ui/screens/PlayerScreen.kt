@@ -1177,6 +1177,7 @@ fun AudioSourceDialog(
 }
 
 // ===== Audio Speed Settings Dialog =====
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AudioSpeedDialog(
     currentSpeed: Float,
