@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-
 package com.apix.app.ui.screens
 
 import android.app.Activity
@@ -16,6 +14,7 @@ import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -1177,7 +1176,7 @@ fun AudioSourceDialog(
 }
 
 // ===== Audio Speed Settings Dialog =====
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AudioSpeedDialog(
     currentSpeed: Float,
