@@ -362,6 +362,8 @@ fun PlayerScreen(
     var showServerDialog by remember { mutableStateOf(false) }
     var currentServerUrl by remember { mutableStateOf(config.url) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
+    var showAudioSpeedDialog by remember { mutableStateOf(false) }
+    var externalAudioSpeed by remember { mutableStateOf(1.0f) }
     var showFallbackServerDialog by remember { mutableStateOf(false) }
     var latestPlaybackError by remember { mutableStateOf<String?>(null) }
     var currentFallbackIndex by remember { mutableStateOf(-1) }
@@ -889,10 +891,24 @@ fun PlayerScreen(
                                 externalAudioPlayer.setMediaSource(buildMediaSourceWithDrm(context, audioConfig, audioUrl))
                                 externalAudioPlayer.prepare()
                                 externalAudioPlayer.playWhenReady = player.playWhenReady
+                                externalAudioPlayer.playbackParameters = PlaybackParameters(externalAudioSpeed)
                             } catch (e: Exception) { Log.e("PlayerScreen", "External audio failed", e) }
                         }
                     },
+                    onOpenSpeedSettings = { showAudioSourceDialog = false; showAudioSpeedDialog = true },
                     onDismiss = { showAudioSourceDialog = false }
+                )
+            }
+            if (showAudioSpeedDialog) {
+                AudioSpeedDialog(
+                    currentSpeed = externalAudioSpeed,
+                    onSpeedChange = { speed ->
+                        externalAudioSpeed = speed
+                        try {
+                            externalAudioPlayer.playbackParameters = PlaybackParameters(speed)
+                        } catch (_: Exception) {}
+                    },
+                    onDismiss = { showAudioSpeedDialog = false }
                 )
             }
             if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
@@ -1083,18 +1099,49 @@ fun ServerSelectionDialog(servers: List<com.apix.app.data.Server>, currentUrl: S
 
 // ===== Audio Source Dialog =====
 @Composable
-fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (com.apix.app.data.AudioSource) -> Unit, onDismiss: () -> Unit) {
+fun AudioSourceDialog(
+    sources: List<com.apix.app.data.AudioSource>,
+    onSelect: (com.apix.app.data.AudioSource) -> Unit,
+    onOpenSpeedSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
     val isTv = isSystemInTvMode()
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("مصدر صوت", "إعدادات")
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier
             .fillMaxWidth(0.45f)
-            .fillMaxHeight(if (isTv) 0.5f else 0.85f)
+            .fillMaxHeight(if (isTv) 0.55f else 0.85f)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF111111))
             .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
             Column(Modifier.fillMaxSize()) {
-                Text("مصادر الصوت", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+
+                // ── تبويبات مماثلة لقائمة الجودة ──
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0A0A0A))
+                    .padding(top = 8.dp)) {
+                    tabs.forEachIndexed { index, title ->
+                        val isActive = selectedTab == index
+                        val tabInteraction = remember { MutableInteractionSource() }
+                        val tabFocused by tabInteraction.collectIsFocusedAsState()
+                        Column(modifier = Modifier
+                            .weight(1f)
+                            .clickable(interactionSource = tabInteraction, indication = null) {
+                                if (index == 1) onOpenSpeedSettings() else selectedTab = index
+                            }
+                            .focusable(interactionSource = tabInteraction)
+                            .then(if (tabFocused) Modifier.border(2.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                            .padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = title, color = if (isActive) Gold else Color(0xFF888888), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            if (isActive) { Spacer(Modifier.height(6.dp)); Box(Modifier.width(32.dp).height(2.dp).background(Gold, RoundedCornerShape(1.dp))) }
+                        }
+                    }
+                }
                 HorizontalDivider(color = Color(0xFF222222))
+
                 LazyColumn(
                     Modifier
                         .weight(1f)
@@ -1127,6 +1174,199 @@ fun AudioSourceDialog(sources: List<com.apix.app.data.AudioSource>, onSelect: (c
     }
 }
 
+// ===== Audio Speed Settings Dialog =====
+@Composable
+fun AudioSpeedDialog(
+    currentSpeed: Float,
+    onSpeedChange: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isTv = isSystemInTvMode()
+    var manualMode by remember { mutableStateOf(false) }
+    var sliderValue by remember { mutableStateOf(currentSpeed) }
+
+    val presets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.45f)
+            .fillMaxHeight(if (isTv) 0.5f else 0.6f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    "سرعة مصدر الصوت",
+                    color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp)
+                )
+                HorizontalDivider(color = Color(0xFF222222))
+
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(16.dp)
+                ) {
+                    // السرعة الحالية
+                    Text(
+                        "السرعة الحالية: ${String.format("%.2f", sliderValue)}x",
+                        color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    if (!manualMode) {
+                        // ── أزرار سرعات جاهزة (Presets) ──
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            presets.forEach { speed ->
+                                val isSelected = kotlin.math.abs(sliderValue - speed) < 0.01f
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val isFocused by interactionSource.collectIsFocusedAsState()
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) Gold else Color(0xFF2A2A2A))
+                                        .then(
+                                            if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                                            else Modifier
+                                        )
+                                        .clickable(interactionSource = interactionSource, indication = null) {
+                                            sliderValue = speed
+                                            onSpeedChange(speed)
+                                        }
+                                        .focusable(interactionSource = interactionSource)
+                                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        "${speed}x",
+                                        color = if (isSelected) Color.Black else Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // ── زر تخصيص يدوي ──
+                        val manualInteraction = remember { MutableInteractionSource() }
+                        val manualFocused by manualInteraction.collectIsFocusedAsState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.5.dp, Gold, RoundedCornerShape(8.dp))
+                                .then(
+                                    if (isTv && manualFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
+                                .clickable(interactionSource = manualInteraction, indication = null) {
+                                    manualMode = true
+                                }
+                                .focusable(interactionSource = manualInteraction)
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("تخصيص يدوي", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        // ── شريط تحكم يدوي قابل للسحب ──
+                        Slider(
+                            value = sliderValue,
+                            onValueChange = {
+                                sliderValue = it
+                                onSpeedChange(it)
+                            },
+                            valueRange = 0.25f..3.0f,
+                            steps = 54, // كل خطوة ~0.05
+                            colors = SliderDefaults.colors(
+                                thumbColor = Gold,
+                                activeTrackColor = Gold,
+                                inactiveTrackColor = Color(0x44FFFFFF)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusable()
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("0.25x", color = Color(0xFF888888), fontSize = 11.sp)
+                            Text("3.0x", color = Color(0xFF888888), fontSize = 11.sp)
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        val backInteraction = remember { MutableInteractionSource() }
+                        val backFocused by backInteraction.collectIsFocusedAsState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF2A2A2A))
+                                .then(
+                                    if (isTv && backFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
+                                .clickable(interactionSource = backInteraction, indication = null) {
+                                    manualMode = false
+                                }
+                                .focusable(interactionSource = backInteraction)
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("رجوع للسرعات الجاهزة", color = Color.White, fontSize = 13.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // إعادة تعيين للسرعة الطبيعية
+                    val resetInteraction = remember { MutableInteractionSource() }
+                    val resetFocused by resetInteraction.collectIsFocusedAsState()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .then(
+                                if (isTv && resetFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
+                                else Modifier
+                            )
+                            .clickable(interactionSource = resetInteraction, indication = null) {
+                                sliderValue = 1.0f
+                                onSpeedChange(1.0f)
+                            }
+                            .focusable(interactionSource = resetInteraction)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("إعادة الضبط الطبيعي (1x)", color = Color(0xFFAAAAAA), fontSize = 13.sp)
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFF222222))
+                val closeInteraction = remember { MutableInteractionSource() }
+                val closeFocused by closeInteraction.collectIsFocusedAsState()
+                Box(Modifier
+                    .fillMaxWidth()
+                    .then(if (isTv && closeFocused) Modifier.border(1.5.dp, Gold, RoundedCornerShape(4.dp)) else Modifier)
+                    .clickable(interactionSource = closeInteraction, indication = null) { onDismiss() }
+                    .focusable(interactionSource = closeInteraction)
+                    .padding(12.dp), contentAlignment = Alignment.Center) {
+                    Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 // ===== Track Selection Dialog =====
 @OptIn(UnstableApi::class)
 @Composable
@@ -1136,20 +1376,31 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
     val tabs = listOf("الجودة", "الصوت")
 
     val videoTracks = remember(player.currentTracks) {
-        val tracks = mutableListOf<TrackInfo>()
-        tracks.add(TrackInfo("تلقائي", -1, -1, true))
+        val autoTrack = TrackInfo("تلقائي", -1, -1, true)
+        val qualityTracks = mutableListOf<Triple<TrackInfo, Int, Int>>()
         try {
             player.currentTracks.groups.forEachIndexed { groupIndex, group ->
                 if (group.type == C.TRACK_TYPE_VIDEO) {
                     for (i in 0 until group.length) {
                         val format = group.getTrackFormat(i)
                         val label = getTrackLabel(format)
-                        tracks.add(TrackInfo(label, groupIndex, i, group.isTrackSelected(i)))
+                        qualityTracks.add(
+                            Triple(
+                                TrackInfo(label, groupIndex, i, group.isTrackSelected(i)),
+                                format.height,
+                                format.bitrate
+                            )
+                        )
                     }
                 }
             }
         } catch (_: Exception) {}
-        tracks
+        // ترتيب من الأعلى للأسفل: حسب الدقة أولاً، ثم البتريت كمعيار ثانٍ
+        val sorted = qualityTracks.sortedWith(
+            compareByDescending<Triple<TrackInfo, Int, Int>> { it.second }
+                .thenByDescending { it.third }
+        ).map { it.first }
+        mutableListOf(autoTrack).apply { addAll(sorted) }
     }
 
     val audioTracks = remember(player.currentTracks) {
