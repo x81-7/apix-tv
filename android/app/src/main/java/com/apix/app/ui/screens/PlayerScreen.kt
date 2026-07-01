@@ -1413,6 +1413,24 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
     var selectedAudioIndex by remember { mutableStateOf(audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // On some Xiaomi/MIUI devices the system navigation bar re-appears when a
+        // dialog window opens and never hides again. Re-apply immersive to THIS
+        // dialog's own window and auto-hide the bars after 3 seconds.
+        val dialogView = androidx.compose.ui.platform.LocalView.current
+        LaunchedEffect(Unit) {
+            val win = (dialogView.parent as? android.view.WindowManager.LayoutParams)?.let { null }
+                ?: (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            if (win != null) {
+                try {
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, false)
+                    val controller = androidx.core.view.WindowCompat.getInsetsController(win, win.decorView)
+                    controller.systemBarsBehavior =
+                        androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    kotlinx.coroutines.delay(3000)
+                    controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } catch (_: Throwable) {}
+            }
+        }
         Box(modifier = Modifier
             .fillMaxWidth(0.45f)
             .fillMaxHeight(if (isTv) 0.65f else 0.85f)
