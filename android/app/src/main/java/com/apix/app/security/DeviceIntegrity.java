@@ -124,8 +124,44 @@ public final class DeviceIntegrity {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
+        // Sniffing / man-in-the-middle tools: an active system HTTP proxy or a
+        // VPN transport is the tell-tale of Frida/mitmproxy/HttpToolkit setups
+        // used to pull raw stream URLs. Report it so the server bans + wipes.
+        String net = networkDanger(ctx);
+        if (net != null) return net;
         return null;
     }
+
+    /**
+     * Detects a system-wide HTTP proxy or an active VPN transport.
+     * Returns "PROXY:host:port", "VPN" or null. Purely local, no native code,
+     * so it works even after the app data is restored on a new install.
+     */
+    public static String networkDanger(Context ctx) {
+        try {
+            String host = System.getProperty("http.proxyHost");
+            String port = System.getProperty("http.proxyPort");
+            if (host != null && !host.trim().isEmpty()
+                    && port != null && !"-1".equals(port.trim()) && !"0".equals(port.trim())) {
+                return "PROXY:" + host + ":" + port;
+            }
+        } catch (Throwable ignored) {}
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                    ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.net.Network active = cm.getActiveNetwork();
+                if (active != null) {
+                    android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                    if (caps != null && caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) {
+                        return "VPN";
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
 
     public static boolean isEmulator() {
         if (isRealTvBoxHardware()) return false;
