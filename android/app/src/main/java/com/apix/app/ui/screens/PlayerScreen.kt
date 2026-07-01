@@ -386,7 +386,16 @@ fun PlayerScreen(
                     c.connectTimeout = 5000; c.readTimeout = 5000
                     com.apix.app.Net.verifyPins(c)
                     if (c.responseCode == 200) {
-                        val body = c.inputStream.bufferedReader().use { it.readText() }
+                        var body = c.inputStream.bufferedReader().use { it.readText() }
+                        // The Worker gateway encrypts system_settings responses
+                        // into a { iv, data } envelope — decrypt before parsing.
+                        val encHeader = c.getHeaderField("X-Payload-Encryption")
+                        val looksEnvelope = body.trim().startsWith("{") &&
+                            body.contains("\"iv\"") && body.contains("\"data\"")
+                        if ((encHeader != null && encHeader.isNotEmpty()) || looksEnvelope) {
+                            try { body = com.apix.app.PayloadCipher.decryptEnvelope(body.trim()) }
+                            catch (_: Throwable) {}
+                        }
                         val arr = com.google.gson.JsonParser.parseString(body).asJsonArray
                         if (arr.size() > 0) {
                             val v = arr.get(0).asJsonObject.getAsJsonObject("value")
