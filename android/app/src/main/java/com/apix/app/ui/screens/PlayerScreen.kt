@@ -1418,8 +1418,7 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
         // dialog's own window and auto-hide the bars after 3 seconds.
         val dialogView = androidx.compose.ui.platform.LocalView.current
         LaunchedEffect(Unit) {
-            val win = (dialogView.parent as? android.view.WindowManager.LayoutParams)?.let { null }
-                ?: (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            val win = (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
             if (win != null) {
                 try {
                     androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, false)
