@@ -299,11 +299,12 @@ public class SplashActivity extends AppCompatActivity {
                                 com.apix.app.BuildConfig.VERSION_NAME);
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    runOnUiThread(() -> {
-                        KillScreenActivity.launch(SplashActivity.this, fv.status, fv.banUntil, fv.reason, fv.telegramUrl);
-                        finish();
-                    });
+                    // Silent enforcement: wipe cached channels (if ordered) + close.
+                    com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
                     return;
+                } else if (v.status != null && "ACTIVE".equals(v.status)) {
+                    // Clear any stale cached ban once the server confirms ACTIVE.
+                    com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, v);
                 }
             } catch (Throwable ignored) {}
 
