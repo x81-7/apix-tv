@@ -132,6 +132,43 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
     val activity = context as? Activity
     val isTv = isSystemInTvMode()
 
+    // Edge-to-edge + draw behind the display cutout (notch) + immersive so the
+    // Shaka/JW player fills the whole screen with no notch bar. Restored on exit.
+    DisposableEffect(activity) {
+        val window = activity?.window
+        var prevCutout = -100
+        if (window != null) {
+            try {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    prevCutout = window.attributes.layoutInDisplayCutoutMode
+                    window.attributes = window.attributes.apply {
+                        layoutInDisplayCutoutMode =
+                            android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                }
+                val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                controller.systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            } catch (_: Throwable) {}
+        }
+        onDispose {
+            if (window != null) {
+                try {
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && prevCutout != -100) {
+                        window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = prevCutout }
+                    }
+                    val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                    controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+
+
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     
     // State variables

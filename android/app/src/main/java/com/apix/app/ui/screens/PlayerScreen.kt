@@ -352,6 +352,49 @@ fun PlayerScreen(
     val activity = context as? Activity
     val isTv = isSystemInTvMode()
 
+    // Edge-to-edge + draw behind the display cutout (notch) so the player fills
+    // the WHOLE screen with no black notch bar, plus immersive (hide system bars).
+    // Restored to defaults when leaving the player.
+    DisposableEffect(activity) {
+        val window = activity?.window
+        var prevCutout = -100
+        if (window != null) {
+            try {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    prevCutout = window.attributes.layoutInDisplayCutoutMode
+                    window.attributes = window.attributes.apply {
+                        layoutInDisplayCutoutMode =
+                            android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                }
+                val controller = androidx.core.view.WindowCompat
+                    .getInsetsController(window, window.decorView)
+                controller.systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat
+                        .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            } catch (_: Throwable) {}
+        }
+        onDispose {
+            if (window != null) {
+                try {
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && prevCutout != -100) {
+                        window.attributes = window.attributes.apply {
+                            layoutInDisplayCutoutMode = prevCutout
+                        }
+                    }
+                    val controller = androidx.core.view.WindowCompat
+                        .getInsetsController(window, window.decorView)
+                    controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+
+
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
@@ -386,7 +429,16 @@ fun PlayerScreen(
                     c.connectTimeout = 5000; c.readTimeout = 5000
                     com.apix.app.Net.verifyPins(c)
                     if (c.responseCode == 200) {
-                        val body = c.inputStream.bufferedReader().use { it.readText() }
+                        var body = c.inputStream.bufferedReader().use { it.readText() }
+                        // The Worker gateway encrypts system_settings responses
+                        // into a { iv, data } envelope — decrypt before parsing.
+                        val encHeader = c.getHeaderField("X-Payload-Encryption")
+                        val looksEnvelope = body.trim().startsWith("{") &&
+                            body.contains("\"iv\"") && body.contains("\"data\"")
+                        if ((encHeader != null && encHeader.isNotEmpty()) || looksEnvelope) {
+                            try { body = com.apix.app.PayloadCipher.decryptEnvelope(body.trim()) }
+                            catch (_: Throwable) {}
+                        }
                         val arr = com.google.gson.JsonParser.parseString(body).asJsonArray
                         if (arr.size() > 0) {
                             val v = arr.get(0).asJsonObject.getAsJsonObject("value")
@@ -1184,19 +1236,27 @@ fun AudioSpeedDialog(
     onDismiss: () -> Unit
 ) {
     val isTv = isSystemInTvMode()
-    var manualMode by remember { mutableStateOf(false) }
-    var sliderValue by remember { mutableStateOf(currentSpeed) }
+    val minSpeed = 0.25f
+    val maxSpeed = 3.0f
+    val stepSize = 0.05f
+    var sliderValue by remember { mutableStateOf(currentSpeed.coerceIn(minSpeed, maxSpeed)) }
 
-    val presets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+    fun applySpeed(v: Float) {
+        val clamped = (kotlin.math.round(v / stepSize) * stepSize).coerceIn(minSpeed, maxSpeed)
+        sliderValue = clamped
+        onSpeedChange(clamped)
+    }
+
+    val sliderFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { sliderFocus.requestFocus() } catch (_: Throwable) {} }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier
-            .fillMaxWidth(0.45f)
-            .fillMaxHeight(if (isTv) 0.55f else 0.85f)
+            .fillMaxWidth(if (isTv) 0.5f else 0.7f)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF111111))
             .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth()) {
                 Text(
                     "سرعة مصدر الصوت",
                     color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold,
@@ -1204,133 +1264,58 @@ fun AudioSpeedDialog(
                 )
                 HorizontalDivider(color = Color(0xFF222222))
 
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .padding(16.dp)
-                ) {
-                    // السرعة الحالية
+                Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                    // القيمة الحالية بشكل كبير وواضح
                     Text(
-                        "السرعة الحالية: ${String.format("%.2f", sliderValue)}x",
-                        color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                        "${String.format("%.2f", sliderValue)}x",
+                        color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
 
-                    if (!manualMode) {
-                        // ── أزرار سرعات جاهزة (Presets) ──
-                        androidx.compose.foundation.layout.FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            presets.forEach { speed ->
-                                val isSelected = kotlin.math.abs(sliderValue - speed) < 0.01f
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val isFocused by interactionSource.collectIsFocusedAsState()
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) Gold else Color(0xFF2A2A2A))
-                                        .then(
-                                            if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
-                                            else Modifier
-                                        )
-                                        .clickable(interactionSource = interactionSource, indication = null) {
-                                            sliderValue = speed
-                                            onSpeedChange(speed)
-                                        }
-                                        .focusable(interactionSource = interactionSource)
-                                        .padding(horizontal = 18.dp, vertical = 10.dp)
-                                ) {
-                                    Text(
-                                        "${speed}x",
-                                        color = if (isSelected) Color.Black else Color.White,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
+                    Spacer(Modifier.height(20.dp))
+
+                    // ── شريط السحب الدقيق + دعم الريموت (يمين/يسار) ──
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { applySpeed(it) },
+                        valueRange = minSpeed..maxSpeed,
+                        steps = ((maxSpeed - minSpeed) / stepSize).toInt() - 1,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Gold,
+                            activeTrackColor = Gold,
+                            inactiveTrackColor = Color(0x44FFFFFF)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(sliderFocus)
+                            .focusable()
+                            .onPreviewKeyEvent { ev ->
+                                if (ev.type == KeyEventType.KeyDown) {
+                                    when (ev.nativeKeyEvent?.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_RIGHT -> { applySpeed(sliderValue + stepSize); true }
+                                        KeyEvent.KEYCODE_DPAD_LEFT -> { applySpeed(sliderValue - stepSize); true }
+                                        KeyEvent.KEYCODE_DPAD_CENTER,
+                                        KeyEvent.KEYCODE_ENTER -> { applySpeed(1.0f); true }
+                                        else -> false
+                                    }
+                                } else false
                             }
-                        }
+                    )
 
-                        Spacer(Modifier.height(20.dp))
-
-                        // ── زر تخصيص يدوي ──
-                        val manualInteraction = remember { MutableInteractionSource() }
-                        val manualFocused by manualInteraction.collectIsFocusedAsState()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.5.dp, Gold, RoundedCornerShape(8.dp))
-                                .then(
-                                    if (isTv && manualFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
-                                    else Modifier
-                                )
-                                .clickable(interactionSource = manualInteraction, indication = null) {
-                                    manualMode = true
-                                }
-                                .focusable(interactionSource = manualInteraction)
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("تخصيص يدوي", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        // ── شريط تحكم يدوي قابل للسحب ──
-                        Slider(
-                            value = sliderValue,
-                            onValueChange = {
-                                sliderValue = it
-                                onSpeedChange(it)
-                            },
-                            valueRange = 0.25f..3.0f,
-                            steps = 54, // كل خطوة ~0.05
-                            colors = SliderDefaults.colors(
-                                thumbColor = Gold,
-                                activeTrackColor = Gold,
-                                inactiveTrackColor = Color(0x44FFFFFF)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusable()
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("0.25x", color = Color(0xFF888888), fontSize = 11.sp)
-                            Text("3.0x", color = Color(0xFF888888), fontSize = 11.sp)
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        val backInteraction = remember { MutableInteractionSource() }
-                        val backFocused by backInteraction.collectIsFocusedAsState()
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF2A2A2A))
-                                .then(
-                                    if (isTv && backFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp))
-                                    else Modifier
-                                )
-                                .clickable(interactionSource = backInteraction, indication = null) {
-                                    manualMode = false
-                                }
-                                .focusable(interactionSource = backInteraction)
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("رجوع للسرعات الجاهزة", color = Color.White, fontSize = 13.sp)
-                        }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("${minSpeed}x", color = Color(0xFF888888), fontSize = 11.sp)
+                        if (isTv) Text("◀ الريموت يغيّر السرعة ▶", color = Color(0xFF666666), fontSize = 10.sp)
+                        Text("${maxSpeed}x", color = Color(0xFF888888), fontSize = 11.sp)
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(20.dp))
 
-                    // إعادة تعيين للسرعة الطبيعية
+                    // إعادة الضبط الطبيعي
                     val resetInteraction = remember { MutableInteractionSource() }
                     val resetFocused by resetInteraction.collectIsFocusedAsState()
                     Box(
@@ -1342,8 +1327,7 @@ fun AudioSpeedDialog(
                                 else Modifier
                             )
                             .clickable(interactionSource = resetInteraction, indication = null) {
-                                sliderValue = 1.0f
-                                onSpeedChange(1.0f)
+                                applySpeed(1.0f)
                             }
                             .focusable(interactionSource = resetInteraction)
                             .padding(vertical = 10.dp),
@@ -1429,6 +1413,23 @@ fun TrackSelectionDialog(player: ExoPlayer, trackSelector: DefaultTrackSelector,
     var selectedAudioIndex by remember { mutableStateOf(audioTracks.indexOfFirst { it.isSelected }.coerceAtLeast(0)) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // On some Xiaomi/MIUI devices the system navigation bar re-appears when a
+        // dialog window opens and never hides again. Re-apply immersive to THIS
+        // dialog's own window and auto-hide the bars after 3 seconds.
+        val dialogView = androidx.compose.ui.platform.LocalView.current
+        LaunchedEffect(Unit) {
+            val win = (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            if (win != null) {
+                try {
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(win, false)
+                    val controller = androidx.core.view.WindowCompat.getInsetsController(win, win.decorView)
+                    controller.systemBarsBehavior =
+                        androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    kotlinx.coroutines.delay(3000)
+                    controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                } catch (_: Throwable) {}
+            }
+        }
         Box(modifier = Modifier
             .fillMaxWidth(0.45f)
             .fillMaxHeight(if (isTv) 0.65f else 0.85f)
