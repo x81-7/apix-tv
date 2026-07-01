@@ -290,6 +290,126 @@ export type Database = {
           },
         ]
       }
+      cinema_catalog: {
+        Row: {
+          backdrop: string | null
+          created_at: string
+          description: string | null
+          extra: Json
+          id: string
+          is_hero: boolean
+          popularity: number
+          poster: string | null
+          rating: string | null
+          row_key: string
+          row_title: string
+          section: string
+          sort_order: number
+          title: string
+          tmdb_id: string
+          updated_at: string
+          year: string | null
+        }
+        Insert: {
+          backdrop?: string | null
+          created_at?: string
+          description?: string | null
+          extra?: Json
+          id?: string
+          is_hero?: boolean
+          popularity?: number
+          poster?: string | null
+          rating?: string | null
+          row_key?: string
+          row_title?: string
+          section?: string
+          sort_order?: number
+          title?: string
+          tmdb_id: string
+          updated_at?: string
+          year?: string | null
+        }
+        Update: {
+          backdrop?: string | null
+          created_at?: string
+          description?: string | null
+          extra?: Json
+          id?: string
+          is_hero?: boolean
+          popularity?: number
+          poster?: string | null
+          rating?: string | null
+          row_key?: string
+          row_title?: string
+          section?: string
+          sort_order?: number
+          title?: string
+          tmdb_id?: string
+          updated_at?: string
+          year?: string | null
+        }
+        Relationships: []
+      }
+      cinema_providers: {
+        Row: {
+          active: boolean
+          anime_enabled: boolean
+          created_at: string
+          host: string | null
+          id: string
+          kind: string
+          live_enabled: boolean
+          movie_link_template: string | null
+          name: string
+          password: string | null
+          port: number | null
+          series_enabled: boolean
+          series_link_template: string | null
+          tmdb_api_key: string | null
+          updated_at: string
+          username: string | null
+          vod_enabled: boolean
+        }
+        Insert: {
+          active?: boolean
+          anime_enabled?: boolean
+          created_at?: string
+          host?: string | null
+          id?: string
+          kind?: string
+          live_enabled?: boolean
+          movie_link_template?: string | null
+          name?: string
+          password?: string | null
+          port?: number | null
+          series_enabled?: boolean
+          series_link_template?: string | null
+          tmdb_api_key?: string | null
+          updated_at?: string
+          username?: string | null
+          vod_enabled?: boolean
+        }
+        Update: {
+          active?: boolean
+          anime_enabled?: boolean
+          created_at?: string
+          host?: string | null
+          id?: string
+          kind?: string
+          live_enabled?: boolean
+          movie_link_template?: string | null
+          name?: string
+          password?: string | null
+          port?: number | null
+          series_enabled?: boolean
+          series_link_template?: string | null
+          tmdb_api_key?: string | null
+          updated_at?: string
+          username?: string | null
+          vod_enabled?: boolean
+        }
+        Relationships: []
+      }
       custom_ads: {
         Row: {
           created_at: string
