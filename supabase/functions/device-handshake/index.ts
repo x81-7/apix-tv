@@ -308,13 +308,22 @@ Deno.serve(async (req) => {
 
     await supabase.from("app_users").upsert(upsertPayload, { onConflict: "device_id" });
 
+    // A ban that must destroy any locally-cached channels/streams on device.
+    // The app reads `wipe` and clears its offline cache before exiting silently.
+    const wipe =
+      status === "PERMA_BAN" ||
+      status === "TAMPERED_MOD" ||
+      status === "ENVIRONMENT_DANGER";
+
     return encryptedJson({
       status,
       ban_until: banUntil?.toISOString() ?? null,
       ban_reason: banReason,
       telegram_url: telegramUrl,
+      wipe,
       message: messageFor(status),
     });
+
   } catch (e) {
     console.error("handshake error", e);
     return plainJson({ status: "ERROR", message: String(e) }, 500);
