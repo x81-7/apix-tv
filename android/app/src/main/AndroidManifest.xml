@@ -118,15 +118,8 @@
             android:exported="false"
             android:theme="@style/Theme.TVPlus.NoActionBar" />
 
-        <!-- Kill Screen -->
-        <activity
-            android:name=".KillScreenActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:launchMode="singleTask"
-            android:configChanges="orientation|screenSize|keyboardHidden|layoutDirection"
-            android:theme="@style/Theme.TVPlus.NoActionBar" />
+        <!-- Kill Screen removed: bans are now enforced silently (wipe + close). -->
+
 
         <!-- FileProvider -->
         <provider
