@@ -405,7 +405,39 @@ public class SupabaseDataManager {
             String line;
             while ((line = r.readLine()) != null) sb.append(line);
         }
-        return sb.toString();
+        String body = sb.toString();
+        // The Cloudflare Worker gateway AES-256-GCM-encrypts responses for
+        // sensitive tables (system_settings, channels, categories, sub_channels,
+        // custom_ads ...) and returns a { "iv", "data" } envelope + header
+        // X-Payload-Encryption. Transparently decrypt so every caller
+        // (gate, settings, servers, app-update ...) receives plain JSON.
+        return maybeDecrypt(conn, body);
+    }
+
+    /**
+     * If the Worker encrypted the payload, decrypt it back to plain JSON.
+     * Detection is header-based (X-Payload-Encryption) with a content-based
+     * fallback ({ "iv":..., "data":... } object) so it also works if the header
+     * is stripped by an intermediary.
+     */
+    private static String maybeDecrypt(HttpURLConnection conn, String body) {
+        if (body == null || body.isEmpty()) return body;
+        boolean encHeader = false;
+        try {
+            String h = conn.getHeaderField("X-Payload-Encryption");
+            encHeader = h != null && !h.isEmpty();
+        } catch (Exception ignored) {}
+        String trimmed = body.trim();
+        boolean looksEnvelope = trimmed.startsWith("{")
+                && trimmed.contains("\"iv\"")
+                && trimmed.contains("\"data\"");
+        if (!encHeader && !looksEnvelope) return body;
+        try {
+            return PayloadCipher.decryptEnvelope(trimmed);
+        } catch (Exception e) {
+            Log.e(TAG, "restGet decrypt failed", e);
+            return body; // fall back to raw (will fail parsing, but no crash)
+        }
     }
 
     private static DataBundle parseAll(String catsJson, String chansJson, String menusJson, String subsJson, String settingsJson) throws Exception {
