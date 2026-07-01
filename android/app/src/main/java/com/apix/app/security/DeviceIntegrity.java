@@ -124,11 +124,18 @@ public final class DeviceIntegrity {
                 try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
-        // Sniffing / man-in-the-middle tools: an active system HTTP proxy or a
-        // VPN transport is the tell-tale of Frida/mitmproxy/HttpToolkit setups
-        // used to pull raw stream URLs. Report it so the server bans + wipes.
-        String net = networkDanger(ctx);
-        if (net != null) return net;
+        // Sniffing / man-in-the-middle: an active system HTTP proxy is the
+        // tell-tale of mitmproxy/HttpToolkit/Frida setups used to pull raw
+        // stream URLs. (Bare VPN is intentionally NOT escalated here — many
+        // IPTV users rely on a VPN legitimately.)
+        try {
+            String host = System.getProperty("http.proxyHost");
+            String port = System.getProperty("http.proxyPort");
+            if (host != null && !host.trim().isEmpty()
+                    && port != null && !"-1".equals(port.trim()) && !"0".equals(port.trim())) {
+                return "PROXY:" + host + ":" + port;
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 
