@@ -21,6 +21,7 @@ public final class HandshakeClient {
         public String reason;
         public String telegramUrl;
         public String message;
+        public boolean wipe;                    // server orders local channel-cache wipe
     }
 
     public static Verdict handshake(Context ctx, String supabaseUrl, String anonKey, String appVersion) {
