@@ -90,6 +90,7 @@ public final class HandshakeClient {
             v.reason = jo.optString("ban_reason", null);
             v.telegramUrl = jo.optString("telegram_url", null);
             v.message = jo.optString("message", null);
+            v.wipe = jo.optBoolean("wipe", false);
             Log.i("HS", "verdict=" + v.status + " device=" + deviceId);
         } catch (Throwable t) {
             Log.w("HS", "handshake error", t);
