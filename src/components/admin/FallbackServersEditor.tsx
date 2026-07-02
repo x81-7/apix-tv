@@ -17,10 +17,13 @@ import type { CustomHeader, ClearKeyMode, DrmScheme } from '@/types/admin';
  * URL + headers + custom headers + DRM. The Android player chains them
  * sequentially when the previous one fails or stops mid-playback.
  */
+export type PlayerKind = 'auto' | 'exo' | 'hybrid' | 'shaka';
+
 export interface FallbackServer {
   id: string;
   name: string;
   url: string;
+  playerType?: PlayerKind;   // which engine plays THIS server (auto = same as primary)
   userAgent?: string;
   referer?: string;
   origin?: string;
@@ -44,6 +47,7 @@ const empty = (): FallbackServer => ({
   id: crypto.randomUUID(),
   name: 'سيرفر بديل',
   url: '',
+  playerType: 'auto',
   drmClearKeyMode: 'combined',
 });
 
@@ -152,6 +156,8 @@ const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
                   {i + 1}. {s.name || 'بدون اسم'}
+                  {s.playerType && s.playerType !== 'auto'
+                    ? <span className="text-xs text-primary mr-2">[{s.playerType}]</span> : null}
                   {s.drmScheme ? <span className="text-xs text-amber-500 mr-2"><Shield className="inline w-3 h-3" /> {s.drmScheme}</span> : null}
                 </p>
                 <p className="text-xs text-muted-foreground font-mono truncate" dir="ltr">{s.url || '—'}</p>
@@ -180,6 +186,18 @@ const FallbackServersEditor: React.FC<Props> = ({ servers, onChange }) => {
                 <div className="space-y-1">
                   <Label className="text-xs">رابط البث (URL)</Label>
                   <Input value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="https://..." className="bg-secondary border-border font-mono text-xs" dir="ltr" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-xs">نوع المشغل لهذا السيرفر</Label>
+                  <Select value={draft.playerType || 'auto'} onValueChange={(v: PlayerKind) => setDraft({ ...draft, playerType: v })}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">تلقائي (نفس المشغل الرئيسي)</SelectItem>
+                      <SelectItem value="exo">ExoPlayer (الأساسي)</SelectItem>
+                      <SelectItem value="hybrid">Hybrid Player</SelectItem>
+                      <SelectItem value="shaka">Shaka Player</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

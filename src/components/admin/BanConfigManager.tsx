@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { ShieldAlert, Send, Save } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { ShieldAlert, Send, Save, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface BanConfig {
@@ -23,6 +24,8 @@ interface BanConfig {
   anti_hook_enabled: boolean;
   auto_temp_ban_enabled: boolean;
   auto_perma_ban_enabled: boolean;
+  vpn_block_enabled: boolean;
+  vpn_allowed_ips: string[];
 }
 
 const DEFAULTS: BanConfig = {
@@ -39,6 +42,8 @@ const DEFAULTS: BanConfig = {
   anti_hook_enabled: true,
   auto_temp_ban_enabled: true,
   auto_perma_ban_enabled: true,
+  vpn_block_enabled: false,
+  vpn_allowed_ips: [],
 };
 
 const BanConfigManager: React.FC = () => {
@@ -174,6 +179,28 @@ const BanConfigManager: React.FC = () => {
               onCheckedChange={v => set('auto_perma_ban_enabled', v)} />
           </div>
         </div>
+
+        <div className="space-y-3 pt-2 border-t border-border">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-2"><Wifi className="w-4 h-4" /> منع استخدام الـ VPN (إلا المسموح)</Label>
+            <Switch checked={cfg.vpn_block_enabled}
+              onCheckedChange={v => set('vpn_block_enabled', v)} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            عند التفعيل: أي مستخدم يشغّل VPN يُمنع من التطبيق، إلا إذا كان الـ IP الخارج ضمن القائمة المسموحة أدناه.
+            يفحص السيرفر عنوان الـ IP القادم من الجهاز ويردّ إن كان مسموحاً أم لا، وتُخزَّن القائمة مشفّرة داخل التطبيق.
+          </p>
+          <div className="space-y-2">
+            <Label>عناوين IP المسموح بها للـ VPN (سطر لكل IP)</Label>
+            <Textarea
+              value={(cfg.vpn_allowed_ips || []).join('\n')}
+              onChange={e => set('vpn_allowed_ips', e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
+              placeholder={"185.12.34.56\n45.66.77.88"}
+              className="bg-secondary border-border font-mono text-xs min-h-[100px]" dir="ltr"
+            />
+          </div>
+        </div>
+
 
         <Button onClick={save} disabled={saving} className="w-full bg-primary text-primary-foreground">
           <Save className="w-4 h-4 mr-2" />

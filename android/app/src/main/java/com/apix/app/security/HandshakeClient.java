@@ -16,12 +16,13 @@ import java.net.URL;
 public final class HandshakeClient {
 
     public static final class Verdict {
-        public String status = "ACTIVE";        // ACTIVE / TEMP_BAN / PERMA_BAN / TAMPERED_MOD / ENVIRONMENT_DANGER / ERROR
+        public String status = "ACTIVE";        // ACTIVE / TEMP_BAN / PERMA_BAN / TAMPERED_MOD / ENVIRONMENT_DANGER / VPN_BLOCK / ERROR
         public String banUntil;
         public String reason;
         public String telegramUrl;
         public String message;
         public boolean wipe;                    // server orders local channel-cache wipe
+        public String mode = "OK";              // OK / SILENT / MESSAGE — how to enforce the ban
     }
 
     public static Verdict handshake(Context ctx, String supabaseUrl, String anonKey, String appVersion) {
@@ -43,6 +44,7 @@ public final class HandshakeClient {
                 body.put("environment_danger", true);
                 body.put("danger_details", danger);
             }
+            try { body.put("vpn_active", DeviceIntegrity.isVpnActive(ctx)); } catch (Throwable ignored) {}
 
             URL url = new URL(supabaseUrl + "/functions/v1/device-handshake");
             HttpURLConnection c = (HttpURLConnection) url.openConnection();
@@ -91,6 +93,17 @@ public final class HandshakeClient {
             v.telegramUrl = jo.optString("telegram_url", null);
             v.message = jo.optString("message", null);
             v.wipe = jo.optBoolean("wipe", false);
+            v.mode = jo.optString("mode", "OK");
+            // Persist the VPN allow-list encrypted for lightweight offline checks.
+            try {
+                if (jo.has("vpn_allowed_ips")) {
+                    org.json.JSONArray arr = jo.optJSONArray("vpn_allowed_ips");
+                    ctx.getSharedPreferences("vpn_cache", Context.MODE_PRIVATE).edit()
+                        .putBoolean("vpn_block_enabled", jo.optBoolean("vpn_block_enabled", false))
+                        .putString("vpn_allowed_ips", arr != null ? arr.toString() : "[]")
+                        .apply();
+                }
+            } catch (Throwable ignored) {}
             Log.i("HS", "verdict=" + v.status + " device=" + deviceId);
         } catch (Throwable t) {
             Log.w("HS", "handshake error", t);

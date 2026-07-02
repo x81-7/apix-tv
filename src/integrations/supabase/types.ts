@@ -201,6 +201,10 @@ export type Database = {
           created_at: string
           external_url: string | null
           hidden: boolean
+          hidden_android: boolean
+          hidden_ios: boolean
+          hidden_web: boolean
+          hidden_windows: boolean
           id: string
           image_url: string | null
           ios_action_type: string | null
@@ -228,6 +232,10 @@ export type Database = {
           created_at?: string
           external_url?: string | null
           hidden?: boolean
+          hidden_android?: boolean
+          hidden_ios?: boolean
+          hidden_web?: boolean
+          hidden_windows?: boolean
           id?: string
           image_url?: string | null
           ios_action_type?: string | null
@@ -255,6 +263,10 @@ export type Database = {
           created_at?: string
           external_url?: string | null
           hidden?: boolean
+          hidden_android?: boolean
+          hidden_ios?: boolean
+          hidden_web?: boolean
+          hidden_windows?: boolean
           id?: string
           image_url?: string | null
           ios_action_type?: string | null
@@ -543,6 +555,10 @@ export type Database = {
           cache_version: number
           created_at: string
           hidden: boolean
+          hidden_android: boolean
+          hidden_ios: boolean
+          hidden_web: boolean
+          hidden_windows: boolean
           id: string
           image_url: string | null
           ios_action_type: string | null
@@ -566,6 +582,10 @@ export type Database = {
           cache_version?: number
           created_at?: string
           hidden?: boolean
+          hidden_android?: boolean
+          hidden_ios?: boolean
+          hidden_web?: boolean
+          hidden_windows?: boolean
           id?: string
           image_url?: string | null
           ios_action_type?: string | null
@@ -589,6 +609,10 @@ export type Database = {
           cache_version?: number
           created_at?: string
           hidden?: boolean
+          hidden_android?: boolean
+          hidden_ios?: boolean
+          hidden_web?: boolean
+          hidden_windows?: boolean
           id?: string
           image_url?: string | null
           ios_action_type?: string | null

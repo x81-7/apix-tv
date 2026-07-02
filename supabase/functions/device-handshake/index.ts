@@ -7,6 +7,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Code-level VPN allow-list (always permitted regardless of the panel list).
+// Add trusted egress IPs here; they are merged with the admin-managed list.
+const CODE_VPN_ALLOWLIST: string[] = [
+  // "185.12.34.56",
+];
+
+
 interface HandshakePayload {
   device_id: string;            // MediaDrm Widevine ID
   platform?: string;
@@ -16,9 +23,10 @@ interface HandshakePayload {
   is_fresh_install?: boolean;   // true when local marker missing
   environment_danger?: boolean; // debugger/frida detected client-side
   danger_details?: string;
+  vpn_active?: boolean;         // device reports an active VPN transport
 }
 
-type Status = "ACTIVE" | "TEMP_BAN" | "PERMA_BAN" | "TAMPERED_MOD" | "ENVIRONMENT_DANGER";
+type Status = "ACTIVE" | "TEMP_BAN" | "PERMA_BAN" | "TAMPERED_MOD" | "ENVIRONMENT_DANGER" | "VPN_BLOCK";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -62,6 +70,11 @@ Deno.serve(async (req) => {
     const integrityCheckEnabled = cfg.integrity_check_enabled !== false;
     const autoTempBanEnabled = cfg.auto_temp_ban_enabled !== false;
     const autoPermaBanEnabled = cfg.auto_perma_ban_enabled !== false;
+    const vpnBlockEnabled = cfg.vpn_block_enabled === true;
+    const vpnAllowedIps: string[] = Array.isArray(cfg.vpn_allowed_ips)
+      ? (cfg.vpn_allowed_ips as unknown[]).map((v) => String(v).trim()).filter(Boolean)
+      : [];
+
 
     // Fetch existing user
     const { data: existing } = await supabase
@@ -287,7 +300,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // VPN gate — response-only, does NOT persist a ban (user may just disable VPN).
+    const mergedVpnAllow = Array.from(new Set([...vpnAllowedIps, ...CODE_VPN_ALLOWLIST]));
+    const ipAllowedForVpn = mergedVpnAllow.includes(ip);
+    const vpnBlocked =
+      status === "ACTIVE" && vpnBlockEnabled && body.vpn_active === true && !ipAllowedForVpn;
+
     // Upsert user record
+
     const upsertPayload = {
       device_id: body.device_id,
       ip_address: ip,
@@ -308,20 +328,31 @@ Deno.serve(async (req) => {
 
     await supabase.from("app_users").upsert(upsertPayload, { onConflict: "device_id" });
 
-    // A ban that must destroy any locally-cached channels/streams on device.
-    // The app reads `wipe` and clears its offline cache before exiting silently.
-    const wipe =
-      status === "PERMA_BAN" ||
-      status === "TAMPERED_MOD" ||
-      status === "ENVIRONMENT_DANGER";
+    const responseStatus: Status = vpnBlocked ? "VPN_BLOCK" : status;
+    const isBan = responseStatus !== "ACTIVE";
+
+    // Security bans (tamper / dangerous environment) are enforced SILENTLY:
+    // wipe cached channels and close with no visible screen. Manual/panel bans
+    // and VPN blocks show a message so the user understands why.
+    const silent = responseStatus === "TAMPERED_MOD" || responseStatus === "ENVIRONMENT_DANGER";
+
+    // Wipe locally-cached channels/streams for permanent + security bans so a
+    // banned user is left with empty content. TEMP_BAN / VPN_BLOCK keep cache.
+    const wipe = responseStatus === "PERMA_BAN" || silent;
+
+    const mode = !isBan ? "OK" : silent ? "SILENT" : "MESSAGE";
 
     return encryptedJson({
-      status,
+      status: responseStatus,
       ban_until: banUntil?.toISOString() ?? null,
       ban_reason: banReason,
       telegram_url: telegramUrl,
       wipe,
-      message: messageFor(status),
+      mode,
+      message: messageFor(responseStatus),
+      // Echoed so the app can cache the VPN allow-list encrypted for offline checks.
+      vpn_block_enabled: vpnBlockEnabled,
+      vpn_allowed_ips: mergedVpnAllow,
     });
 
   } catch (e) {
@@ -329,6 +360,7 @@ Deno.serve(async (req) => {
     return plainJson({ status: "ERROR", message: String(e) }, 500);
   }
 });
+
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -342,11 +374,13 @@ function messageFor(s: Status) {
     case "TEMP_BAN":
       return "تم إيقاف التطبيق مؤقتاً بسبب نشاط مريب";
     case "PERMA_BAN":
-      return "تم حظر هذا الجهاز نهائياً";
+      return "تم حظرك بسبب استخدامك غير الشرعي للتطبيق";
     case "TAMPERED_MOD":
       return "تم اكتشاف نسخة معدلة";
     case "ENVIRONMENT_DANGER":
       return "بيئة تشغيل غير آمنة";
+    case "VPN_BLOCK":
+      return "يرجى إيقاف الـ VPN لاستخدام التطبيق";
     default:
       return "OK";
   }

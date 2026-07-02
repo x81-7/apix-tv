@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import ImageUploader from './ImageUploader';
 import WebConfigForm from './WebConfigForm';
 import AndroidConfigForm from './AndroidConfigForm';
@@ -41,6 +42,10 @@ interface ChannelRow {
   windows_action_type?: string | null;
   offline_cache_enabled?: boolean;
   use_local_proxy?: boolean;
+  hidden_android?: boolean;
+  hidden_ios?: boolean;
+  hidden_windows?: boolean;
+  hidden_web?: boolean;
 }
 
 interface MenuRow {
@@ -198,6 +203,10 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
     try { await adminDb.update('channels', { id: ch.id }, { hidden: !ch.hidden }); } catch (e) { console.error(e); }
   };
 
+  const handleTogglePlatformHidden = async (ch: ChannelRow, field: 'hidden_android' | 'hidden_ios' | 'hidden_windows' | 'hidden_web') => {
+    try { await adminDb.update('channels', { id: ch.id }, { [field]: !ch[field] }); } catch (e) { console.error(e); }
+  };
+
   const handleMove = async (id: string, direction: 'up' | 'down') => {
     const sorted = [...channels].sort((a, b) => a.sort_order - b.sort_order);
     const idx = sorted.findIndex(c => c.id === id);
@@ -252,6 +261,14 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
                   <p className={`font-medium ${channel.hidden ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                     {channel.name}
                     {channel.hidden && <span className="text-xs text-amber-500 mr-2"> (مخفي)</span>}
+                    {!channel.hidden && (channel.hidden_android || channel.hidden_ios || channel.hidden_windows || channel.hidden_web) && (
+                      <span className="text-xs text-amber-500 mr-2"> (مخفي: {[
+                        channel.hidden_android && 'أندرويد',
+                        channel.hidden_ios && 'آيفون',
+                        channel.hidden_windows && 'ويندوز',
+                        channel.hidden_web && 'ويب',
+                      ].filter(Boolean).join('، ')})</span>
+                    )}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       {channel.action_type === 'direct_play' ? (
@@ -267,9 +284,34 @@ const ChannelManager: React.FC<ChannelManagerProps> = ({ categoryId, categoryNam
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => handleToggleHidden(channel)}>
-                  {channel.hidden ? <EyeOff className="w-4 h-4 text-amber-500" /> : <Eye className="w-4 h-4" />}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" title="التحكم بالإخفاء حسب الجهاز">
+                      {(channel.hidden || channel.hidden_android || channel.hidden_ios || channel.hidden_windows || channel.hidden_web)
+                        ? <EyeOff className="w-4 h-4 text-amber-500" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-card border-border w-56">
+                    <DropdownMenuLabel>إخفاء القناة حسب الجهاز</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem checked={!!channel.hidden} onCheckedChange={() => handleToggleHidden(channel)}>
+                      <EyeOff className="w-4 h-4 mr-2" /> إخفاء من جميع الأجهزة
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem checked={!!channel.hidden_android} onCheckedChange={() => handleTogglePlatformHidden(channel, 'hidden_android')}>
+                      <Smartphone className="w-4 h-4 mr-2" /> إخفاء من الأندرويد فقط
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={!!channel.hidden_ios} onCheckedChange={() => handleTogglePlatformHidden(channel, 'hidden_ios')}>
+                      <Tv className="w-4 h-4 mr-2" /> إخفاء من الآيفون فقط
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={!!channel.hidden_windows} onCheckedChange={() => handleTogglePlatformHidden(channel, 'hidden_windows')}>
+                      <Monitor className="w-4 h-4 mr-2" /> إخفاء من الويندوز فقط
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={!!channel.hidden_web} onCheckedChange={() => handleTogglePlatformHidden(channel, 'hidden_web')}>
+                      <Globe className="w-4 h-4 mr-2" /> إخفاء من الويب فقط
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button variant="ghost" size="icon" onClick={() => openEditDialog(channel)}><Edit2 className="w-4 h-4" /></Button>
                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(channel.id)}><Trash2 className="w-4 h-4" /></Button>
               </div>
