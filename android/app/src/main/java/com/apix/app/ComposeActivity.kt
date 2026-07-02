@@ -124,7 +124,8 @@ fun AppNavigation(
     // engine: "hybrid" -> Shaka/JW WebView player, otherwise -> native ExoPlayer.
     val switchEngine: (PlayerConfig, String) -> Unit = { cfg, engine ->
         isNavigatingBack = false
-        val external = isCurrentExternalRef.value
+        val external = (currentScreen as? Screen.Player)?.isExternal
+            ?: (currentScreen as? Screen.HybridPlayer)?.isExternal ?: false
         currentScreen = if (engine == "hybrid") Screen.HybridPlayer(cfg, isExternal = external)
                         else Screen.Player(cfg, isExternal = external)
     }
