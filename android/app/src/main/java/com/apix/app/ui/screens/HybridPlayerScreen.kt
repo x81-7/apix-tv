@@ -404,7 +404,10 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
                             }
                             @JavascriptInterface
                             fun error(msg: String) {
-                                Handler(Looper.getMainLooper()).post { errorMessage = msg }
+                                Handler(Looper.getMainLooper()).post {
+                                    // Try the next fallback server before surfacing the error.
+                                    if (!tryNextFallback()) errorMessage = msg
+                                }
                             }
                         }, "AndroidHybrid")
 
