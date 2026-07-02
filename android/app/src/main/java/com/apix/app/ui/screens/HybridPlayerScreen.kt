@@ -182,6 +182,8 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
     // UI Dialogs
     var showTrackDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
+    var showFallbackServerDialog by remember { mutableStateOf(false) }
+    var currentFallbackIndex by remember { mutableIntStateOf(-1) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
     
     // Lists from Web
