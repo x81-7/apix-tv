@@ -346,7 +346,8 @@ private val BackOutlineIcon: ImageVector by lazy {
 fun PlayerScreen(
     config: PlayerConfig,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSwitchEngine: ((PlayerConfig, String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
