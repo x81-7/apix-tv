@@ -485,13 +485,15 @@ fun AppNavigation(
             is Screen.Player -> {
                 PlayerScreen(
                     config = screen.config,
-                    onBack = { goBack() }
+                    onBack = { goBack() },
+                    onSwitchEngine = switchEngine
                 )
             }
             is Screen.HybridPlayer -> {
                 HybridPlayerScreen(
                     config = screen.config,
-                    onBack = { goBack() }
+                    onBack = { goBack() },
+                    onSwitchEngine = switchEngine
                 )
             }
             is Screen.WebViewPlayer -> {
