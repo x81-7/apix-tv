@@ -127,7 +127,7 @@ private fun formatHybridTime(ms: Long): String {
 
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
-fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
+fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine: ((PlayerConfig, String) -> Unit)? = null) {
     val context = LocalContext.current
     val activity = context as? Activity
     val isTv = isSystemInTvMode()
