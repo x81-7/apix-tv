@@ -119,6 +119,7 @@ public class RemoteModels {
         public String id;
         public String name;
         public String url;
+        public String playerType;   // auto | exo | hybrid | shaka
         public String userAgent;
         public String referer;
         public String origin;
