@@ -637,12 +637,7 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
                         resolvedConfig = config
                         currentServerUrl = config.url
                         isBuffering = true
-                        // If the primary belongs to the native engine, hop back.
-                        if (config.androidActionType != "shaka_web" && config.androidActionType != "jw_web" && onSwitchEngine != null) {
-                            onSwitchEngine.invoke(config, ENGINE_NATIVE)
-                        } else {
-                            loadWebViewStream(config.url, config)
-                        }
+                        loadWebViewStream(config.url, config)
                     },
                     onSelect = { idx, fb ->
                         showFallbackServerDialog = false
