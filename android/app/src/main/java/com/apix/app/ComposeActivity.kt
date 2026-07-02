@@ -119,6 +119,16 @@ fun AppNavigation(
         currentScreen = screen
     }
 
+    // Cross-engine switch: replace the current player screen in-place (keeps the
+    // navigation stack intact so Back still returns to the channel list).
+    // engine: "hybrid" -> Shaka/JW WebView player, otherwise -> native ExoPlayer.
+    val switchEngine: (PlayerConfig, String) -> Unit = { cfg, engine ->
+        isNavigatingBack = false
+        val external = isCurrentExternalRef.value
+        currentScreen = if (engine == "hybrid") Screen.HybridPlayer(cfg, isExternal = external)
+                        else Screen.Player(cfg, isExternal = external)
+    }
+
     val openChannelAfterGate: (Channel) -> Unit = { channel ->
         when (channel.actionType) {
             "open_submenu" -> {
