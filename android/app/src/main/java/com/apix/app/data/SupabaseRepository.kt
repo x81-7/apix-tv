@@ -113,7 +113,7 @@ object SupabaseRepository {
             servers = r.servers?.map { Server(it.name, it.url) },
             fallbackServers = r.fallbackServers?.map { fs ->
                 FallbackServer(
-                    id = fs.id, name = fs.name, url = fs.url,
+                    id = fs.id, name = fs.name, url = fs.url, playerType = fs.playerType,
                     userAgent = fs.userAgent, referer = fs.referer,
                     origin = fs.origin, cookie = fs.cookie,
                     drmScheme = fs.drmScheme, drmLicenseUrl = fs.drmLicenseUrl,
