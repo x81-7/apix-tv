@@ -517,6 +517,10 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
                                 if (!resolvedConfig.servers.isNullOrEmpty()) {
                                     HybridControlButton(icon = CastOutlineIcon, contentDescription = "Servers", size = 32) { showServerDialog = true }
                                 }
+                                // سيرفرات احتياطية متعددة (Fallback) مع دعم تبديل المشغل
+                                if (!resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                    HybridControlButton(icon = CastOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
+                                }
                                 // قائمة الجودة والصوت المدمج
                                 HybridControlButton(icon = SettingsOutlineIcon, contentDescription = "Settings", size = 32) { showTrackDialog = true }
 
