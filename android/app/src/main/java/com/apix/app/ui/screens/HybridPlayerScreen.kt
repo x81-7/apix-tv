@@ -625,6 +625,46 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
                 )
             }
 
+            // سيرفرات احتياطية متعددة (Fallback) — يدعم تبديل نوع المشغل لكل سيرفر
+            if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                FallbackServerSelectionDialog(
+                    servers = resolvedConfig.fallbackServers!!,
+                    currentUrl = currentServerUrl,
+                    primaryUrl = config.url,
+                    onSelectPrimary = {
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = -1
+                        resolvedConfig = config
+                        currentServerUrl = config.url
+                        isBuffering = true
+                        // If the primary belongs to the native engine, hop back.
+                        if (config.androidActionType != "shaka_web" && config.androidActionType != "jw_web" && onSwitchEngine != null) {
+                            onSwitchEngine.invoke(config, ENGINE_NATIVE)
+                        } else {
+                            loadWebViewStream(config.url, config)
+                        }
+                    },
+                    onSelect = { idx, fb ->
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = idx
+                        val u = fb.url ?: return@FallbackServerSelectionDialog
+                        val merged = mergeFallbackConfig(resolvedConfig, fb).copy(
+                            fallbackServers = resolvedConfig.fallbackServers
+                        )
+                        if (engineForPlayerType(fb.playerType) == ENGINE_NATIVE && onSwitchEngine != null) {
+                            onSwitchEngine.invoke(merged, ENGINE_NATIVE)
+                            return@FallbackServerSelectionDialog
+                        }
+                        resolvedConfig = merged
+                        currentServerUrl = u
+                        isBuffering = true
+                        loadWebViewStream(u, merged)
+                    },
+                    onDismiss = { showFallbackServerDialog = false }
+                )
+            }
+
+
             // 3. مصادر الصوت الخارجية
             if (showAudioSourceDialog && !resolvedConfig.audioSources.isNullOrEmpty()) {
                 HybridAudioSourceDialog(
