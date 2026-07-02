@@ -261,6 +261,30 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine:
         webViewRef?.loadUrl(sb.toString())
     }
 
+    // Multi-server fallback for the Hybrid/Shaka engine. Returns true if a next
+    // server was found (either loaded here or handed to another engine).
+    fun tryNextFallback(): Boolean {
+        val fbList = resolvedConfig.fallbackServers ?: emptyList()
+        val nextIdx = currentFallbackIndex + 1
+        val nextFb = fbList.getOrNull(nextIdx) ?: return false
+        if (nextFb.url.isNullOrEmpty()) return false
+        currentFallbackIndex = nextIdx
+        val merged = mergeFallbackConfig(resolvedConfig, nextFb).copy(
+            fallbackServers = resolvedConfig.fallbackServers
+        )
+        // Cross-engine: hand a native (Exo) fallback back to the native player.
+        if (engineForPlayerType(nextFb.playerType) == ENGINE_NATIVE && onSwitchEngine != null) {
+            onSwitchEngine.invoke(merged, ENGINE_NATIVE)
+            return true
+        }
+        resolvedConfig = merged
+        currentServerUrl = merged.url
+        isBuffering = true
+        loadWebViewStream(merged.url, merged)
+        return true
+    }
+
+
     // Dynamic API fetcher
     LaunchedEffect(config) {
         if (config.dynamicApi?.enabled == true && !config.dynamicApi?.endpoint.isNullOrEmpty()) {
