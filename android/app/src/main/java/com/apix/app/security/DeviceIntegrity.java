@@ -169,6 +169,40 @@ public final class DeviceIntegrity {
         return null;
     }
 
+    /**
+     * Lightweight, standalone VPN check used by the server-authoritative VPN
+     * gate. Returns true when the active network runs over a VPN transport.
+     * The server decides (against the admin allow-list) whether that IP is OK.
+     */
+    public static boolean isVpnActive(Context ctx) {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                    ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.net.Network active = cm.getActiveNetwork();
+                if (active != null) {
+                    android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+                    if (caps != null && caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) {
+                        return true;
+                    }
+                }
+            }
+            // Fallback: scan network interfaces for tun/ppp/ipsec tunnels.
+            java.util.Enumeration<java.net.NetworkInterface> nis = java.net.NetworkInterface.getNetworkInterfaces();
+            while (nis != null && nis.hasMoreElements()) {
+                java.net.NetworkInterface ni = nis.nextElement();
+                if (!ni.isUp()) continue;
+                String n = ni.getName() == null ? "" : ni.getName().toLowerCase();
+                if (n.startsWith("tun") || n.startsWith("ppp") || n.startsWith("ipsec") || n.startsWith("tap")) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+
+
 
     public static boolean isEmulator() {
         if (isRealTvBoxHardware()) return false;

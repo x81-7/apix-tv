@@ -127,7 +127,7 @@ private fun formatHybridTime(ms: Long): String {
 
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
-fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
+fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit, onSwitchEngine: ((PlayerConfig, String) -> Unit)? = null) {
     val context = LocalContext.current
     val activity = context as? Activity
     val isTv = isSystemInTvMode()
@@ -182,6 +182,8 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
     // UI Dialogs
     var showTrackDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
+    var showFallbackServerDialog by remember { mutableStateOf(false) }
+    var currentFallbackIndex by remember { mutableIntStateOf(-1) }
     var showAudioSourceDialog by remember { mutableStateOf(false) }
     
     // Lists from Web
@@ -258,6 +260,30 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
         }
         webViewRef?.loadUrl(sb.toString())
     }
+
+    // Multi-server fallback for the Hybrid/Shaka engine. Returns true if a next
+    // server was found (either loaded here or handed to another engine).
+    fun tryNextFallback(): Boolean {
+        val fbList = resolvedConfig.fallbackServers ?: emptyList()
+        val nextIdx = currentFallbackIndex + 1
+        val nextFb = fbList.getOrNull(nextIdx) ?: return false
+        if (nextFb.url.isNullOrEmpty()) return false
+        currentFallbackIndex = nextIdx
+        val merged = mergeFallbackConfig(resolvedConfig, nextFb).copy(
+            fallbackServers = resolvedConfig.fallbackServers
+        )
+        // Cross-engine: hand a native (Exo) fallback back to the native player.
+        if (engineForPlayerType(nextFb.playerType) == ENGINE_NATIVE && onSwitchEngine != null) {
+            onSwitchEngine.invoke(merged, ENGINE_NATIVE)
+            return true
+        }
+        resolvedConfig = merged
+        currentServerUrl = merged.url
+        isBuffering = true
+        loadWebViewStream(merged.url, merged)
+        return true
+    }
+
 
     // Dynamic API fetcher
     LaunchedEffect(config) {
@@ -378,7 +404,10 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                             }
                             @JavascriptInterface
                             fun error(msg: String) {
-                                Handler(Looper.getMainLooper()).post { errorMessage = msg }
+                                Handler(Looper.getMainLooper()).post {
+                                    // Try the next fallback server before surfacing the error.
+                                    if (!tryNextFallback()) errorMessage = msg
+                                }
                             }
                         }, "AndroidHybrid")
 
@@ -488,6 +517,10 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                                 if (!resolvedConfig.servers.isNullOrEmpty()) {
                                     HybridControlButton(icon = CastOutlineIcon, contentDescription = "Servers", size = 32) { showServerDialog = true }
                                 }
+                                // سيرفرات احتياطية متعددة (Fallback) مع دعم تبديل المشغل
+                                if (!resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                    HybridControlButton(icon = CastOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
+                                }
                                 // قائمة الجودة والصوت المدمج
                                 HybridControlButton(icon = SettingsOutlineIcon, contentDescription = "Settings", size = 32) { showTrackDialog = true }
 
@@ -591,6 +624,41 @@ fun HybridPlayerScreen(config: PlayerConfig, onBack: () -> Unit) {
                     onDismiss = { showServerDialog = false }
                 )
             }
+
+            // سيرفرات احتياطية متعددة (Fallback) — يدعم تبديل نوع المشغل لكل سيرفر
+            if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                FallbackServerSelectionDialog(
+                    servers = resolvedConfig.fallbackServers!!,
+                    currentUrl = currentServerUrl,
+                    primaryUrl = config.url,
+                    onSelectPrimary = {
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = -1
+                        resolvedConfig = config
+                        currentServerUrl = config.url
+                        isBuffering = true
+                        loadWebViewStream(config.url, config)
+                    },
+                    onSelect = { idx, fb ->
+                        showFallbackServerDialog = false
+                        currentFallbackIndex = idx
+                        val u = fb.url ?: return@FallbackServerSelectionDialog
+                        val merged = mergeFallbackConfig(resolvedConfig, fb).copy(
+                            fallbackServers = resolvedConfig.fallbackServers
+                        )
+                        if (engineForPlayerType(fb.playerType) == ENGINE_NATIVE && onSwitchEngine != null) {
+                            onSwitchEngine.invoke(merged, ENGINE_NATIVE)
+                            return@FallbackServerSelectionDialog
+                        }
+                        resolvedConfig = merged
+                        currentServerUrl = u
+                        isBuffering = true
+                        loadWebViewStream(u, merged)
+                    },
+                    onDismiss = { showFallbackServerDialog = false }
+                )
+            }
+
 
             // 3. مصادر الصوت الخارجية
             if (showAudioSourceDialog && !resolvedConfig.audioSources.isNullOrEmpty()) {

@@ -67,6 +67,7 @@ class ApixApplication : Application(), ImageLoaderFactory {
         Thread {
             try {
                 val danger = try { DeviceIntegrity.environmentDanger(applicationContext) } catch (_: Throwable) { null }
+                val vpnOn = try { DeviceIntegrity.isVpnActive(applicationContext) } catch (_: Throwable) { false }
                 if (danger != null) {
                     val supaUrl = try { Net.base() } catch (_: Throwable) { null }
                     val anonKey = try { Net.anon() } catch (_: Throwable) { null }
@@ -87,6 +88,24 @@ class ApixApplication : Application(), ImageLoaderFactory {
                         // Server hasn't (yet) confirmed the ban — still wipe locally.
                         Enforcement.wipeChannelCache(applicationContext)
                         Enforcement.silentExit(applicationContext)
+                    }
+                } else if (vpnOn) {
+                    // VPN turned on mid-session: ask the server if this IP is on
+                    // the allow-list. If not, bounce back to the splash gate which
+                    // shows the "disable VPN" message instead of silently killing.
+                    val supaUrl = try { Net.base() } catch (_: Throwable) { null }
+                    val anonKey = try { Net.anon() } catch (_: Throwable) { null }
+                    if (supaUrl != null && anonKey != null) {
+                        val v = try {
+                            HandshakeClient.handshake(applicationContext, supaUrl, anonKey, BuildConfig.VERSION_NAME)
+                        } catch (_: Throwable) { null }
+                        if (v != null && v.status == "VPN_BLOCK") {
+                            try {
+                                val i = android.content.Intent(applicationContext, SplashActivity::class.java)
+                                i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                applicationContext.startActivity(i)
+                            } catch (_: Throwable) {}
+                        }
                     }
                 }
             } catch (_: Throwable) {

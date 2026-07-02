@@ -346,7 +346,8 @@ private val BackOutlineIcon: ImageVector by lazy {
 fun PlayerScreen(
     config: PlayerConfig,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSwitchEngine: ((PlayerConfig, String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -651,36 +652,16 @@ fun PlayerScreen(
                 val nextFb = fbList.getOrNull(nextIdx)
                 if (nextFb != null && !nextFb.url.isNullOrEmpty()) {
                     currentFallbackIndex = nextIdx
-                    val merged = resolvedConfig.copy(
-                        url = nextFb.url!!,
-                        headers = PlayerHeaders(
-                            userAgent = nextFb.userAgent ?: resolvedConfig.headers?.userAgent,
-                            referer = nextFb.referer ?: resolvedConfig.headers?.referer,
-                            cookie = nextFb.cookie ?: resolvedConfig.headers?.cookie,
-                            origin = nextFb.origin ?: resolvedConfig.headers?.origin
-                        ),
-                        customHeaders = nextFb.customHeaders?.mapNotNull {
-                            val k = it.key; val v = it.value
-                            if (k != null && v != null) k to v else null
-                        }?.toMap() ?: resolvedConfig.customHeaders,
-                        drm = run {
-                            val scheme = nextFb.drmScheme
-                            if (scheme.isNullOrEmpty()) resolvedConfig.drm
-                            else {
-                                var kid = nextFb.drmKeyId
-                                var key = nextFb.drmKey
-                                if (nextFb.drmClearKeyMode == "combined" && !nextFb.drmClearKeyCombined.isNullOrEmpty()) {
-                                    val parts = nextFb.drmClearKeyCombined!!.split(":")
-                                    if (parts.size == 2) { kid = parts[0]; key = parts[1] }
-                                }
-                                PlayerDrm(licenseUrl = nextFb.drmLicenseUrl, scheme = scheme, keyId = kid, key = key)
-                            }
-                        },
-                        drmLicenseHeaders = nextFb.drmLicenseHeaders?.mapNotNull {
-                            val k = it.key; val v = it.value
-                            if (k != null && v != null) k to v else null
-                        }?.toMap() ?: resolvedConfig.drmLicenseHeaders
+                    val merged = mergeFallbackConfig(resolvedConfig, nextFb).copy(
+                        // Preserve remaining fallbacks so the next screen can keep failing over.
+                        fallbackServers = resolvedConfig.fallbackServers
                     )
+                    // Cross-engine fallback: hand this server to the Hybrid/Shaka screen.
+                    if (engineForPlayerType(nextFb.playerType) == ENGINE_HYBRID && onSwitchEngine != null) {
+                        Log.d("PlayerScreen", "→ fallback #$nextIdx switches engine to hybrid: ${nextFb.name ?: nextFb.url}")
+                        kotlinx.coroutines.MainScope().launch { onSwitchEngine.invoke(merged, ENGINE_HYBRID) }
+                        return
+                    }
                     resolvedConfig = merged
                     currentServerUrl = nextFb.url!!
                     Log.d("PlayerScreen", "→ trying fallback #$nextIdx: ${nextFb.name ?: nextFb.url}")
@@ -982,36 +963,14 @@ fun PlayerScreen(
                         retryCountSameServer = 0
                         currentFallbackIndex = idx
                         val u = fb.url ?: return@FallbackServerSelectionDialog
-                        val merged = resolvedConfig.copy(
-                            url = u,
-                            headers = PlayerHeaders(
-                                userAgent = fb.userAgent ?: resolvedConfig.headers?.userAgent,
-                                referer = fb.referer ?: resolvedConfig.headers?.referer,
-                                cookie = fb.cookie ?: resolvedConfig.headers?.cookie,
-                                origin = fb.origin ?: resolvedConfig.headers?.origin
-                            ),
-                            customHeaders = fb.customHeaders?.mapNotNull {
-                                val k = it.key; val v = it.value
-                                if (k != null && v != null) k to v else null
-                            }?.toMap() ?: resolvedConfig.customHeaders,
-                            drm = run {
-                                val scheme = fb.drmScheme
-                                if (scheme.isNullOrEmpty()) resolvedConfig.drm
-                                else {
-                                    var kid = fb.drmKeyId
-                                    var key = fb.drmKey
-                                    if (fb.drmClearKeyMode == "combined" && !fb.drmClearKeyCombined.isNullOrEmpty()) {
-                                        val parts = fb.drmClearKeyCombined!!.split(":")
-                                        if (parts.size == 2) { kid = parts[0]; key = parts[1] }
-                                    }
-                                    PlayerDrm(licenseUrl = fb.drmLicenseUrl, scheme = scheme, keyId = kid, key = key)
-                                }
-                            },
-                            drmLicenseHeaders = fb.drmLicenseHeaders?.mapNotNull {
-                                val k = it.key; val v = it.value
-                                if (k != null && v != null) k to v else null
-                            }?.toMap() ?: resolvedConfig.drmLicenseHeaders
+                        val merged = mergeFallbackConfig(resolvedConfig, fb).copy(
+                            fallbackServers = resolvedConfig.fallbackServers
                         )
+                        // Cross-engine: play this server on the Hybrid/Shaka engine instead.
+                        if (engineForPlayerType(fb.playerType) == ENGINE_HYBRID && onSwitchEngine != null) {
+                            kotlinx.coroutines.MainScope().launch { onSwitchEngine.invoke(merged, ENGINE_HYBRID) }
+                            return@FallbackServerSelectionDialog
+                        }
                         resolvedConfig = merged
                         currentServerUrl = u
                         kotlinx.coroutines.MainScope().launch { loadStream(u, merged) }

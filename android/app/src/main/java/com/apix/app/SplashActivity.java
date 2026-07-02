@@ -299,8 +299,16 @@ public class SplashActivity extends AppCompatActivity {
                                 com.apix.app.BuildConfig.VERSION_NAME);
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    // Silent enforcement: wipe cached channels (if ordered) + close.
-                    com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
+                    if ("MESSAGE".equals(fv.mode)) {
+                        // Panel ban / VPN block: wipe content (if ordered) then
+                        // show the server reason instead of closing silently.
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
+                        runOnUiThread(() -> showBanMessage(fv.message));
+                    } else {
+                        // Security ban (tamper / dangerous env): silent wipe + close.
+                        com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
+                    }
                     return;
                 } else if (v.status != null && "ACTIVE".equals(v.status)) {
                     // Clear any stale cached ban once the server confirms ACTIVE.
@@ -348,6 +356,25 @@ public class SplashActivity extends AppCompatActivity {
                 proceedToMain();
             })
             .setNegativeButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
+            .show();
+    }
+
+    /** Blocking full-screen message for panel bans / VPN blocks. */
+    private void showBanMessage(String msg) {
+        try {
+            progressBar.setVisibility(View.GONE);
+            statusText.setVisibility(View.GONE);
+            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
+            errorText.setVisibility(View.VISIBLE);
+            errorText.setText(msg != null && !msg.isEmpty()
+                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق");
+        } catch (Throwable ignored) {}
+        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
+            .setTitle("تم إيقاف الوصول")
+            .setMessage(msg != null && !msg.isEmpty()
+                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق")
+            .setCancelable(false)
+            .setPositiveButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
             .show();
     }
 }

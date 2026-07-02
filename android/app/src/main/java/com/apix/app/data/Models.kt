@@ -114,6 +114,7 @@ data class FallbackServer(
     var id: String? = null,
     var name: String? = null,
     var url: String? = null,
+    var playerType: String? = null,   // auto | exo | hybrid | shaka
     var userAgent: String? = null,
     var referer: String? = null,
     var origin: String? = null,

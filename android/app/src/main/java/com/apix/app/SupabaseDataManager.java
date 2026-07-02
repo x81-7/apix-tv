@@ -518,7 +518,8 @@ public class SupabaseDataManager {
         c.name = ch.getString("name");
         c.imageUrl = ch.optString("image_url", null);
         c.sortOrder = ch.optInt("sort_order", 0);
-        c.hidden = ch.optBoolean("hidden", false);
+        // Global hide OR Android-specific hide (per-device visibility control).
+        c.hidden = ch.optBoolean("hidden", false) || ch.optBoolean("hidden_android", false);
         c.actionType = ch.optString("action_type", "direct_play");
         c.sideMenuId = ch.optString("side_menu_id", null);
         c.externalUrl = ch.optString("external_url", null);
@@ -580,7 +581,7 @@ public class SupabaseDataManager {
         s.name = sc.getString("name");
         s.imageUrl = sc.optString("image_url", null);
         s.sortOrder = sc.optInt("sort_order", 0);
-        s.hidden = sc.optBoolean("hidden", false);
+        s.hidden = sc.optBoolean("hidden", false) || sc.optBoolean("hidden_android", false);
         s.preferredPlayer = sc.optString("preferred_player", null);
         s.androidActionType = sc.optString("android_action_type", null);
         s.iosActionType = sc.optString("ios_action_type", null);
