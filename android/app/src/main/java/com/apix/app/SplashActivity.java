@@ -291,17 +291,24 @@ public class SplashActivity extends AppCompatActivity {
             }
 
             // Server-authoritative anti-tamper / ban handshake
+            String verdictStatus = "ERROR";
             try {
                 String supaUrl = com.apix.app.Net.base();
                 String anonKey = com.apix.app.Net.anon();
                 com.apix.app.security.HandshakeClient.Verdict v =
                         com.apix.app.security.HandshakeClient.handshake(SplashActivity.this, supaUrl, anonKey,
                                 com.apix.app.BuildConfig.VERSION_NAME);
+                verdictStatus = v.status;
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    if ("MESSAGE".equals(fv.mode)) {
-                        // Panel ban / VPN block: wipe content (if ordered) then
-                        // show the server reason instead of closing silently.
+                    if ("VPN_BLOCK".equals(fv.status)) {
+                        // Disallowed VPN detected BEFORE launch → force close.
+                        // Show the reason briefly, then kill the app for good.
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        runOnUiThread(() -> showVpnBlockThenClose(fv.message));
+                    } else if ("MESSAGE".equals(fv.mode)) {
+                        // Panel ban: wipe content (if ordered) then show the
+                        // server reason instead of closing silently.
                         com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
                         if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
                         runOnUiThread(() -> showBanMessage(fv.message));
@@ -315,6 +322,26 @@ public class SplashActivity extends AppCompatActivity {
                     com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, v);
                 }
             } catch (Throwable ignored) {}
+
+            // Fail-safe VPN gate: if the handshake could NOT confirm an ACTIVE
+            // verdict (network error / blocked request) AND a VPN is locally
+            // active while the panel has VPN-blocking enabled, we must not fall
+            // open into the app — force close. This closes the "VPN enabled
+            // before launch" hole where the server round-trip may not complete.
+            try {
+                boolean confirmedActive = "ACTIVE".equals(verdictStatus);
+                if (!confirmedActive
+                        && com.apix.app.security.DeviceIntegrity.isVpnActive(SplashActivity.this)) {
+                    android.content.SharedPreferences vp =
+                            getSharedPreferences("vpn_cache", MODE_PRIVATE);
+                    if (vp.getBoolean("vpn_block_enabled", false)) {
+                        runOnUiThread(() -> showVpnBlockThenClose(
+                                "يرجى إيقاف الـ VPN لاستخدام التطبيق"));
+                        return;
+                    }
+                }
+            } catch (Throwable ignored) {}
+
 
             boolean gateEnabled = false;
             String currentCode = "";
@@ -377,4 +404,38 @@ public class SplashActivity extends AppCompatActivity {
             .setPositiveButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
             .show();
     }
+
+    /**
+     * VPN block enforced as a FORCED CLOSE. We surface the reason so the user
+     * knows why, then terminate the app automatically after a short delay
+     * (and immediately if they tap the exit button). Unlike a panel ban, a
+     * disallowed VPN must not leave the app open in the background.
+     */
+    private void showVpnBlockThenClose(String msg) {
+        final String text = (msg != null && !msg.isEmpty())
+                ? msg : "يرجى إيقاف الـ VPN لاستخدام التطبيق";
+        try {
+            progressBar.setVisibility(View.GONE);
+            statusText.setVisibility(View.GONE);
+            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
+            errorText.setVisibility(View.VISIBLE);
+            errorText.setText(text);
+        } catch (Throwable ignored) {}
+        final Runnable kill = () -> {
+            try { finishAffinity(); } catch (Throwable ignored) {}
+            try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
+            System.exit(0);
+        };
+        try {
+            new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
+                .setTitle("تم إيقاف الوصول")
+                .setMessage(text)
+                .setCancelable(false)
+                .setPositiveButton("خروج", (d, w) -> kill.run())
+                .show();
+        } catch (Throwable ignored) {}
+        // Force close automatically even if the user ignores the dialog.
+        new Handler(Looper.getMainLooper()).postDelayed(kill, 4000);
+    }
 }
+

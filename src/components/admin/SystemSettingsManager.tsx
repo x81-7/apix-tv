@@ -6,6 +6,7 @@ import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw } f
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import ServerSchemaExporter from './ServerSchemaExporter';
 
 type Settings = {
   github_repo?: string;
@@ -195,6 +196,9 @@ const SystemSettingsManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Server schema (single + multi server) JSON export */}
+      <ServerSchemaExporter />
+
       {/* Import JSON */}
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <div className="flex items-center gap-3">
