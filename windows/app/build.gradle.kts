@@ -25,16 +25,16 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
 
-    // JCEF — Chromium Embedded Framework (DRM/EME/MSE/ClearKey/Widevine)
+    // JCEF — Chromium Embedded Framework
     implementation("me.friwi:jcefmaven:127.3.1")
 
-    // VLCJ — fallback player for HLS / MP4 / direct streams with custom headers
+    // VLCJ
     implementation("uk.co.caprica:vlcj:4.8.3")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.1")
 
-    // Windows registry access (Anti-Tamper UUID)
+    // Windows registry access
     implementation("net.java.dev.jna:jna:5.14.0")
     implementation("net.java.dev.jna:jna-platform:5.14.0")
 
@@ -53,7 +53,7 @@ compose.desktop {
             copyright = "© 2026 APiX. All rights reserved."
             vendor = "APiX Media"
             
-            // 1. حل مشكلة الترخيص: التحقق من وجود الملف قبل إرفاقه لتجنب فشل البناء
+            // حل مشكلة ملف الترخيص (تجاهله إن لم يوجد)
             val license = project.rootProject.file("LICENSE.txt")
             if (license.exists()) {
                 licenseFile.set(license)
@@ -65,33 +65,38 @@ compose.desktop {
                 shortcut = true
                 dirChooser = true
                 perUserInstall = true
-                // iconFile.set(project.file("src/main/resources/app.ico"))
-
-                // 2. استقبال بصمة التطبيق من السيكرت (عبر الـ GitHub Actions)
-                val appFingerprint = System.getenv("APP_FINGERPRINT")
-                if (!appFingerprint.isNullOrBlank()) {
-                    // إذا كان السيكرت موجوداً، استخدمه للتوقيع
-                    certificateThumbprint = appFingerprint
-                }
             }
 
             modules("java.sql", "jdk.unsupported", "java.naming")
         }
 
-        // 3. تم إيقاف التوقيع الذاتي الإجباري عبر PowerShell لتلبية طلبك.
-        // إذا لم يتم توفير سيكرت البصمة أعلاه، سيتم إنتاج التطبيق بدون أي توقيع.
-        /*
-        afterEvaluate {
-            tasks.findByName("packageMsi")?.doLast {
-                val signScript = project.rootProject.file("windows/sign-self.ps1")
-                if (signScript.exists() && System.getProperty("os.name").lowercase().contains("win")) {
-                    project.exec {
-                        commandLine("powershell.exe", "-ExecutionPolicy", "Bypass", "-File", signScript.absolutePath)
-                        isIgnoreExitValue = true
+        // استدعاء بصمة التطبيق الممررة من GitHub Secrets
+        val appFingerprint = System.getenv("APP_FINGERPRINT")
+
+        // إذا كان السيكرت موجوداً (ليس فارغاً)، سنقوم بتشغيل سكربت التوقيع
+        if (!appFingerprint.isNullOrBlank()) {
+            afterEvaluate {
+                tasks.findByName("packageMsi")?.doLast {
+                    val signScript = project.rootProject.file("windows/sign-self.ps1")
+                    if (signScript.exists() && System.getProperty("os.name").lowercase().contains("win")) {
+                        project.exec {
+                            // نمرر الـ appFingerprint كـ Argument لسكربت الباورشيل
+                            commandLine("powershell.exe", "-ExecutionPolicy", "Bypass", "-File", signScript.absolutePath, appFingerprint)
+                            isIgnoreExitValue = true
+                        }
+                    }
+                }
+                // تكرار نفس العملية للـ EXE إذا كان السكربت يوقع الـ EXE أيضاً
+                tasks.findByName("packageExe")?.doLast {
+                    val signScript = project.rootProject.file("windows/sign-self.ps1")
+                    if (signScript.exists() && System.getProperty("os.name").lowercase().contains("win")) {
+                        project.exec {
+                            commandLine("powershell.exe", "-ExecutionPolicy", "Bypass", "-File", signScript.absolutePath, appFingerprint)
+                            isIgnoreExitValue = true
+                        }
                     }
                 }
             }
         }
-        */
     }
 }
