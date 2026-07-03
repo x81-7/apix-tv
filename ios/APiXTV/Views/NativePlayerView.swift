@@ -30,7 +30,7 @@ struct PlayerAudioSource: Identifiable {
     let url: String
 }
 
-// MARK: - Icons Enum (Matched with Android Outlines)
+// MARK: - Icons Enum
 enum PlayerIconType {
     case play
     case pause
@@ -43,7 +43,7 @@ enum PlayerIconType {
     case pip
 }
 
-// MARK: - Coordinator (UNCHANGED LOGIC)
+// MARK: - Coordinator
 @MainActor
 final class NativePlayerCoordinator: ObservableObject {
     let player = AVPlayer()
@@ -159,6 +159,7 @@ final class NativePlayerCoordinator: ObservableObject {
     }
     
     private func setupObservers(for item: AVPlayerItem) {
+        // مراقبة حالة التشغيل
         item.publisher(for: \.status)
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
@@ -166,14 +167,20 @@ final class NativePlayerCoordinator: ObservableObject {
                 switch status {
                 case .readyToPlay:
                     self.isBuffering = false
-                    let itemDuration = item.duration.seconds
-                    self.duration = itemDuration.isNaN || itemDuration.isInfinite ? 0 : itemDuration
                 case .failed:
                     self.errorMessage = item.error?.localizedDescription ?? "خطأ تقني في التشغيل"
                     self.isBuffering = false
                 default:
                     break
                 }
+            }.store(in: &cancellables)
+            
+        // مراقبة المدة الزمنية بشكل دقيق لتفادي مشكلة الـ (00:00)
+        item.publisher(for: \.duration)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] dur in
+                let secs = dur.seconds
+                self?.duration = (secs.isNaN || secs.isInfinite) ? 0 : secs
             }.store(in: &cancellables)
         
         player.publisher(for: \.timeControlStatus)
@@ -195,14 +202,12 @@ final class NativePlayerCoordinator: ObservableObject {
                 self?.isBuffering = true
             }.store(in: &cancellables)
         
+        // تحديث شريط الوقت بدون توقف
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         self.timeObserver = self.player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self = self else { return }
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                if self.player.timeControlStatus == .playing {
-                    self.currentTime = time.seconds
-                }
+                self.currentTime = time.seconds
             }
         }
     }
@@ -216,15 +221,14 @@ final class NativePlayerCoordinator: ObservableObject {
     }
     
     func seek(by seconds: Double) {
-        let targetTime = self.currentTime + seconds
+        let targetTime = max(0, min(self.currentTime + seconds, self.duration > 0 ? self.duration : .infinity))
         let target = CMTime(seconds: targetTime, preferredTimescale: 600)
         self.player.seek(to: target)
     }
     
     func seekTo(fraction: Double) {
-        let currentDuration = self.duration
-        guard currentDuration > 0 else { return }
-        let targetTime = currentDuration * fraction
+        guard self.duration > 0 else { return } // لا تسحب الشريط إذا كان بث مباشر
+        let targetTime = self.duration * fraction
         let target = CMTime(seconds: targetTime, preferredTimescale: 600)
         
         self.player.seek(to: target) { [weak self] _ in
@@ -279,7 +283,7 @@ struct PlayerVideoLayer: UIViewRepresentable {
     }
 }
 
-// MARK: - Main Player View (DESIGN MATCHED WITH ANDROID)
+// MARK: - Main Player View
 struct NativePlayerView: View {
     let channel: Channel
     
@@ -291,7 +295,7 @@ struct NativePlayerView: View {
     @State private var hideTimer: Timer?
     @State private var isResolving: Bool = false
     
-    // Dialog States (Replaces Sheets)
+    // Dialog States
     @State private var showSettingsDialog: Bool = false
     @State private var showServerDialog: Bool = false
     @State private var showAudioDialog: Bool = false
@@ -303,12 +307,21 @@ struct NativePlayerView: View {
             PlayerVideoLayer(player: viewModel.player, gravity: videoGravity)
                 .ignoresSafeArea()
             
-            // Buffering Indicator
+            // 1. الحل الجذري لمشكلة الأزرار: طبقة زجاجية تلتقط لمس الشاشة لإخفاء/إظهار المشغل وتكون "خلف" الأزرار
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    self.toggleControls()
+                }
+            
+            // 2. مؤشر التحميل
             if viewModel.isBuffering && viewModel.errorMessage == nil && !isResolving {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(colorRed)
                     .scaleEffect(1.6)
+                    .allowsHitTesting(false)
             }
             
             if isResolving {
@@ -318,7 +331,7 @@ struct NativePlayerView: View {
                 }
             }
             
-            // Error Message (Android Exact Style)
+            // 3. رسالة الخطأ
             if let error = viewModel.errorMessage {
                 Color.black.opacity(0.9).ignoresSafeArea()
                 VStack(spacing: 16) {
@@ -337,13 +350,13 @@ struct NativePlayerView: View {
                 }
             }
             
-            // Controls Layer
+            // 4. طبقة التحكم (الأزرار ستتفاعل الآن بكفاءة لأن إيماءة اللمس أصبحت خلفها)
             if showControls && viewModel.errorMessage == nil && !isResolving {
                 controlsLayer
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
             }
             
-            // Custom Dialogs (Android Matched)
+            // 5. النوافذ العائمة (تصميم أندرويد)
             if showSettingsDialog {
                 APiXDialog(title: "الجودة", isPresented: $showSettingsDialog) {
                     ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, quality in
@@ -369,12 +382,9 @@ struct NativePlayerView: View {
             }
             
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            self.toggleControls()
-        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        // قمنا بحذف الـ onTapGesture الخاطئ من هنا!
         .onAppear {
             self.forceLandscape()
             self.resetTimer()
@@ -389,14 +399,13 @@ struct NativePlayerView: View {
         }
     }
     
-    // MARK: - Controls Layer (Gradients & Pixel Perfect Android Layout)
+    // MARK: - Controls Layer
     private var controlsLayer: some View {
         ZStack {
-            // Top and Bottom Gradients
             VStack(spacing: 0) {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: 100)
-                    .allowsHitTesting(false)
+                    .allowsHitTesting(false) // يسمح بمرور اللمس للخلفية لإخفاء المشغل
                 Spacer()
                 LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
                     .frame(height: 120)
@@ -405,7 +414,6 @@ struct NativePlayerView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Top Bar
                 HStack {
                     PlayerIconButton(type: .back, size: 36) {
                         self.viewModel.player.pause()
@@ -423,9 +431,7 @@ struct NativePlayerView: View {
                 
                 Spacer()
                 
-                // Bottom Bar
                 VStack(spacing: 4) {
-                    // Time and Slider Row
                     HStack(spacing: 8) {
                         Text(formatTime(viewModel.currentTime))
                             .font(.system(size: 14))
@@ -434,7 +440,9 @@ struct NativePlayerView: View {
                         
                         let progressValue = viewModel.duration > 0 ? (viewModel.currentTime / viewModel.duration) : 0
                         IOSProgressSlider(value: progressValue) { fraction in
-                            self.viewModel.seekTo(fraction: fraction)
+                            if viewModel.duration > 0 {
+                                self.viewModel.seekTo(fraction: fraction)
+                            }
                             self.resetTimer()
                         }
                         .frame(height: 16)
@@ -446,9 +454,7 @@ struct NativePlayerView: View {
                     }
                     .padding(.horizontal, 16)
                     
-                    // Buttons Row
                     HStack {
-                        // Playback Controls (Left)
                         HStack(spacing: 16) {
                             PlayerIconButton(type: .rewind, size: 38) {
                                 self.viewModel.seek(by: -10)
@@ -466,7 +472,6 @@ struct NativePlayerView: View {
                         
                         Spacer()
                         
-                        // Action Controls (Right)
                         HStack(spacing: 12) {
                             if !viewModel.audioSources.isEmpty {
                                 PlayerImageButton(systemName: "waveform", size: 32) {
@@ -494,7 +499,7 @@ struct NativePlayerView: View {
                             }
                             
                             PlayerIconButton(type: .pip, size: 32) {
-                                // PiP Logic (Can be added later for iOS)
+                                // إعدادات الـ PiP
                             }
                         }
                     }
@@ -540,7 +545,7 @@ struct NativePlayerView: View {
     }
     
     private func formatTime(_ seconds: Double) -> String {
-        guard seconds.isFinite && seconds > 0 else { return "00:00" }
+        guard seconds.isFinite && !seconds.isNaN && seconds >= 0 else { return "00:00" }
         let h = Int(seconds) / 3600
         let m = (Int(seconds) % 3600) / 60
         let s = Int(seconds) % 60
@@ -615,7 +620,7 @@ struct PlayerImageButton: View {
     }
 }
 
-// MARK: - Android Exact Slider
+// MARK: - Slider (Matches Android Colors/Behavior)
 struct IOSProgressSlider: View {
     let value: Double
     let onEnd: (Double) -> Void
@@ -648,7 +653,7 @@ struct IOSProgressSlider: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
                         let fraction = min(max(0, gesture.location.x / maxWidth), 1)
-                        self.dragValue = fraction
+                        self.dragValue = fraction // يضمن حركة المؤشر مع الإصبع
                     }
                     .onEnded { gesture in
                         let fraction = min(max(0, gesture.location.x / maxWidth), 1)
@@ -660,7 +665,7 @@ struct IOSProgressSlider: View {
     }
 }
 
-// MARK: - Android Exact Dialog (Replaces iOS Sheets)
+// MARK: - Custom APiX Dialog (Exact Android Match)
 struct APiXDialog<Content: View>: View {
     let title: String
     @Binding var isPresented: Bool
@@ -734,7 +739,7 @@ struct APiXDialogRow: View {
     }
 }
 
-// MARK: - Paths (100% Matching Android Drawables)
+// MARK: - Paths
 struct PlayerIconPath: Shape {
     let type: PlayerIconType
     
