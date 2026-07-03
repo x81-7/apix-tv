@@ -196,6 +196,9 @@ const SystemSettingsManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Server schema (single + multi server) JSON export */}
+      <ServerSchemaExporter />
+
       {/* Import JSON */}
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <div className="flex items-center gap-3">
