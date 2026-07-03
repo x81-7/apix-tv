@@ -291,17 +291,24 @@ public class SplashActivity extends AppCompatActivity {
             }
 
             // Server-authoritative anti-tamper / ban handshake
+            String verdictStatus = "ERROR";
             try {
                 String supaUrl = com.apix.app.Net.base();
                 String anonKey = com.apix.app.Net.anon();
                 com.apix.app.security.HandshakeClient.Verdict v =
                         com.apix.app.security.HandshakeClient.handshake(SplashActivity.this, supaUrl, anonKey,
                                 com.apix.app.BuildConfig.VERSION_NAME);
+                verdictStatus = v.status;
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    if ("MESSAGE".equals(fv.mode)) {
-                        // Panel ban / VPN block: wipe content (if ordered) then
-                        // show the server reason instead of closing silently.
+                    if ("VPN_BLOCK".equals(fv.status)) {
+                        // Disallowed VPN detected BEFORE launch → force close.
+                        // Show the reason briefly, then kill the app for good.
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        runOnUiThread(() -> showVpnBlockThenClose(fv.message));
+                    } else if ("MESSAGE".equals(fv.mode)) {
+                        // Panel ban: wipe content (if ordered) then show the
+                        // server reason instead of closing silently.
                         com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
                         if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
                         runOnUiThread(() -> showBanMessage(fv.message));
@@ -315,6 +322,26 @@ public class SplashActivity extends AppCompatActivity {
                     com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, v);
                 }
             } catch (Throwable ignored) {}
+
+            // Fail-safe VPN gate: if the handshake could NOT confirm an ACTIVE
+            // verdict (network error / blocked request) AND a VPN is locally
+            // active while the panel has VPN-blocking enabled, we must not fall
+            // open into the app — force close. This closes the "VPN enabled
+            // before launch" hole where the server round-trip may not complete.
+            try {
+                boolean confirmedActive = "ACTIVE".equals(verdictStatus);
+                if (!confirmedActive
+                        && com.apix.app.security.DeviceIntegrity.isVpnActive(SplashActivity.this)) {
+                    android.content.SharedPreferences vp =
+                            getSharedPreferences("vpn_cache", MODE_PRIVATE);
+                    if (vp.getBoolean("vpn_block_enabled", false)) {
+                        runOnUiThread(() -> showVpnBlockThenClose(
+                                "يرجى إيقاف الـ VPN لاستخدام التطبيق"));
+                        return;
+                    }
+                }
+            } catch (Throwable ignored) {}
+
 
             boolean gateEnabled = false;
             String currentCode = "";
