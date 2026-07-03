@@ -52,7 +52,12 @@ compose.desktop {
             description = "APiX TV — Official Windows Desktop client for streaming live channels."
             copyright = "© 2026 APiX. All rights reserved."
             vendor = "APiX Media"
-            licenseFile.set(project.rootProject.file("LICENSE.txt"))
+            
+            // 1. حل مشكلة الترخيص: التحقق من وجود الملف قبل إرفاقه لتجنب فشل البناء
+            val license = project.rootProject.file("LICENSE.txt")
+            if (license.exists()) {
+                licenseFile.set(license)
+            }
 
             windows {
                 menuGroup = "APiX"
@@ -61,17 +66,21 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
                 // iconFile.set(project.file("src/main/resources/app.ico"))
+
+                // 2. استقبال بصمة التطبيق من السيكرت (عبر الـ GitHub Actions)
+                val appFingerprint = System.getenv("APP_FINGERPRINT")
+                if (!appFingerprint.isNullOrBlank()) {
+                    // إذا كان السيكرت موجوداً، استخدمه للتوقيع
+                    certificateThumbprint = appFingerprint
+                }
             }
 
             modules("java.sql", "jdk.unsupported", "java.naming")
         }
 
-        // Self-signed code-signing applied AFTER native packaging completes.
-        // Reduces SmartScreen "Unknown Publisher" prompt severity and helps
-        // some Antivirus engines (Avast/AVG/Kaspersky) lower their heuristic
-        // score against unsigned PyInstaller-style binaries.
-        // Requires PowerShell + signtool (Windows SDK) on the build agent.
-        // See windows/SIGNING.md for the one-time cert generation.
+        // 3. تم إيقاف التوقيع الذاتي الإجباري عبر PowerShell لتلبية طلبك.
+        // إذا لم يتم توفير سيكرت البصمة أعلاه، سيتم إنتاج التطبيق بدون أي توقيع.
+        /*
         afterEvaluate {
             tasks.findByName("packageMsi")?.doLast {
                 val signScript = project.rootProject.file("windows/sign-self.ps1")
@@ -83,5 +92,6 @@ compose.desktop {
                 }
             }
         }
+        */
     }
 }
