@@ -404,4 +404,38 @@ public class SplashActivity extends AppCompatActivity {
             .setPositiveButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
             .show();
     }
+
+    /**
+     * VPN block enforced as a FORCED CLOSE. We surface the reason so the user
+     * knows why, then terminate the app automatically after a short delay
+     * (and immediately if they tap the exit button). Unlike a panel ban, a
+     * disallowed VPN must not leave the app open in the background.
+     */
+    private void showVpnBlockThenClose(String msg) {
+        final String text = (msg != null && !msg.isEmpty())
+                ? msg : "يرجى إيقاف الـ VPN لاستخدام التطبيق";
+        try {
+            progressBar.setVisibility(View.GONE);
+            statusText.setVisibility(View.GONE);
+            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
+            errorText.setVisibility(View.VISIBLE);
+            errorText.setText(text);
+        } catch (Throwable ignored) {}
+        final Runnable kill = () -> {
+            try { finishAffinity(); } catch (Throwable ignored) {}
+            try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
+            System.exit(0);
+        };
+        try {
+            new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
+                .setTitle("تم إيقاف الوصول")
+                .setMessage(text)
+                .setCancelable(false)
+                .setPositiveButton("خروج", (d, w) -> kill.run())
+                .show();
+        } catch (Throwable ignored) {}
+        // Force close automatically even if the user ignores the dialog.
+        new Handler(Looper.getMainLooper()).postDelayed(kill, 4000);
+    }
 }
+
