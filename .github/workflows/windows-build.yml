@@ -37,11 +37,22 @@ jobs:
           # Panel pushes the key as EXTERNAL_PANEL_DECRYPTION_KEY (same as Android).
           # X_DP_K is kept as a legacy fallback.
           X_DP_K: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY || secrets.X_DP_K }}
+          # استدعاء سيكرت بصمة التطبيق من إعدادات المستودع
+          APP_FINGERPRINT: ${{ secrets.APP_FINGERPRINT }}
         run: |
           # Surface them to Gradle as env vars
           echo "CLOUD_URL=$CLOUD_URL"           >> $GITHUB_ENV
           echo "CLOUD_ANON_KEY=$CLOUD_ANON_KEY" >> $GITHUB_ENV
           echo "X_DP_K=$X_DP_K"                 >> $GITHUB_ENV
+          
+          # التحقق من وجود البصمة وتمريرها
+          if [ -n "$APP_FINGERPRINT" ]; then
+            echo "APP_FINGERPRINT=$APP_FINGERPRINT" >> $GITHUB_ENV
+            echo "✅ تم العثور على بصمة التطبيق وإضافتها لبيئة البناء."
+          else
+            echo "APP_FINGERPRINT=" >> $GITHUB_ENV
+            echo "⚠️ لم يتم العثور على سيكرت بصمة التطبيق (APP_FINGERPRINT). سيتم البناء بدونها."
+          fi
 
       - name: Copy Gradle Wrapper from Android
         run: |
