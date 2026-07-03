@@ -6,6 +6,7 @@ import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw } f
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import ServerSchemaExporter from './ServerSchemaExporter';
 
 type Settings = {
   github_repo?: string;
