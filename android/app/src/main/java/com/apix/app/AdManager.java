@@ -63,15 +63,22 @@ public final class AdManager {
                     ed.putString("ads_gate_mode", adCfg.optString("gateMode", "app_open_each"));
                     ed.putString("ads_unit_id", adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", "")));
-                    // حفظ WebAd settings
-                    ed.putString("web_ad_url",        adCfg.optString("webAdUrl", ""));
-                    ed.putInt   ("web_ad_skip_after",  adCfg.optInt("webAdSkipAfter", 8));
-                    ed.putString("web_ad_seller_url",  adCfg.optString("sellerUrl", ""));
                     String unit = adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", ""));
                     if (!unit.isEmpty()) {
                         try { RewardedAdHelper.preload(context, unit); } catch (Throwable ignored) {}
                     }
+                }
+                // WebView ads live under their OWN key `web_ads_config` in the
+                // dashboard (fields: enabled, externalOnly, skipAfter, url,
+                // sellerContactUrl). Read them here so real WebView ads work.
+                JSONObject webCfg = SupabaseDataManager.fetchWebAdsConfig();
+                if (webCfg != null) {
+                    ed.putBoolean("web_ad_enabled",       webCfg.optBoolean("enabled", false));
+                    ed.putBoolean("web_ad_external_only", webCfg.optBoolean("externalOnly", true));
+                    ed.putString ("web_ad_url",           webCfg.optString("url", ""));
+                    ed.putInt    ("web_ad_skip_after",    Math.max(3, webCfg.optInt("skipAfter", 5)));
+                    ed.putString ("web_ad_seller_url",    webCfg.optString("sellerContactUrl", ""));
                 }
                 ed.apply();
             } catch (Throwable t) {
