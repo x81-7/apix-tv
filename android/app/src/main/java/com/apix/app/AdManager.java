@@ -63,15 +63,22 @@ public final class AdManager {
                     ed.putString("ads_gate_mode", adCfg.optString("gateMode", "app_open_each"));
                     ed.putString("ads_unit_id", adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", "")));
-                    // حفظ WebAd settings
-                    ed.putString("web_ad_url",        adCfg.optString("webAdUrl", ""));
-                    ed.putInt   ("web_ad_skip_after",  adCfg.optInt("webAdSkipAfter", 8));
-                    ed.putString("web_ad_seller_url",  adCfg.optString("sellerUrl", ""));
                     String unit = adCfg.optString("rewardedAdUnitId",
                         adCfg.optString("admobRewardedId", ""));
                     if (!unit.isEmpty()) {
                         try { RewardedAdHelper.preload(context, unit); } catch (Throwable ignored) {}
                     }
+                }
+                // WebView ads live under their OWN key `web_ads_config` in the
+                // dashboard (fields: enabled, externalOnly, skipAfter, url,
+                // sellerContactUrl). Read them here so real WebView ads work.
+                JSONObject webCfg = SupabaseDataManager.fetchWebAdsConfig();
+                if (webCfg != null) {
+                    ed.putBoolean("web_ad_enabled",       webCfg.optBoolean("enabled", false));
+                    ed.putBoolean("web_ad_external_only", webCfg.optBoolean("externalOnly", true));
+                    ed.putString ("web_ad_url",           webCfg.optString("url", ""));
+                    ed.putInt    ("web_ad_skip_after",    Math.max(3, webCfg.optInt("skipAfter", 5)));
+                    ed.putString ("web_ad_seller_url",    webCfg.optString("sellerContactUrl", ""));
                 }
                 ed.apply();
             } catch (Throwable t) {
@@ -129,14 +136,7 @@ public final class AdManager {
                 final int    webAdSkip   = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl   = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> {
-                    // WebAd آخر شيء قبل دخول التطبيق
-                    if (!webAdUrl.isEmpty()) {
-                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
-                    } else {
-                        callback.onAllowed();
-                    }
-                };
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
 
                 Runnable afterRewarded = () -> {
                     String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
@@ -198,13 +198,7 @@ public final class AdManager {
                 final int    webAdSkip = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> {
-                    if (!webAdUrl.isEmpty()) {
-                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
-                    } else {
-                        callback.onAllowed();
-                    }
-                };
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
 
                 Runnable afterRewarded = () -> {
                     if (localFires) showSequentialAds(activity, afterAll::run);
@@ -233,11 +227,14 @@ public final class AdManager {
 
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                // On external links the WebView ad (externalOnly) runs last.
+                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, true, callback);
+
                 boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
                     && fConfig != null && fConfig.optBoolean("adsEnabled", false);
                 boolean localOn = sp.getBoolean(KEY_LOCAL_FORCE_EXTERNAL, false);
 
-                if (!networkOn && !localOn) { callback.onAllowed(); return; }
+                if (!networkOn && !localOn) { webThenDone.onAllowed(); return; }
 
                 int counter = sp.getInt("ext_ad_counter", 0);
                 sp.edit().putInt("ext_ad_counter", counter + 1).apply();
@@ -248,11 +245,11 @@ public final class AdManager {
                         ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
                         : sp.getString("ads_unit_id", "");
                     RewardedAdHelper.showOrSkip(activity, unitId, r -> {
-                        if (!r && localOn) showSequentialAds(activity, callback::onAllowed);
-                        else callback.onAllowed();
+                        if (!r && localOn) showSequentialAds(activity, webThenDone::onAllowed);
+                        else webThenDone.onAllowed();
                     });
                 } else {
-                    showSequentialAds(activity, callback::onAllowed);
+                    showSequentialAds(activity, webThenDone::onAllowed);
                 }
             });
         }).start();
@@ -297,6 +294,27 @@ public final class AdManager {
             if (!u.isEmpty()) return u;
         }
         return sp.getString("web_ad_seller_url", "");
+    }
+
+    /** True when a real WebView ad is configured (enabled + has URL). */
+    private static boolean webAdEnabled(SharedPreferences sp) {
+        return sp.getBoolean("web_ad_enabled", false)
+            && !sp.getString("web_ad_url", "").trim().isEmpty();
+    }
+
+    /**
+     * Shows the real WebView ad (from `web_ads_config`) when it should apply,
+     * then continues. `isExternal` = true for external-link gates. When
+     * externalOnly is set the ad only runs on external links.
+     */
+    private static void maybeShowWebAd(Activity activity, SharedPreferences sp, boolean isExternal, GateCallback done) {
+        if (!webAdEnabled(sp)) { done.onAllowed(); return; }
+        boolean externalOnly = sp.getBoolean("web_ad_external_only", true);
+        if (externalOnly && !isExternal) { done.onAllowed(); return; }
+        String url = sp.getString("web_ad_url", "");
+        int skip = Math.max(3, sp.getInt("web_ad_skip_after", 5));
+        String seller = sp.getString("web_ad_seller_url", "");
+        showWebAd(activity, url, skip, seller, done::onAllowed);
     }
     
     private static boolean isLockedChannel(JSONObject config, String channelId) {
