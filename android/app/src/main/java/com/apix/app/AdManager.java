@@ -305,6 +305,27 @@ public final class AdManager {
         }
         return sp.getString("web_ad_seller_url", "");
     }
+
+    /** True when a real WebView ad is configured (enabled + has URL). */
+    private static boolean webAdEnabled(SharedPreferences sp) {
+        return sp.getBoolean("web_ad_enabled", false)
+            && !sp.getString("web_ad_url", "").trim().isEmpty();
+    }
+
+    /**
+     * Shows the real WebView ad (from `web_ads_config`) when it should apply,
+     * then continues. `isExternal` = true for external-link gates. When
+     * externalOnly is set the ad only runs on external links.
+     */
+    private static void maybeShowWebAd(Activity activity, SharedPreferences sp, boolean isExternal, GateCallback done) {
+        if (!webAdEnabled(sp)) { done.onAllowed(); return; }
+        boolean externalOnly = sp.getBoolean("web_ad_external_only", true);
+        if (externalOnly && !isExternal) { done.onAllowed(); return; }
+        String url = sp.getString("web_ad_url", "");
+        int skip = Math.max(3, sp.getInt("web_ad_skip_after", 5));
+        String seller = sp.getString("web_ad_seller_url", "");
+        showWebAd(activity, url, skip, seller, done::onAllowed);
+    }
     
     private static boolean isLockedChannel(JSONObject config, String channelId) {
         if (config == null || channelId == null) return false;
