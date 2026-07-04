@@ -136,14 +136,7 @@ public final class AdManager {
                 final int    webAdSkip   = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl   = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> {
-                    // WebAd آخر شيء قبل دخول التطبيق
-                    if (!webAdUrl.isEmpty()) {
-                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
-                    } else {
-                        callback.onAllowed();
-                    }
-                };
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
 
                 Runnable afterRewarded = () -> {
                     String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
