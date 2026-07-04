@@ -20,10 +20,10 @@ object SupabaseClient {
 
     // White-label gateway: route ALL traffic through the Cloudflare Worker
     // (hides Supabase, encrypts payloads, enforces bans) exactly like Android.
-    // WORKER_URL takes priority; CLOUD_URL is the legacy fallback.
-    val baseUrl: String = (System.getenv("WORKER_URL")?.takeIf { it.isNotBlank() }
-        ?: System.getenv("CLOUD_URL") ?: DEFAULT_URL).trimEnd('/')
-    val anonKey: String = System.getenv("CLOUD_ANON_KEY") ?: DEFAULT_KEY
+    // Values are baked into the packaged app via ApixConfig (WORKER_URL first,
+    // CLOUD_URL fallback). An env var still overrides for local testing.
+    val baseUrl: String = ApixConfig.baseUrl.ifBlank { DEFAULT_URL.trimEnd('/') }
+    val anonKey: String = ApixConfig.anonKey.ifBlank { DEFAULT_KEY }
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
