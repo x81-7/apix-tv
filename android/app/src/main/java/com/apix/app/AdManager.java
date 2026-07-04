@@ -198,13 +198,7 @@ public final class AdManager {
                 final int    webAdSkip = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> {
-                    if (!webAdUrl.isEmpty()) {
-                        showWebAd(activity, webAdUrl, webAdSkip, sellerUrl, callback::onAllowed);
-                    } else {
-                        callback.onAllowed();
-                    }
-                };
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
 
                 Runnable afterRewarded = () -> {
                     if (localFires) showSequentialAds(activity, afterAll::run);
