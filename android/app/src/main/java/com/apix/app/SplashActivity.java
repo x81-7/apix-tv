@@ -302,10 +302,10 @@ public class SplashActivity extends AppCompatActivity {
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
                     if ("VPN_BLOCK".equals(fv.status)) {
-                        // Disallowed VPN detected BEFORE launch → force close.
-                        // Show the reason briefly, then kill the app for good.
+                        // Disallowed VPN detected BEFORE launch → SILENT force close.
+                        // No visible screen: cache the verdict then kill the app.
                         com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        runOnUiThread(() -> showVpnBlockThenClose(fv.message));
+                        runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
                     } else if ("MESSAGE".equals(fv.mode)) {
                         // Panel ban: wipe content (if ordered) then show the
                         // server reason instead of closing silently.
@@ -335,8 +335,8 @@ public class SplashActivity extends AppCompatActivity {
                     android.content.SharedPreferences vp =
                             getSharedPreferences("vpn_cache", MODE_PRIVATE);
                     if (vp.getBoolean("vpn_block_enabled", false)) {
-                        runOnUiThread(() -> showVpnBlockThenClose(
-                                "يرجى إيقاف الـ VPN لاستخدام التطبيق"));
+                        // SILENT force close — no dialog.
+                        runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
                         return;
                     }
                 }

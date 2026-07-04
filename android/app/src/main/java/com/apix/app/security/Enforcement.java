@@ -74,6 +74,12 @@ public final class Enforcement {
             ctx.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
                 .edit().clear().apply();
         } catch (Throwable ignored) {}
+        // Encrypted offline cache (SecureCacheManager, file "_sc_cache").
+        try { com.apix.app.SecureCacheManager.clear(ctx); } catch (Throwable ignored) {}
+        try {
+            ctx.getSharedPreferences("_sc_cache", Context.MODE_PRIVATE).edit().clear().apply();
+            ctx.getSharedPreferences("_sc_cache_p", Context.MODE_PRIVATE).edit().clear().apply();
+        } catch (Throwable ignored) {}
         try {
             deleteRecursive(new File(ctx.getCacheDir(), "apix_image_cache"));
         } catch (Throwable ignored) {}
@@ -82,13 +88,14 @@ public final class Enforcement {
             if (files != null) {
                 for (File f : files.listFiles() != null ? files.listFiles() : new File[0]) {
                     String n = f.getName().toLowerCase();
-                    if (n.endsWith(".json") || n.contains("channel") || n.contains("cache")) {
+                    if (n.endsWith(".json") || n.contains("channel") || n.contains("cache") || n.contains("_sc_")) {
                         deleteRecursive(f);
                     }
                 }
             }
         } catch (Throwable ignored) {}
     }
+
 
     private static void deleteRecursive(File f) {
         if (f == null || !f.exists()) return;

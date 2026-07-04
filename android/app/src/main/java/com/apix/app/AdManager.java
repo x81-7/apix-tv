@@ -176,7 +176,17 @@ public final class AdManager {
 
     // ── Unlock Gate (عند فتح قناة) ────────────────────────────────────
     public static void maybeRunUnlockGate(Activity activity, String channelId, GateCallback callback) {
-        if (isVip(activity)) { callback.onAllowed(); return; }
+        maybeRunUnlockGate(activity, channelId, false, callback);
+    }
+
+    /**
+     * @param isSub true when the opened item is a SUB-channel wired directly to
+     *              the player. The WebView (CPM) ad is gated to sub-channels and
+     *              runs even for activated/VIP users (per product policy), while
+     *              rewarded/local ads still skip for VIP.
+     */
+    public static void maybeRunUnlockGate(Activity activity, String channelId, boolean isSub, GateCallback callback) {
+        final boolean vip = isVip(activity);
 
         new Thread(() -> {
             JSONObject freshConfig = null;
@@ -185,6 +195,17 @@ public final class AdManager {
 
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+
+                // The CPM WebView ad fires on SUB-channel opens and is NOT
+                // skipped for activated/VIP users. The externalOnly toggle still
+                // applies (when set, the ad only runs on external links).
+                final GateCallback webThenDone = () -> {
+                    if (isSub) maybeShowWebAd(activity, sp, false, callback);
+                    else callback.onAllowed();
+                };
+
+                if (vip) { webThenDone.onAllowed(); return; }
+
                 boolean rewardedFires = isRewardedGateEnabled(fConfig, "unlock_channel")
                     && isLockedChannel(fConfig, channelId);
                 String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
@@ -192,17 +213,11 @@ public final class AdManager {
                     || "both".equalsIgnoreCase(trigger);
                 boolean localFires = localOnChannel && isLocalAdAllowedForChannel(sp, channelId);
 
-                if (!rewardedFires && !localFires) { callback.onAllowed(); return; }
-
-                final String webAdUrl  = getWebAdUrl(fConfig, sp);
-                final int    webAdSkip = getWebAdSkipAfter(fConfig, sp);
-                final String sellerUrl = getSellerUrl(fConfig, sp);
-
-                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
+                if (!rewardedFires && !localFires) { webThenDone.onAllowed(); return; }
 
                 Runnable afterRewarded = () -> {
-                    if (localFires) showSequentialAds(activity, afterAll::run);
-                    else afterAll.run();
+                    if (localFires) showSequentialAds(activity, webThenDone::onAllowed);
+                    else webThenDone.onAllowed();
                 };
                 if (rewardedFires) {
                     String unitId = fConfig != null
@@ -215,6 +230,7 @@ public final class AdManager {
             });
         }).start();
     }
+
 
     // ── External Gate (روابط خارجية) ──────────────────────────────────
     public static void maybeRunExternalGate(Activity activity, GateCallback callback) {

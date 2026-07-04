@@ -186,11 +186,11 @@ fun AppNavigation(
         }
     }
 
-    val handleChannelClick: (Channel) -> Unit = { channel ->
+    val handleChannelClick: (Channel, Boolean) -> Unit = { channel, isSub ->
         val host = activity
         val proceed = {
             if (host != null) {
-                com.apix.app.AdManager.maybeRunUnlockGate(host, channel.id) {
+                com.apix.app.AdManager.maybeRunUnlockGate(host, channel.id, isSub) {
                     host.runOnUiThread { openChannelAfterGate(channel) }
                 }
             } else {
@@ -321,7 +321,7 @@ fun AppNavigation(
                 "main_channel" -> {
                     val targetId = action.optString("targetId")
                     val channel = uiState.categories.asSequence().flatMap { it.channels?.values?.asSequence() ?: emptySequence() }.firstOrNull { it.id == targetId }
-                    if (channel != null) handleChannelClick(channel)
+                    if (channel != null) handleChannelClick(channel, false)
                 }
                 "side_menu" -> {
                     val targetId = action.optString("targetId")
@@ -336,7 +336,7 @@ fun AppNavigation(
                 "sub_channel" -> {
                     val targetId = action.optString("targetId")
                     val channel = sideMenus.values.asSequence().flatMap { it.channels?.values?.asSequence() ?: emptySequence() }.firstOrNull { it.id == targetId }
-                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = channel.androidStream, androidActionType = channel.androidActionType, forcedAspectRatio = channel.forcedAspectRatio, lockAspectRatio = channel.lockAspectRatio))
+                    if (channel != null) handleChannelClick(Channel(id = channel.id, name = channel.name, imageUrl = channel.imageUrl, sortOrder = channel.sortOrder, actionType = "direct_play", stream = channel.stream, androidStream = channel.androidStream, androidActionType = channel.androidActionType, forcedAspectRatio = channel.forcedAspectRatio, lockAspectRatio = channel.lockAspectRatio), true)
                 }
                 "external_link" -> {
                     val externalUrl = action.optString("externalUrl")
@@ -414,7 +414,7 @@ fun AppNavigation(
                 MainScreen(
                     uiState = uiState,
                     onCategorySelected = { handleCategorySelect(it) },
-                    onChannelClick = { handleChannelClick(it) },
+                    onChannelClick = { handleChannelClick(it, false) },
                     onSearchClick = { navigateTo(Screen.Search) },
                     channels = channels,
                     isSettings = isSettings,
@@ -450,7 +450,7 @@ fun AppNavigation(
                         SubChannelScreen(
                             menuName = screen.menuName,
                             channels = screen.channels,
-                            onChannelClick = { handleChannelClick(it) },
+                            onChannelClick = { handleChannelClick(it, true) },
                             onBack = { goBack() }
                         )
                     }

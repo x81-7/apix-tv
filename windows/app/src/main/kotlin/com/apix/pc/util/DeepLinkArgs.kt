@@ -21,10 +21,11 @@ object DeepLinkArgs {
     private const val IV_LEN = 12
     private const val TAG_LEN = 128
 
-    /** Same secret as Android `BuildConfig.X_DP_K`. CI may override via env. */
+    /** Same secret as Android `BuildConfig.X_DP_K`. Baked into the packaged app
+     *  via ApixConfig (env var still overrides for local testing). */
     private val DP_KEY_HEX: String =
-        System.getenv("X_DP_K")
-            ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
+        com.apix.pc.data.ApixConfig.externalDecryptKey
+            .ifBlank { "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a" }
 
     data class Parsed(val rawPayload: String?, val decoded: JSONObject?)
 

@@ -41,6 +41,28 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+// ── Bake white-label config into the packaged app ──────────────────────────
+// End users don't have WORKER_URL / CLOUD_* / X_DP_K in their environment, so
+// we snapshot them from the CI env into a bundled resource at build time. The
+// runtime loader (ApixConfig) still lets a local env var override for testing.
+val apixConfigDir = layout.buildDirectory.dir("generated/apixConfig")
+val generateApixConfig by tasks.registering {
+    outputs.dir(apixConfigDir)
+    doLast {
+        val f = apixConfigDir.get().file("apix_config.properties").asFile
+        f.parentFile.mkdirs()
+        fun env(k: String) = (System.getenv(k) ?: "").replace("\n", "").trim()
+        f.writeText(
+            "WORKER_URL=${env("WORKER_URL")}\n" +
+            "CLOUD_URL=${env("CLOUD_URL")}\n" +
+            "CLOUD_ANON_KEY=${env("CLOUD_ANON_KEY")}\n" +
+            "X_DP_K=${env("X_DP_K")}\n"
+        )
+    }
+}
+sourceSets["main"].resources.srcDir(apixConfigDir)
+tasks.named("processResources") { dependsOn(generateApixConfig) }
+
 compose.desktop {
     application {
         mainClass = "com.apix.pc.MainKt"

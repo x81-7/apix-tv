@@ -18,8 +18,12 @@ object SupabaseClient {
     private const val DEFAULT_URL = "" // Gateway-only: provide via CLOUD_URL / WORKER_URL env
     private const val DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmcmNqd3lieGZ0eHNwdnBlZ2ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzkyMzksImV4cCI6MjA5Mjk1NTIzOX0.xtoVGdA1zNJBRKerY16azg8NQSMXwK6Xmid7TERKAR0"
 
-    val baseUrl: String = (System.getenv("CLOUD_URL") ?: DEFAULT_URL).trimEnd('/')
-    val anonKey: String = System.getenv("CLOUD_ANON_KEY") ?: DEFAULT_KEY
+    // White-label gateway: route ALL traffic through the Cloudflare Worker
+    // (hides Supabase, encrypts payloads, enforces bans) exactly like Android.
+    // Values are baked into the packaged app via ApixConfig (WORKER_URL first,
+    // CLOUD_URL fallback). An env var still overrides for local testing.
+    val baseUrl: String = ApixConfig.baseUrl.ifBlank { DEFAULT_URL.trimEnd('/') }
+    val anonKey: String = ApixConfig.anonKey.ifBlank { DEFAULT_KEY }
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
