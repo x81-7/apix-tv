@@ -186,11 +186,11 @@ fun AppNavigation(
         }
     }
 
-    val handleChannelClick: (Channel) -> Unit = { channel ->
+    val handleChannelClick: (Channel, Boolean) -> Unit = { channel, isSub ->
         val host = activity
         val proceed = {
             if (host != null) {
-                com.apix.app.AdManager.maybeRunUnlockGate(host, channel.id) {
+                com.apix.app.AdManager.maybeRunUnlockGate(host, channel.id, isSub) {
                     host.runOnUiThread { openChannelAfterGate(channel) }
                 }
             } else {
