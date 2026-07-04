@@ -227,11 +227,14 @@ public final class AdManager {
 
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                // On external links the WebView ad (externalOnly) runs last.
+                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, true, callback);
+
                 boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
                     && fConfig != null && fConfig.optBoolean("adsEnabled", false);
                 boolean localOn = sp.getBoolean(KEY_LOCAL_FORCE_EXTERNAL, false);
 
-                if (!networkOn && !localOn) { callback.onAllowed(); return; }
+                if (!networkOn && !localOn) { webThenDone.onAllowed(); return; }
 
                 int counter = sp.getInt("ext_ad_counter", 0);
                 sp.edit().putInt("ext_ad_counter", counter + 1).apply();
@@ -242,11 +245,11 @@ public final class AdManager {
                         ? fConfig.optString("rewardedAdUnitId", fConfig.optString("admobRewardedId", ""))
                         : sp.getString("ads_unit_id", "");
                     RewardedAdHelper.showOrSkip(activity, unitId, r -> {
-                        if (!r && localOn) showSequentialAds(activity, callback::onAllowed);
-                        else callback.onAllowed();
+                        if (!r && localOn) showSequentialAds(activity, webThenDone::onAllowed);
+                        else webThenDone.onAllowed();
                     });
                 } else {
-                    showSequentialAds(activity, callback::onAllowed);
+                    showSequentialAds(activity, webThenDone::onAllowed);
                 }
             });
         }).start();
