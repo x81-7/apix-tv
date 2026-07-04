@@ -18,9 +18,10 @@ import { toast } from 'sonner';
 
 const SCHEMA_TEMPLATE = {
   _readme: {
-    ar: 'هذا الملف يوضّح الشكل الذي يستقبل به المشغل السيرفرات. androidStream = الإعدادات الأساسية للسيرفر الواحد. fallbackServers = قائمة السيرفرات المتعددة التي ينتقل بينها المشغل تلقائياً عند الفشل. playerType لكل سيرفر يحدد محرك التشغيل (auto/exo/hybrid/shaka).',
-    en: 'Describes how the player consumes servers. androidStream = the primary single-server config. fallbackServers = the ordered multi-server list the player auto-switches through on failure. Each fallback server may force its own engine via playerType (auto/exo/hybrid/shaka).',
+    ar: 'صيغة موحّدة لكل المنصّات (أندرويد/آيفون/ويندوز). المشغّل في كل منصّة يقرأ نفس الشكل: androidStream = إعدادات السيرفر الواحد، fallbackServers = قائمة السيرفرات المتعددة التي ينتقل بينها المشغّل تلقائياً عند الفشل. الآيفون والويندوز يفهمان نفس الحقول (iosStream/windowsStream اختياريان، وإن غابا يُستخدم androidStream). playerType لكل سيرفر يحدد محرك التشغيل (auto/exo/hybrid/shaka).',
+    en: 'Unified shape for ALL platforms (Android/iOS/Windows). Every platform reads the same structure: androidStream = the primary single-server config, fallbackServers = the ordered multi-server list auto-switched on failure. iOS and Windows understand the same fields (iosStream/windowsStream are optional and fall back to androidStream). Each fallback server may force its own engine via playerType (auto/exo/hybrid/shaka).',
   },
+  platforms: ['android', 'ios', 'windows'],
   channel: {
     id: 'unique-channel-id',
     name: 'اسم القناة',
