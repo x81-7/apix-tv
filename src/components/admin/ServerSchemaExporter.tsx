@@ -110,19 +110,24 @@ const ServerSchemaExporter: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('channels')
-        .select('id,name,image_url,action_type,android_stream,stream')
+        .select('id,name,image_url,action_type,android_stream,ios_stream,windows_stream,web_stream,stream')
         .not('android_stream', 'is', null)
         .limit(3);
       if (error) throw error;
       const sample = {
         _readme: SCHEMA_TEMPLATE._readme,
+        platforms: SCHEMA_TEMPLATE.platforms,
         generatedAt: new Date().toISOString(),
         channels: (data ?? []).map((c: any) => ({
           id: c.id,
           name: c.name,
           imageUrl: c.image_url,
           actionType: c.action_type,
+          // Unified shape: iOS/Windows fall back to androidStream when their
+          // own per-platform stream is not set.
           androidStream: c.android_stream,
+          iosStream: c.ios_stream ?? c.android_stream,
+          windowsStream: c.windows_stream ?? c.web_stream ?? c.android_stream,
         })),
       };
       downloadJson('apix-servers-live-sample.json', sample);
