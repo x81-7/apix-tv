@@ -286,6 +286,25 @@ public class SupabaseDataManager {
     }
 
     /**
+     * WebView ads config saved by the dashboard under key `web_ads_config`
+     * with fields { enabled, externalOnly, skipAfter, url, sellerContactUrl }.
+     * This was previously NOT read (the app looked for webAdUrl/webAdSkipAfter/
+     * sellerUrl inside `adConfig`, which the dashboard never writes) — so real
+     * WebView ads never displayed. Now read from the correct key.
+     */
+    public static JSONObject fetchWebAdsConfig() {
+        try {
+            String json = restGet("/rest/v1/system_settings?key=eq.web_ads_config&select=value");
+            JSONArray arr = new JSONArray(json);
+            if (arr.length() == 0) return null;
+            return arr.getJSONObject(0).optJSONObject("value");
+        } catch (Exception e) {
+            Log.w(TAG, "fetchWebAdsConfig error", e);
+            return null;
+        }
+    }
+
+    /**
      * Fetches the developer-allow-list (UUIDs) from
      * `system_settings.developer_uuids` and caches it locally so the strict
      * emulator gate (DeviceIntegrity.shouldStrictBanEmulator) can read it
