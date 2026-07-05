@@ -181,6 +181,34 @@ export default {
       return out;
     }
 
+    // 4) Gated DB decryption key. Banned devices are already rejected by the
+    //    edge-ban guard above (step 1), so they can NEVER reach this route and
+    //    therefore never receive the key — their offline cache stays unreadable.
+    //    The key is NEVER shipped inside the app; the client fetches it on each
+    //    online session and holds it only in memory.
+    if (url.pathname === "/db-key") {
+      if (!deviceId) {
+        return new Response(JSON.stringify({ error: "device_required" }),
+          { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+      // Prefer a dedicated DB_KEY binding; fall back to ENC_KEY if unset.
+      const dbKey = (env.DB_KEY && env.DB_KEY.trim()) ? env.DB_KEY.trim() : env.ENC_KEY;
+      if (!dbKey) {
+        return new Response(JSON.stringify({ error: "key_unavailable" }),
+          { status: 503, headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+      // Wrap the key in the same AES-GCM envelope the app already decrypts, so
+      // the raw key never travels as plaintext even over TLS.
+      let body;
+      try { body = await encryptJson(env, JSON.stringify({ dbKey })); }
+      catch (_) { body = JSON.stringify({ dbKey }); }
+      return new Response(body, {
+        status: 200,
+        headers: { ...CORS, "Content-Type": "application/json",
+          "Cache-Control": "no-store", "X-Payload-Encryption": "AES-256-GCM" },
+      });
+    }
+
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response(JSON.stringify({ ok: true, gateway: "apix-edge" }),
         { headers: { ...CORS, "Content-Type": "application/json" } });

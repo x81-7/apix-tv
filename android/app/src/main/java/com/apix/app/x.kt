@@ -30,6 +30,15 @@ object x {
     private external fun ne(): Int   // Environment check (n2.cpp)
     private external fun nr(): Int   // Root/Frida check (n3.cpp)
 
+    // ── consolidated native guard (sec.cpp) ────────────────────────
+    // gd() runs every sniffing/instrumentation check with compile-time
+    // obfuscated strings and terminates the process silently on any hit —
+    // there is NO boolean for a patcher to flip.
+    private external fun gd()
+    private external fun vpnRaw(): Int   // 1 = a VPN tunnel interface is up
+    private external fun vt(token: String): Int   // native HS256 VIP verify
+    private external fun pz(): Int       // 1 = native tamper/poison flag set
+
     @JvmStatic fun ka(): String = a()
     @JvmStatic fun kb(): String = b()
     @JvmStatic fun kc(): String = c()
@@ -43,4 +52,21 @@ object x {
     @JvmStatic fun hasVpn(): Boolean     = nv() != 0
     @JvmStatic fun hasDanger(): Boolean  = ne() != 0
     @JvmStatic fun hasRoot(): Boolean    = nr() != 0
+
+    // ── consolidated native guard API ──────────────────────────────
+    /** Runs the full native sniffing/instrumentation sweep. Silently kills
+     *  the process from native code if a live threat is present. Safe to call
+     *  from a background thread during the splash ad. */
+    @JvmStatic fun guardOrDie() { try { gd() } catch (_: Throwable) {} }
+
+    /** True when a VPN tunnel interface is up (server decides allow/block). */
+    @JvmStatic fun vpnTunnelUp(): Boolean = try { vpnRaw() != 0 } catch (_: Throwable) { false }
+
+    /** Native HS256 verification of a signed VIP token. A forged/tampered
+     *  token can never return true because the HMAC secret is native-only. */
+    @JvmStatic fun verifyVip(token: String?): Boolean =
+        try { !token.isNullOrEmpty() && vt(token) != 0 } catch (_: Throwable) { false }
+
+    /** True if native code detected tampering and poisoned key material. */
+    @JvmStatic fun isPoisoned(): Boolean = try { pz() != 0 } catch (_: Throwable) { false }
 }

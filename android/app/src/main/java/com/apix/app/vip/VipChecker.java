@@ -109,6 +109,13 @@ public final class VipChecker {
             }
             JSONObject obj = new JSONObject(plain);
             boolean active = obj.optBoolean("active", false);
+            // When the server issues a signed VIP token, it is the AUTHORITATIVE
+            // source: verify the HS256 signature ENTIRELY in native code. A MitM
+            // that flips "active" to true cannot forge a valid signature.
+            String vipToken = obj.optString("vipToken", null);
+            if (vipToken != null && !vipToken.isEmpty() && !"null".equals(vipToken)) {
+                active = com.apix.app.x.verifyVip(vipToken);
+            }
             String expStr = obj.optString("expiresAt", null);
             long exp = 0L;
             if (expStr != null && !"null".equals(expStr)) {

@@ -1,40 +1,47 @@
 package com.apix.app;
 
 import android.app.Activity;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.apix.app.security.DeviceIntegrity;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * WebView-based ad with skip countdown + VIP CTA.
+ * WebView-based (CPM) ad.
+ *
+ * Design (per product spec):
+ *   - The ad content is a custom HTML page (e.g. https://ads.domain.com) loaded
+ *     inside a REAL WebView, so networks that block raw redirect URLs still fill.
+ *   - There is NO user-facing "close" button. The HTML page owns the countdown
+ *     and calls back into Android through the JS bridge {@code AndroidAd} to
+ *     dismiss the ad once its timer ends.
+ *   - A native fail-safe timer force-closes the ad at {@code skipAfter + BUFFER}
+ *     seconds so a broken/empty ad page can never hang the app.
+ *
+ * JS bridge contract (call from the ad page):
+ *   AndroidAd.getDuration()   -> int seconds the page should count down
+ *   AndroidAd.onAdComplete()  -> dismiss the ad and continue into the app
+ *   AndroidAd.onAdReady()     -> (optional) tells native the ad rendered
+ *   AndroidAd.openVip()       -> open the VIP activation screen
  *
  * Inputs (Intent extras):
- *   - "url"           : ad URL to load
- *   - "skipAfter"     : seconds before Skip becomes available (default 5)
- *   - "sellerUrl"     : Telegram URL for VIP activation
- *
- * NOTE: D-Pad focus is supported via standard Android focusable views (no gold
- * focus tint — we use a blue stroke for VIP, white stroke for Skip).
+ *   - "url"        : ad page URL
+ *   - "skipAfter"  : countdown seconds (default 5)
+ *   - "sellerUrl"  : Telegram/contact URL for VIP activation
  */
 public class WebAdActivity extends AppCompatActivity {
 
@@ -42,33 +49,39 @@ public class WebAdActivity extends AppCompatActivity {
     public static final String EXTRA_SKIP_AFTER = "skipAfter";
     public static final String EXTRA_SELLER_URL = "sellerUrl";
 
-    private int remaining;
-    private Button btnSkip;
+    // Extra safety window added on top of skipAfter for the native fail-safe.
+    private static final int FAILSAFE_BUFFER_SEC = 5;
+
+    private int durationSec;
+    private String sellerUrl;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean finished = new AtomicBoolean(false);
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         String url = getIntent().getStringExtra(EXTRA_URL);
-        remaining = Math.max(1, getIntent().getIntExtra(EXTRA_SKIP_AFTER, 5));
-        String sellerUrl = getIntent().getStringExtra(EXTRA_SELLER_URL);
+        durationSec = Math.max(1, getIntent().getIntExtra(EXTRA_SKIP_AFTER, 5));
+        sellerUrl = getIntent().getStringExtra(EXTRA_SELLER_URL);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
 
-        // WebView ad
         WebView web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        // The page talks back to Android through this bridge object.
+        web.addJavascriptInterface(new AdJsBridge(), "AndroidAd");
         root.addView(web, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (url != null && !url.isEmpty()) web.loadUrl(url);
 
-        // Bottom button bar
+        // The ONLY interactive control is the VIP activation CTA. No user skip.
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
@@ -78,35 +91,15 @@ public class WebAdActivity extends AppCompatActivity {
         btnVip.setText("تفعيل الاشتراك");
         btnVip.setAllCaps(false);
         btnVip.setTextColor(0xFFFFFFFF);
-        btnVip.setBackgroundColor(0xFF2563EB); // blue (NOT gold)
+        btnVip.setBackgroundColor(0xFF2563EB);
         btnVip.setFocusable(true);
         btnVip.setFocusableInTouchMode(false);
-        btnVip.setOnClickListener(v -> {
-            Intent i = new Intent(WebAdActivity.this, ActivationActivity.class);
-            if (sellerUrl != null) i.putExtra(ActivationActivity.EXTRA_SELLER_URL, sellerUrl);
-            startActivity(i);
-        });
-        // Blue focus stroke handled by selector — minimal inline style:
+        btnVip.setOnClickListener(v -> openVip());
         btnVip.setOnFocusChangeListener((v, has) -> v.setBackgroundColor(has ? 0xFF1D4ED8 : 0xFF2563EB));
 
-        btnSkip = new Button(this);
-        btnSkip.setAllCaps(false);
-        btnSkip.setTextColor(0xFF000000);
-        btnSkip.setBackgroundColor(0xFFE5E7EB); // neutral
-        btnSkip.setEnabled(false);
-        btnSkip.setFocusable(true);
-        btnSkip.setText("تخطّي (" + remaining + ")");
-        btnSkip.setOnClickListener(v -> {
-            AdManager.WebAdBridge.complete();
-            finish();
-        });
-        btnSkip.setOnFocusChangeListener((v, has) -> v.setBackgroundColor(has ? 0xFFCBD5E1 : 0xFFE5E7EB));
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.setMargins(12, 0, 12, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bar.addView(btnVip, lp);
-        bar.addView(btnSkip, lp);
 
         FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -115,26 +108,53 @@ public class WebAdActivity extends AppCompatActivity {
 
         setContentView(root);
         btnVip.requestFocus();
-        tickSkip();
+
+        // Native fail-safe: if the page never calls onAdComplete() (empty/broken
+        // ad or JS disabled) we still dismiss so the app never hangs.
+        handler.postDelayed(this::finishAd,
+                (durationSec + FAILSAFE_BUFFER_SEC) * 1000L);
     }
 
-    private void tickSkip() {
-        if (remaining <= 0) {
-            btnSkip.setEnabled(true);
-            btnSkip.setText("تخطّي");
-            btnSkip.setBackgroundColor(0xFFFFFFFF);
-            btnSkip.requestFocus();
-            return;
-        }
-        btnSkip.setText("تخطّي (" + remaining + ")");
-        remaining--;
-        handler.postDelayed(this::tickSkip, 1000);
+    private void openVip() {
+        Intent i = new Intent(WebAdActivity.this, ActivationActivity.class);
+        if (sellerUrl != null) i.putExtra(ActivationActivity.EXTRA_SELLER_URL, sellerUrl);
+        startActivity(i);
     }
+
+    /** Dismiss exactly once and hand control back to the ad gate. */
+    private void finishAd() {
+        if (!finished.compareAndSet(false, true)) return;
+        try { AdManager.WebAdBridge.complete(); } catch (Throwable ignored) {}
+        try { finish(); } catch (Throwable ignored) {}
+    }
+
+    /** Block the hardware/system back button while the ad is showing. */
+    @Override
+    public void onBackPressed() { /* no-op: user cannot dismiss the ad */ }
 
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        // Safety: make sure the gate callback fires even if the OS killed us.
+        if (finished.compareAndSet(false, true)) {
+            try { AdManager.WebAdBridge.complete(); } catch (Throwable ignored) {}
+        }
         super.onDestroy();
+    }
+
+    /** JavaScript ↔ Android bridge exposed to the ad page as `AndroidAd`. */
+    private final class AdJsBridge {
+        @JavascriptInterface
+        public int getDuration() { return durationSec; }
+
+        @JavascriptInterface
+        public void onAdReady() { /* hook for analytics if needed */ }
+
+        @JavascriptInterface
+        public void onAdComplete() { handler.post(WebAdActivity.this::finishAd); }
+
+        @JavascriptInterface
+        public void openVip() { handler.post(WebAdActivity.this::openVip); }
     }
 
     /** Helper: launch when needed (returns true when started). */

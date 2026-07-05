@@ -66,6 +66,9 @@ class ApixApplication : Application(), ImageLoaderFactory {
         runtimeGuardBusy = true
         Thread {
             try {
+                // Native obfuscated sweep first — silently kills from native on
+                // any live sniffing/instrumentation threat detected mid-session.
+                try { x.guardOrDie() } catch (_: Throwable) {}
                 val danger = try { DeviceIntegrity.environmentDanger(applicationContext) } catch (_: Throwable) { null }
                 val vpnOn = try { DeviceIntegrity.isVpnActive(applicationContext) } catch (_: Throwable) { false }
                 if (danger != null) {

@@ -43,11 +43,15 @@ public class RealtimeNotificationManager {
     private static int retryDelay = 2000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean started = false;
+    private static volatile String myDeviceId = null;
 
     public static synchronized void start(Context ctx) {
         if (started) return;
         started = true;
         appContext = ctx.getApplicationContext();
+        try {
+            myDeviceId = com.apix.app.security.DeviceIntegrity.deviceId(appContext);
+        } catch (Throwable ignored) {}
         client = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS) // long-lived
@@ -107,6 +111,20 @@ public class RealtimeNotificationManager {
                         "*",
                         "channels"
                 ).toString());
+
+                // Subscribe to ban_signals INSERT — instant, real-time BAN.
+                // ban_signals holds ONLY the opaque device hash (no IP / reason),
+                // so it is safe to read with the anon role. When a signal for
+                // THIS device arrives we wipe local content and close silently
+                // without waiting for the next launch/handshake.
+                ws.send(buildJoin(
+                        "realtime:public:ban_signals",
+                        "5",
+                        "INSERT",
+                        "ban_signals"
+                ).toString());
+
+
 
                 // Heartbeat every 25s
                 MAIN.postDelayed(new Runnable() {
@@ -170,9 +188,43 @@ public class RealtimeNotificationManager {
                     if (appContext != null) {
                         patchCache(table, record, type);
                     }
+                } else if ("ban_signals".equals(table)) {
+                    handleRealtimeBan(record);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "msg parse error", e);
+            }
+        }
+
+        /**
+         * Real-time BAN enforcement. Fired the instant the admin bans a device
+         * from the panel (a trigger writes the device hash into ban_signals).
+         * If the signal matches THIS device we wipe all cached channels and
+         * close the app silently — no restart needed.
+         */
+        private void handleRealtimeBan(JSONObject record) {
+            try {
+                if (appContext == null || myDeviceId == null) return;
+                String bannedId = record.optString("device_id", "");
+                if (bannedId.isEmpty() || !bannedId.equals(myDeviceId)) return;
+
+
+                MAIN.post(() -> {
+                    try {
+                        com.apix.app.security.HandshakeClient.Verdict v =
+                                new com.apix.app.security.HandshakeClient.Verdict();
+                        v.status = "BANNED";
+                        v.wipe = true;
+                        v.reason = "REALTIME_BAN";
+                        com.apix.app.security.Enforcement.cacheVerdict(appContext, v);
+                        com.apix.app.security.Enforcement.wipeChannelCache(appContext);
+                        com.apix.app.security.Enforcement.silentExit(appContext);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "realtime ban enforce error", t);
+                    }
+                });
+            } catch (Throwable t) {
+                Log.w(TAG, "handleRealtimeBan error", t);
             }
         }
 

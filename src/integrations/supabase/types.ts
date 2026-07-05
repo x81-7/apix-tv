@@ -161,6 +161,24 @@ export type Database = {
         }
         Relationships: []
       }
+      ban_signals: {
+        Row: {
+          created_at: string
+          device_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
