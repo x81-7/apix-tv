@@ -43,11 +43,15 @@ public class RealtimeNotificationManager {
     private static int retryDelay = 2000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean started = false;
+    private static volatile String myDeviceId = null;
 
     public static synchronized void start(Context ctx) {
         if (started) return;
         started = true;
         appContext = ctx.getApplicationContext();
+        try {
+            myDeviceId = com.apix.app.security.DeviceIntegrity.deviceId(appContext);
+        } catch (Throwable ignored) {}
         client = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS) // long-lived
