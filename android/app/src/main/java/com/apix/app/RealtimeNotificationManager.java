@@ -185,9 +185,45 @@ public class RealtimeNotificationManager {
                     if (appContext != null) {
                         patchCache(table, record, type);
                     }
+                } else if ("ban_history".equals(table)) {
+                    handleRealtimeBan(record);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "msg parse error", e);
+            }
+        }
+
+        /**
+         * Real-time BAN enforcement. Fired the instant the admin bans a device
+         * from the panel. If the banned device_id matches this device we wipe
+         * all cached channels and close the app silently — no restart needed.
+         */
+        private void handleRealtimeBan(JSONObject record) {
+            try {
+                if (appContext == null || myDeviceId == null) return;
+                String bannedId = record.optString("device_id", "");
+                String status = record.optString("status", record.optString("action", ""));
+                boolean isUnban = "unban".equalsIgnoreCase(status)
+                        || "active".equalsIgnoreCase(status);
+                if (bannedId.isEmpty() || !bannedId.equals(myDeviceId)) return;
+                if (isUnban) return; // an unban row — ignore.
+
+                MAIN.post(() -> {
+                    try {
+                        com.apix.app.security.HandshakeClient.Verdict v =
+                                new com.apix.app.security.HandshakeClient.Verdict();
+                        v.status = "BANNED";
+                        v.wipe = true;
+                        v.reason = record.optString("ban_reason", "REALTIME_BAN");
+                        com.apix.app.security.Enforcement.cacheVerdict(appContext, v);
+                        com.apix.app.security.Enforcement.wipeChannelCache(appContext);
+                        com.apix.app.security.Enforcement.silentExit(appContext);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "realtime ban enforce error", t);
+                    }
+                });
+            } catch (Throwable t) {
+                Log.w(TAG, "handleRealtimeBan error", t);
             }
         }
 
