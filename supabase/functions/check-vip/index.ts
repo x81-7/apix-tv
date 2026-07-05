@@ -1,6 +1,14 @@
 // supabase/functions/check-vip/index.ts
 // Checks if a device_id has an active VIP subscription.
-// Returns an encrypted envelope: { active: bool, expiresAt: string | null }
+// Returns an encrypted envelope: { active, expiresAt, vipToken? }
+//
+// When VIP_JWT_SECRET is configured it ALSO returns a compact HS256 JWT
+// (vipToken) that the Android/iOS/Windows apps verify ENTIRELY in native code
+// (see sec.cpp / x.verifyVip). A man-in-the-middle cannot forge {"vip":true}
+// because the signing secret lives only in native + this function.
+// IMPORTANT: VIP_JWT_SECRET must equal the app's native HMAC secret (the
+// HMAC_SECRET build value). If it is not set, apps fall back to the (already
+// MitM-resistant, AES-GCM-encrypted) `active` flag.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { encryptedJson } from '../_shared/encrypted-response.ts';
 
@@ -8,6 +16,35 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+function b64url(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlStr(str: string): string {
+  return b64url(new TextEncoder().encode(str));
+}
+
+/** Sign a compact HS256 JWT with claims {vip, device_id, exp}. */
+async function signVipToken(deviceId: string, expiresAtMs: number): Promise<string | null> {
+  const secret = Deno.env.get('VIP_JWT_SECRET');
+  if (!secret) return null;
+  const header = { alg: 'HS256', typ: 'JWT' };
+  // exp: min(subscription expiry, now+12h) so a stolen token is short-lived.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const subExpSec = Math.floor(expiresAtMs / 1000);
+  const exp = Math.min(subExpSec, nowSec + 12 * 3600);
+  const payload = { vip: true, device_id: deviceId, iat: nowSec, exp };
+  const signingInput = `${b64urlStr(JSON.stringify(header))}.${b64urlStr(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput));
+  return `${signingInput}.${b64url(new Uint8Array(sig))}`;
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
