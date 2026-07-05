@@ -112,6 +112,17 @@ public class RealtimeNotificationManager {
                         "channels"
                 ).toString());
 
+                // Subscribe to ban_history INSERT — instant, real-time BAN.
+                // When a row for THIS device arrives, we wipe local content and
+                // close silently without waiting for the next launch/handshake.
+                ws.send(buildJoin(
+                        "realtime:public:ban_history",
+                        "5",
+                        "INSERT",
+                        "ban_history"
+                ).toString());
+
+
                 // Heartbeat every 25s
                 MAIN.postDelayed(new Runnable() {
                     @Override
