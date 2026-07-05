@@ -38,12 +38,9 @@ add_library(v SHARED
     n3.cpp
     sec.cpp
 )
-
-# ── sec.cpp needs both HMAC halves to rebuild the HS256 signing secret ──────
-target_compile_definitions(v PRIVATE
-    V_B1="${HMAC_P1}"
-    V_B2="${HMAC_P2}"
-)
+# NOTE: sec.cpp reuses V_B1 + V_B2 (the split HMAC secret) to rebuild the HS256
+# signing key. Those defines are already applied target-wide below, so sec.cpp
+# sees them without any extra target_compile_definitions block.
 
 # ── vault.cpp يحصل على: جزء 1 من ENC + HMAC_P1 + CloudURL + AnonKey + SigHash
 target_compile_definitions(v PRIVATE
