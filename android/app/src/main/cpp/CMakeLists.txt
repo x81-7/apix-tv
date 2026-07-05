@@ -36,6 +36,13 @@ add_library(v SHARED
     n1.cpp
     n2.cpp
     n3.cpp
+    sec.cpp
+)
+
+# ── sec.cpp needs both HMAC halves to rebuild the HS256 signing secret ──────
+target_compile_definitions(v PRIVATE
+    V_B1="${HMAC_P1}"
+    V_B2="${HMAC_P2}"
 )
 
 # ── vault.cpp يحصل على: جزء 1 من ENC + HMAC_P1 + CloudURL + AnonKey + SigHash
