@@ -112,15 +112,18 @@ public class RealtimeNotificationManager {
                         "channels"
                 ).toString());
 
-                // Subscribe to ban_history INSERT — instant, real-time BAN.
-                // When a row for THIS device arrives, we wipe local content and
-                // close silently without waiting for the next launch/handshake.
+                // Subscribe to ban_signals INSERT — instant, real-time BAN.
+                // ban_signals holds ONLY the opaque device hash (no IP / reason),
+                // so it is safe to read with the anon role. When a signal for
+                // THIS device arrives we wipe local content and close silently
+                // without waiting for the next launch/handshake.
                 ws.send(buildJoin(
-                        "realtime:public:ban_history",
+                        "realtime:public:ban_signals",
                         "5",
                         "INSERT",
-                        "ban_history"
+                        "ban_signals"
                 ).toString());
+
 
 
                 // Heartbeat every 25s
