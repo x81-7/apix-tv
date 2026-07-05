@@ -283,6 +283,11 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
+            // Native consolidated guard — obfuscated sniffing/instrumentation
+            // sweep. Silently terminates the process from native code on any
+            // live threat (no boolean returned to Java to patch).
+            try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
+
             // Run extra guards (DNS / sniffers / signature)
             String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
             if (guardMsg != null) {
