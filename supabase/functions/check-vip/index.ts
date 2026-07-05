@@ -81,8 +81,9 @@ Deno.serve(async (req) => {
     const now = Date.now();
     const exp = new Date(data.expires_at).getTime();
     const active = exp > now;
+    const vipToken = active ? await signVipToken(deviceId, exp) : null;
     return await encryptedJson(
-      { active, expiresAt: data.expires_at },
+      { active, expiresAt: data.expires_at, vipToken },
       200,
     );
   } catch (e) {
