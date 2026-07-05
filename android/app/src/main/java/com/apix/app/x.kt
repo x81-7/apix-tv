@@ -30,6 +30,15 @@ object x {
     private external fun ne(): Int   // Environment check (n2.cpp)
     private external fun nr(): Int   // Root/Frida check (n3.cpp)
 
+    // ── consolidated native guard (sec.cpp) ────────────────────────
+    // gd() runs every sniffing/instrumentation check with compile-time
+    // obfuscated strings and terminates the process silently on any hit —
+    // there is NO boolean for a patcher to flip.
+    private external fun gd()
+    private external fun vpnRaw(): Int   // 1 = a VPN tunnel interface is up
+    private external fun vt(token: String): Int   // native HS256 VIP verify
+    private external fun pz(): Int       // 1 = native tamper/poison flag set
+
     @JvmStatic fun ka(): String = a()
     @JvmStatic fun kb(): String = b()
     @JvmStatic fun kc(): String = c()
