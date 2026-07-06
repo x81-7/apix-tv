@@ -292,6 +292,60 @@ const SystemSettingsManager: React.FC = () => {
       {/* Server schema (single + multi server) JSON export */}
       <ServerSchemaExporter />
 
+      {/* System / Native config: dynamic key-fetch path + JWT signing secret */}
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <KeyRound className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">إعدادات النظام (المسار الديناميكي + مفتاح JWT)</h3>
+            <p className="text-sm text-muted-foreground">
+              يُحقن المسار ومفتاح التوقيع في الطبقة الأصلية عبر GitHub Secrets (CMakeLists/build.gradle) وفي الوركر عبر Cloudflare.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>المسار الديناميكي لجلب مفتاح فك التشفير (API Path)</Label>
+          <Input
+            value={dynamicPath}
+            onChange={(e) => setDynamicPath(e.target.value.trim())}
+            placeholder="api-v2-secure"
+            className="bg-secondary border-border font-mono text-xs"
+            dir="ltr"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>JWT Secret (مفتاح توقيع الجلسات HS256)</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type={showJwt ? 'text' : 'password'}
+              value={jwtSecret}
+              onChange={(e) => setJwtSecret(e.target.value.trim())}
+              placeholder="مفتاح سري طويل"
+              className="flex-1 bg-secondary border-border font-mono text-xs"
+              dir="ltr"
+            />
+            <Button variant="outline" size="sm" onClick={() => setShowJwt((v) => !v)}>
+              {showJwt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 pt-2">
+          <Button onClick={handleSyncGithub} disabled={syncingGh} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            {syncingGh ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Github className="w-4 h-4 ml-2" />}
+            مزامنة GitHub Secrets
+          </Button>
+          <Button onClick={handleDeployCloudflare} disabled={deployingCf} variant="outline">
+            {deployingCf ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Rocket className="w-4 h-4 ml-2" />}
+            نشر الوركر (Cloudflare)
+          </Button>
+        </div>
+      </div>
+
       {/* Import JSON */}
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <div className="flex items-center gap-3">
