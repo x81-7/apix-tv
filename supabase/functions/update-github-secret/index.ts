@@ -12,6 +12,11 @@ const corsHeaders = {
 const ALLOWED_NAMES = new Set([
   'ADMOB_APP_ID',
   'EXTERNAL_PANEL_DECRYPTION_KEY',
+  // Dynamic key-fetch endpoint path baked into the native layer at build time
+  // (injected via CMakeLists.txt / build.gradle during build_apk.yml).
+  'DYNAMIC_API_PATH',
+  // HS256 signing secret used by check-vip + native x.verifyVip().
+  'VIP_JWT_SECRET',
 ]);
 
 interface PublicKeyResp { key: string; key_id: string }

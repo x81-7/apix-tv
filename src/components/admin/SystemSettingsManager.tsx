@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw, Github, KeyRound, Rocket, Eye, EyeOff } from 'lucide-react';
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +36,99 @@ const SystemSettingsManager: React.FC = () => {
     rotation_days: 7,
     github_branch: 'main',
   });
+
+  // ── Native / System config (dynamic key-fetch path + JWT signing secret) ──
+  const CF_TOKEN_KEY = 'apix_cf_api_token';
+  const [dynamicPath, setDynamicPath] = useState('');
+  const [jwtSecret, setJwtSecret] = useState('');
+  const [showJwt, setShowJwt] = useState(false);
+  const [ghRepo, setGhRepo] = useState('');
+  const [ghToken, setGhToken] = useState('');
+  const [cfAccountId, setCfAccountId] = useState('');
+  const [cfScript, setCfScript] = useState('apix-gateway');
+  const [syncingGh, setSyncingGh] = useState(false);
+  const [deployingCf, setDeployingCf] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [sysRes, secRes, cfRes] = await Promise.all([
+        supabase.from('system_settings').select('value').eq('key', 'system_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'security_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'cloudflare_config').maybeSingle(),
+      ]);
+      const sys = (sysRes.data?.value as any) || {};
+      setDynamicPath(sys.dynamicPath || '');
+      setJwtSecret(sys.jwtSecret || '');
+      const sec = (secRes.data?.value as any) || {};
+      setGhRepo(sec.githubRepo || '');
+      setGhToken(sec.githubToken || '');
+      const cf = (cfRes.data?.value as any) || {};
+      setCfAccountId(cf.accountId || '');
+      setCfScript(cf.scriptName || 'apix-gateway');
+    })();
+  }, []);
+
+  const persistSystemConfig = async () => {
+    await adminDb.upsert(
+      'system_settings',
+      { key: 'system_config', value: { dynamicPath: dynamicPath.trim(), jwtSecret: jwtSecret.trim() }, description: 'Dynamic key-fetch path + JWT signing secret' },
+      true,
+    );
+  };
+
+  const handleSyncGithub = async () => {
+    const path = dynamicPath.trim();
+    const secret = jwtSecret.trim();
+    if (!path && !secret) { toast.error('أدخل المسار الديناميكي أو مفتاح JWT'); return; }
+    if (!ghRepo || !ghToken) { toast.error('اضبط GitHub Repo + Token في قسم الحماية أولاً'); return; }
+    setSyncingGh(true);
+    try {
+      await persistSystemConfig();
+      const jobs: Array<Promise<void>> = [];
+      const push = async (name: string, value: string) => {
+        const { data, error } = await supabase.functions.invoke('update-github-secret', {
+          body: { name, value, githubToken: ghToken, githubRepo: ghRepo },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+      };
+      if (path) jobs.push(push('DYNAMIC_API_PATH', path));
+      if (secret) jobs.push(push('VIP_JWT_SECRET', secret));
+      await Promise.all(jobs);
+      toast.success('تم رفع المسار الديناميكي ومفتاح JWT إلى GitHub Secrets');
+    } catch (e: any) {
+      toast.error(`فشل المزامنة: ${e?.message ?? 'خطأ'}`);
+    } finally {
+      setSyncingGh(false);
+    }
+  };
+
+  const handleDeployCloudflare = async () => {
+    const apiToken = localStorage.getItem(CF_TOKEN_KEY) || '';
+    if (!cfAccountId || !apiToken) { toast.error('اضبط Account ID و API Token في قسم Cloudflare أولاً'); return; }
+    const secret = jwtSecret.trim();
+    if (!secret) { toast.error('أدخل مفتاح JWT لحقنه في الوركر'); return; }
+    setDeployingCf(true);
+    try {
+      await persistSystemConfig();
+      const { data, error } = await supabase.functions.invoke('cloudflare-manager', {
+        body: {
+          action: 'update-secrets',
+          accountId: cfAccountId.trim(),
+          apiToken: apiToken.trim(),
+          scriptName: (cfScript || 'apix-gateway').trim(),
+          secrets: { VIP_JWT_SECRET: secret, DYNAMIC_API_PATH: dynamicPath.trim() },
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'فشل النشر');
+      toast.success('تم حقن مفتاح JWT في الوركر ونشره');
+    } catch (e: any) {
+      toast.error(`فشل نشر الوركر: ${e?.message ?? 'خطأ'}`);
+    } finally {
+      setDeployingCf(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -198,6 +291,60 @@ const SystemSettingsManager: React.FC = () => {
     <div className="space-y-6">
       {/* Server schema (single + multi server) JSON export */}
       <ServerSchemaExporter />
+
+      {/* System / Native config: dynamic key-fetch path + JWT signing secret */}
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <KeyRound className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">إعدادات النظام (المسار الديناميكي + مفتاح JWT)</h3>
+            <p className="text-sm text-muted-foreground">
+              يُحقن المسار ومفتاح التوقيع في الطبقة الأصلية عبر GitHub Secrets (CMakeLists/build.gradle) وفي الوركر عبر Cloudflare.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>المسار الديناميكي لجلب مفتاح فك التشفير (API Path)</Label>
+          <Input
+            value={dynamicPath}
+            onChange={(e) => setDynamicPath(e.target.value.trim())}
+            placeholder="api-v2-secure"
+            className="bg-secondary border-border font-mono text-xs"
+            dir="ltr"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>JWT Secret (مفتاح توقيع الجلسات HS256)</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type={showJwt ? 'text' : 'password'}
+              value={jwtSecret}
+              onChange={(e) => setJwtSecret(e.target.value.trim())}
+              placeholder="مفتاح سري طويل"
+              className="flex-1 bg-secondary border-border font-mono text-xs"
+              dir="ltr"
+            />
+            <Button variant="outline" size="sm" onClick={() => setShowJwt((v) => !v)}>
+              {showJwt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 pt-2">
+          <Button onClick={handleSyncGithub} disabled={syncingGh} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            {syncingGh ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Github className="w-4 h-4 ml-2" />}
+            مزامنة GitHub Secrets
+          </Button>
+          <Button onClick={handleDeployCloudflare} disabled={deployingCf} variant="outline">
+            {deployingCf ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Rocket className="w-4 h-4 ml-2" />}
+            نشر الوركر (Cloudflare)
+          </Button>
+        </div>
+      </div>
 
       {/* Import JSON */}
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">

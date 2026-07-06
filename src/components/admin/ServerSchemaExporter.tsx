@@ -97,12 +97,86 @@ function downloadJson(filename: string, data: unknown) {
   URL.revokeObjectURL(url);
 }
 
+// Deep-link payload the Android player receives from an EXTERNAL server for a
+// SINGLE server (multiServer disabled).
+const SINGLE_SERVER_DEEPLINK = {
+  _readme: {
+    ar: 'نموذج الرابط الخارجي (Deep Link) عند وجود سيرفر واحد. multiServer=false والمشغل يشغّل server مباشرة.',
+    en: 'External deep-link payload for a SINGLE server. multiServer=false; the player uses the single `server` directly.',
+  },
+  version: 1,
+  channelId: 'external-channel-id',
+  name: 'اسم القناة',
+  multiServer: false,
+  playerType: 'auto',
+  server: {
+    url: 'https://server1.example.com/live/stream.m3u8',
+    userAgent: '',
+    referer: '',
+    origin: '',
+    cookie: '',
+    customHeaders: [{ key: 'X-Custom', value: 'value' }],
+    drmScheme: '',
+    drmLicenseUrl: '',
+    drmClearKeyCombined: 'KID:KEY',
+  },
+} as const;
+
+// Deep-link payload for MULTIPLE servers (multiServer enabled → the player
+// shows the "multi-server" switch button and auto-fails-over between them).
+const MULTI_SERVER_DEEPLINK = {
+  _readme: {
+    ar: 'نموذج الرابط الخارجي عند وجود سيرفرات متعددة. multiServer=true فيظهر زر "تعدد السيرفرات" في المشغل، وينتقل تلقائياً للسيرفر التالي عند الفشل حسب الترتيب.',
+    en: 'External deep-link payload for MULTIPLE servers. multiServer=true enables the multi-server switch in the player and auto-failover in order.',
+  },
+  version: 1,
+  channelId: 'external-channel-id',
+  name: 'اسم القناة',
+  multiServer: true,
+  defaultIndex: 0,
+  servers: [
+    {
+      id: 'srv-1',
+      name: 'سيرفر 1',
+      url: 'https://server1.example.com/live/stream.m3u8',
+      playerType: 'auto',
+      userAgent: '',
+      referer: '',
+      customHeaders: [],
+    },
+    {
+      id: 'srv-2',
+      name: 'سيرفر 2 (بديل)',
+      url: 'https://server2.example.com/live/stream.m3u8',
+      playerType: 'exo',
+    },
+    {
+      id: 'srv-3',
+      name: 'سيرفر 3 (Shaka/DASH)',
+      url: 'https://server3.example.com/manifest.mpd',
+      playerType: 'shaka',
+      drmScheme: 'clearkey',
+      drmClearKeyCombined: 'KID:KEY',
+    },
+  ],
+} as const;
+
 const ServerSchemaExporter: React.FC = () => {
   const [loadingSample, setLoadingSample] = useState(false);
 
   const handleDownloadTemplate = () => {
     downloadJson('apix-servers-schema.json', SCHEMA_TEMPLATE);
     toast.success('تم تنزيل قالب صيغة السيرفرات');
+  };
+
+  const handleDownloadSingle = () => {
+    downloadJson('apix-deeplink-single-server.json', SINGLE_SERVER_DEEPLINK);
+    toast.success('تم تنزيل نموذج السيرفر الواحد');
+  };
+
+  const handleDownloadMulti = () => {
+    downloadJson('apix-deeplink-multi-server.json', MULTI_SERVER_DEEPLINK);
+    toast.success('تم تنزيل نموذج السيرفرات المتعددة');
   };
 
   const handleDownloadLiveSample = async () => {
@@ -156,6 +230,12 @@ const ServerSchemaExporter: React.FC = () => {
       <div className="flex flex-wrap gap-3">
         <Button onClick={handleDownloadTemplate} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Download className="w-4 h-4 ml-2" /> تنزيل القالب + الشرح
+        </Button>
+        <Button onClick={handleDownloadSingle} variant="outline">
+          <Download className="w-4 h-4 ml-2" /> نموذج سيرفر واحد (Deep Link)
+        </Button>
+        <Button onClick={handleDownloadMulti} variant="outline">
+          <Download className="w-4 h-4 ml-2" /> نموذج سيرفرات متعددة (Deep Link)
         </Button>
         <Button onClick={handleDownloadLiveSample} disabled={loadingSample} variant="outline">
           {loadingSample ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Download className="w-4 h-4 ml-2" />}
