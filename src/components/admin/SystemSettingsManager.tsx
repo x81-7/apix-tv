@@ -37,6 +37,99 @@ const SystemSettingsManager: React.FC = () => {
     github_branch: 'main',
   });
 
+  // ── Native / System config (dynamic key-fetch path + JWT signing secret) ──
+  const CF_TOKEN_KEY = 'apix_cf_api_token';
+  const [dynamicPath, setDynamicPath] = useState('');
+  const [jwtSecret, setJwtSecret] = useState('');
+  const [showJwt, setShowJwt] = useState(false);
+  const [ghRepo, setGhRepo] = useState('');
+  const [ghToken, setGhToken] = useState('');
+  const [cfAccountId, setCfAccountId] = useState('');
+  const [cfScript, setCfScript] = useState('apix-gateway');
+  const [syncingGh, setSyncingGh] = useState(false);
+  const [deployingCf, setDeployingCf] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [sysRes, secRes, cfRes] = await Promise.all([
+        supabase.from('system_settings').select('value').eq('key', 'system_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'security_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'cloudflare_config').maybeSingle(),
+      ]);
+      const sys = (sysRes.data?.value as any) || {};
+      setDynamicPath(sys.dynamicPath || '');
+      setJwtSecret(sys.jwtSecret || '');
+      const sec = (secRes.data?.value as any) || {};
+      setGhRepo(sec.githubRepo || '');
+      setGhToken(sec.githubToken || '');
+      const cf = (cfRes.data?.value as any) || {};
+      setCfAccountId(cf.accountId || '');
+      setCfScript(cf.scriptName || 'apix-gateway');
+    })();
+  }, []);
+
+  const persistSystemConfig = async () => {
+    await adminDb.upsert(
+      'system_settings',
+      { key: 'system_config', value: { dynamicPath: dynamicPath.trim(), jwtSecret: jwtSecret.trim() }, description: 'Dynamic key-fetch path + JWT signing secret' },
+      true,
+    );
+  };
+
+  const handleSyncGithub = async () => {
+    const path = dynamicPath.trim();
+    const secret = jwtSecret.trim();
+    if (!path && !secret) { toast.error('أدخل المسار الديناميكي أو مفتاح JWT'); return; }
+    if (!ghRepo || !ghToken) { toast.error('اضبط GitHub Repo + Token في قسم الحماية أولاً'); return; }
+    setSyncingGh(true);
+    try {
+      await persistSystemConfig();
+      const jobs: Array<Promise<void>> = [];
+      const push = async (name: string, value: string) => {
+        const { data, error } = await supabase.functions.invoke('update-github-secret', {
+          body: { name, value, githubToken: ghToken, githubRepo: ghRepo },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+      };
+      if (path) jobs.push(push('DYNAMIC_API_PATH', path));
+      if (secret) jobs.push(push('VIP_JWT_SECRET', secret));
+      await Promise.all(jobs);
+      toast.success('تم رفع المسار الديناميكي ومفتاح JWT إلى GitHub Secrets');
+    } catch (e: any) {
+      toast.error(`فشل المزامنة: ${e?.message ?? 'خطأ'}`);
+    } finally {
+      setSyncingGh(false);
+    }
+  };
+
+  const handleDeployCloudflare = async () => {
+    const apiToken = localStorage.getItem(CF_TOKEN_KEY) || '';
+    if (!cfAccountId || !apiToken) { toast.error('اضبط Account ID و API Token في قسم Cloudflare أولاً'); return; }
+    const secret = jwtSecret.trim();
+    if (!secret) { toast.error('أدخل مفتاح JWT لحقنه في الوركر'); return; }
+    setDeployingCf(true);
+    try {
+      await persistSystemConfig();
+      const { data, error } = await supabase.functions.invoke('cloudflare-manager', {
+        body: {
+          action: 'update-secrets',
+          accountId: cfAccountId.trim(),
+          apiToken: apiToken.trim(),
+          scriptName: (cfScript || 'apix-gateway').trim(),
+          secrets: { VIP_JWT_SECRET: secret, DYNAMIC_API_PATH: dynamicPath.trim() },
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'فشل النشر');
+      toast.success('تم حقن مفتاح JWT في الوركر ونشره');
+    } catch (e: any) {
+      toast.error(`فشل نشر الوركر: ${e?.message ?? 'خطأ'}`);
+    } finally {
+      setDeployingCf(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase
