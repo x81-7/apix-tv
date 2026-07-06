@@ -143,6 +143,8 @@ Deno.serve(async (req) => {
       SUPA_ANON: secrets?.SUPA_ANON ?? "",
       ENC_KEY: secrets?.ENC_KEY ?? "",
       ...(secrets?.BAN_ENDPOINT ? { BAN_ENDPOINT: secrets.BAN_ENDPOINT } : {}),
+      ...(secrets?.VIP_JWT_SECRET ? { VIP_JWT_SECRET: secrets.VIP_JWT_SECRET } : {}),
+      ...(secrets?.DYNAMIC_API_PATH ? { DYNAMIC_API_PATH: secrets.DYNAMIC_API_PATH } : {}),
     };
 
     if (action === "deploy") {
