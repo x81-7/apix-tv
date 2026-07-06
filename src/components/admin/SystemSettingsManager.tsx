@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Cloud, Upload, HardDrive, Volume2, Plus, Trash2, RefreshCw, Github, KeyRound, Rocket, Eye, EyeOff } from 'lucide-react';
 import { adminDb } from '@/lib/adminDb';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
