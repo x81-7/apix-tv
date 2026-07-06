@@ -231,6 +231,12 @@ const ServerSchemaExporter: React.FC = () => {
         <Button onClick={handleDownloadTemplate} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Download className="w-4 h-4 ml-2" /> تنزيل القالب + الشرح
         </Button>
+        <Button onClick={handleDownloadSingle} variant="outline">
+          <Download className="w-4 h-4 ml-2" /> نموذج سيرفر واحد (Deep Link)
+        </Button>
+        <Button onClick={handleDownloadMulti} variant="outline">
+          <Download className="w-4 h-4 ml-2" /> نموذج سيرفرات متعددة (Deep Link)
+        </Button>
         <Button onClick={handleDownloadLiveSample} disabled={loadingSample} variant="outline">
           {loadingSample ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Download className="w-4 h-4 ml-2" />}
           تنزيل عيّنة حيّة من القنوات
