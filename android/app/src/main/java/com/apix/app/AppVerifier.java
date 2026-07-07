@@ -154,24 +154,22 @@ public class AppVerifier {
      */
     public String runCheck() {
         if (com.apix.app.BuildConfig.DEBUG) return null;
-        // 1. Live checks (Must run always)
-        if (detectBlockedHash()) return "Blocked version detected";
-        if (detectUnauthorizedVPN()) return "Unauthorized VPN detected";
-        if (detectProxy()) return "Proxy detected";
-        if (detectSniffers()) return "Network sniffer detected";
-        if (detectDebugger()) return "Debugger detected";
-        if (detectFrida()) return "Hacking tool detected";
-        if (detectSecondaryDisplay()) return "Secondary display not allowed";
 
-        // 2. 24h cache for heavy checks
-        if (!shouldRunCheck()) {
-            return null; 
-        }
-        
-        // 3. Heavy checks
-        if (detectCloudPhone()) return "Cloud phone not allowed";
-        if (detectTampering()) return "App files tampered";
-        
+        // فحوصات فورية — لا كاش — في كل تشغيل
+        try { if (com.apix.app.x.hasVpn())    return "VPN_DETECTED"; }    catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger())  return "DANGER_DETECTED"; } catch (Throwable ignored) {}
+        if (detectProxy())              return "Proxy detected";
+        if (detectSniffers())           return "Sniffer detected";
+        if (detectBlockedHash())        return "Blocked version detected";
+        if (detectSecondaryDisplay())   return "Secondary display not allowed";
+
+        // فحوصات ثقيلة — كاش 24 ساعة
+        if (!shouldRunCheck()) return null;
+        if (detectCloudPhone())  return "Cloud phone not allowed";
+        if (detectTampering())   return "App files tampered";
+        if (detectDebugger())    return "Debugger detected";
+        if (detectFrida())       return "Hacking tool detected";
+
         markCheckDone();
         return null;
     }
@@ -186,16 +184,45 @@ public class AppVerifier {
             if (callback != null) callback.onComplete(true, null);
             return;
         }
-        if (!shouldRunCheck()) {
-            if (callback != null) callback.onComplete(true, null);
-            return;
-        }
-        
+
         new Thread(() -> {
-            String result = runCheck();
-            if (callback != null) {
-                callback.onComplete(result == null, result);
+            // فحوصات فورية لا تخضع لكاش الـ 24 ساعة أبداً
+            // تعمل في كل فتح للتطبيق بغض النظر عن آخر فحص
+            if (com.apix.app.x.hasVpn()) {
+                if (callback != null) callback.onComplete(false, "VPN_DETECTED");
+                return;
             }
+            if (com.apix.app.x.hasDanger()) {
+                if (callback != null) callback.onComplete(false, "DANGER_DETECTED");
+                return;
+            }
+            if (detectProxy()) {
+                if (callback != null) callback.onComplete(false, "Proxy detected");
+                return;
+            }
+            if (detectSniffers()) {
+                if (callback != null) callback.onComplete(false, "Sniffer detected");
+                return;
+            }
+            if (detectBlockedHash()) {
+                if (callback != null) callback.onComplete(false, "Blocked version");
+                return;
+            }
+
+            // الفحوصات الثقيلة تخضع للكاش الـ 24 ساعة فقط
+            if (!shouldRunCheck()) {
+                if (callback != null) callback.onComplete(true, null);
+                return;
+            }
+
+            String result = null;
+            if (detectCloudPhone())   result = "Cloud phone not allowed";
+            else if (detectTampering()) result = "App files tampered";
+            else if (detectDebugger())  result = "Debugger detected";
+            else if (detectFrida())     result = "Hacking tool detected";
+
+            if (result == null) markCheckDone();
+            if (callback != null) callback.onComplete(result == null, result);
         }).start();
     }
     
