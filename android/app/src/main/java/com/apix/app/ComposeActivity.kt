@@ -260,38 +260,122 @@ fun AppNavigation(
             runCatching {
                 val url = obj.optString("url")
                 if (url.isBlank()) return@runCatching
-                val title = obj.optString("name", "External")
+
+                val title      = obj.optString("name", obj.optString("title", "External"))
                 val playerKind = obj.optString("player", "exoplayer")
-                val h = obj.optJSONObject("headers")
+                val backupUrl  = obj.optString("backupUrl").takeIf { it.isNotBlank() }
+                val subtitleUrl = obj.optString("subtitleUrl").takeIf { it.isNotBlank() }
+
+                // ── Headers ──────────────────────────────────────────
+                val h  = obj.optJSONObject("headers")
                 val ch = obj.optJSONObject("customHeaders")
-                val drm = obj.optJSONObject("drm")
-                val customMap = if (ch != null) {
-                    val m = mutableMapOf<String, String>()
-                    ch.keys().forEach { k -> m[k] = ch.optString(k) }
-                    m
-                } else null
-                val cfg = PlayerConfig(
-                    url = url,
-                    title = title,
-                    actionType = if (playerKind == "webview") "shaka_web" else "native",
-                    hybridPlayerType = "shaka",
-                    headers = PlayerHeaders(
-                        userAgent = h?.optString("userAgent")?.takeIf { it.isNotBlank() },
-                        referer = h?.optString("referer")?.takeIf { it.isNotBlank() },
-                        cookie = null,
-                        origin = null
-                    ),
-                    customHeaders = customMap,
-                    drm = drm?.let {
-                        PlayerDrm(
-                            licenseUrl = null,
-                            scheme = it.optString("scheme", "clearkey"),
-                            keyId = it.optString("keyId").takeIf { s -> s.isNotBlank() },
-                            key = it.optString("key").takeIf { s -> s.isNotBlank() }
+
+                val customMap = mutableMapOf<String, String>()
+                h?.keys()?.forEach  { k -> h.optString(k).takeIf  { it.isNotBlank() }?.let { v -> customMap[k] = v } }
+                ch?.keys()?.forEach { k -> ch.optString(k).takeIf { it.isNotBlank() }?.let { v -> customMap[k] = v } }
+
+                // ── DRM ───────────────────────────────────────────────
+                val drmObj = obj.optJSONObject("drm")
+                val drm = drmObj?.let {
+                    PlayerDrm(
+                        licenseUrl = it.optString("licenseUrl").takeIf { s -> s.isNotBlank() },
+                        scheme     = it.optString("scheme", "clearkey").ifEmpty { "clearkey" },
+                        keyId      = it.optString("keyId").takeIf { s -> s.isNotBlank() },
+                        key        = it.optString("key").takeIf   { s -> s.isNotBlank() }
+                    )
+                }
+
+                // ── Servers[] — سيرفرات متعددة ─────────────────────
+                val serversArr = obj.optJSONArray("servers")
+                val fallbackServers = mutableListOf<com.apix.app.data.FallbackServerConfig>()
+
+                // backupUrl يصبح أول fallback تلقائياً
+                if (backupUrl != null) {
+                    fallbackServers.add(
+                        com.apix.app.data.FallbackServerConfig(
+                            name    = "احتياطي",
+                            url     = backupUrl,
+                            headers = customMap.toMap(),
+                            drm     = drm
+                        )
+                    )
+                }
+
+                // servers[] من الـ JSON
+                if (serversArr != null) {
+                    for (i in 0 until serversArr.length()) {
+                        val s    = serversArr.optJSONObject(i) ?: continue
+                        val sUrl = s.optString("url").takeIf { it.isNotBlank() } ?: continue
+                        val sName = s.optString("name", "سيرفر ${fallbackServers.size + 1}")
+
+                        // headers خاصة بهذا السيرفر
+                        val sHdrMap = mutableMapOf<String, String>()
+                        s.optJSONObject("headers")?.keys()?.forEach { k ->
+                            s.optJSONObject("headers")?.optString(k)
+                                ?.takeIf { it.isNotBlank() }?.let { sHdrMap[k] = it }
+                        }
+
+                        // DRM خاص بهذا السيرفر — يرث العام إذا لم يكن موجوداً
+                        val sDrm = s.optJSONObject("drm")?.let { d ->
+                            PlayerDrm(
+                                licenseUrl = d.optString("licenseUrl").takeIf { it.isNotBlank() },
+                                scheme     = d.optString("scheme", "clearkey").ifEmpty { "clearkey" },
+                                keyId      = d.optString("keyId").takeIf { it.isNotBlank() },
+                                key        = d.optString("key").takeIf   { it.isNotBlank() }
+                            )
+                        } ?: drm
+
+                        fallbackServers.add(
+                            com.apix.app.data.FallbackServerConfig(
+                                name    = sName,
+                                url     = sUrl,
+                                headers = sHdrMap.ifEmpty { customMap.toMap() },
+                                drm     = sDrm
+                            )
                         )
                     }
+                }
+
+                // ── AudioSources[] ───────────────────────────────────
+                val audioArr = obj.optJSONArray("audioSources")
+                val audioSources = if (audioArr != null) {
+                    (0 until audioArr.length()).mapNotNull { i ->
+                        val a    = audioArr.optJSONObject(i) ?: return@mapNotNull null
+                        val aUrl = a.optString("url").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        com.apix.app.data.AudioSource(
+                            name = a.optString("name", "مصدر ${i + 1}"),
+                            url  = aUrl
+                        )
+                    }
+                } else emptyList()
+
+                // ── بناء PlayerConfig الكامل ─────────────────────────
+                val cfg = PlayerConfig(
+                    url         = url,
+                    title       = title,
+                    actionType  = if (playerKind == "webview") "shaka_web" else "native",
+                    hybridPlayerType = "shaka",
+                    headers     = PlayerHeaders(
+                        userAgent = h?.optString("User-Agent")?.takeIf { it.isNotBlank() }
+                            ?: ch?.optString("User-Agent")?.takeIf { it.isNotBlank() },
+                        referer   = h?.optString("Referer")?.takeIf { it.isNotBlank() }
+                            ?: ch?.optString("Referer")?.takeIf { it.isNotBlank() },
+                        cookie    = h?.optString("Cookie")?.takeIf { it.isNotBlank() },
+                        origin    = h?.optString("Origin")?.takeIf { it.isNotBlank() }
+                    ),
+                    customHeaders   = customMap.ifEmpty { null },
+                    drm             = drm,
+                    backupUrl       = backupUrl,
+                    subtitleUrl     = subtitleUrl,
+                    fallbackServers = fallbackServers,
+                    audioSources    = audioSources,
+                    useLocalProxy   = false
                 )
-                currentScreen = if (playerKind == "webview") Screen.HybridPlayer(cfg, isExternal = true) else Screen.Player(cfg, isExternal = true)
+
+                currentScreen = if (playerKind == "webview")
+                    Screen.HybridPlayer(cfg, isExternal = true)
+                else
+                    Screen.Player(cfg, isExternal = true)
             }
         }
 
