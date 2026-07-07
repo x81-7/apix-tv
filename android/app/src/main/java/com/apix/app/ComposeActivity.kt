@@ -287,16 +287,22 @@ fun AppNavigation(
 
                 // ── Servers[] — سيرفرات متعددة ─────────────────────
                 val serversArr = obj.optJSONArray("servers")
-                val fallbackServers = mutableListOf<com.apix.app.data.FallbackServerConfig>()
+                val fallbackServers = mutableListOf<FallbackServer>()
 
                 // backupUrl يصبح أول fallback تلقائياً
                 if (backupUrl != null) {
                     fallbackServers.add(
-                        com.apix.app.data.FallbackServerConfig(
-                            name    = "احتياطي",
-                            url     = backupUrl,
-                            headers = customMap.toMap(),
-                            drm     = drm
+                        FallbackServer(
+                            name      = "احتياطي",
+                            url       = backupUrl,
+                            userAgent = customMap["User-Agent"],
+                            referer   = customMap["Referer"],
+                            origin    = customMap["Origin"],
+                            cookie    = customMap["Cookie"],
+                            drmScheme = drm?.scheme,
+                            drmKeyId  = drm?.keyId,
+                            drmKey    = drm?.key,
+                            drmLicenseUrl = drm?.licenseUrl
                         )
                     )
                 }
@@ -325,12 +331,19 @@ fun AppNavigation(
                             )
                         } ?: drm
 
+                        val sHeaders = sHdrMap.ifEmpty { customMap }
                         fallbackServers.add(
-                            com.apix.app.data.FallbackServerConfig(
-                                name    = sName,
-                                url     = sUrl,
-                                headers = sHdrMap.ifEmpty { customMap.toMap() },
-                                drm     = sDrm
+                            FallbackServer(
+                                name      = sName,
+                                url       = sUrl,
+                                userAgent = sHeaders["User-Agent"],
+                                referer   = sHeaders["Referer"],
+                                origin    = sHeaders["Origin"],
+                                cookie    = sHeaders["Cookie"],
+                                drmScheme = sDrm?.scheme,
+                                drmKeyId  = sDrm?.keyId,
+                                drmKey    = sDrm?.key,
+                                drmLicenseUrl = sDrm?.licenseUrl
                             )
                         )
                     }
@@ -342,7 +355,7 @@ fun AppNavigation(
                     (0 until audioArr.length()).mapNotNull { i ->
                         val a    = audioArr.optJSONObject(i) ?: return@mapNotNull null
                         val aUrl = a.optString("url").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                        com.apix.app.data.AudioSource(
+                        AudioSource(
                             name = a.optString("name", "مصدر ${i + 1}"),
                             url  = aUrl
                         )
