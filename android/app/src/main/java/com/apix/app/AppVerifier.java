@@ -28,34 +28,25 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/**
- * Application Verifier - Runtime integrity & environment validation.
- * 
- * Supports dynamic hash verification from remote config with 24h cache.
- */
 public class AppVerifier {
-    
+
     private static final String TAG = "av";
     private static AppVerifier instance;
     private Context context;
     private Thread monitorThread;
     private volatile boolean running = false;
-    
+
     private String currentHash = null;
     private int expectedDexCount = -1;
-    
-    // Dynamic allowed hashes from Supabase
+
     private volatile List<String> allowedHashes = new ArrayList<>();
     private volatile List<String> blockedHashes = new ArrayList<>();
     private volatile boolean hashesLoaded = false;
 
-    // One-time validation with EncryptedSharedPreferences fallback
     private static final String PREFS_NAME = "app_vf";
     private static final String KEY_LAST_CHECK = "lc";
-    private static final String KEY_IS_VALID = "iv";
-    private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L; // 24 hours
-    
-    // Dangerous packages
+    private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L;
+
     private static final String[] DP = {
         "com.guoshi.httpcanary", "com.guoshi.httpcanary.premium",
         "com.minhui.networkcapture", "jp.co.because.network.analysis",
@@ -80,13 +71,13 @@ public class AppVerifier {
         "com.parallel.space", "com.parallel.space.lite",
         "com.lbe.parallel.intl", "com.jumobile.smartapp.dual",
     };
-    
+
     private static final String[] CI = {
         "vmos", "redfinger", "nowgg", "cloudphone", "remotegaming",
         "cloud_phone", "virtual_phone", "phonecloud", "genymotion",
         "tencent_cloud", "huawei_cloud", "alicloud", "aws_device_farm",
     };
-    
+
     private static final int[] FP = {27042, 27043};
     private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
@@ -100,76 +91,51 @@ public class AppVerifier {
         this.expectedDexCount = countDex();
         fetchRemoteHashes();
     }
-    
+
     public static synchronized AppVerifier getInstance(Context ctx) {
-        if (instance == null) {
-            instance = new AppVerifier(ctx);
-        }
+        if (instance == null) instance = new AppVerifier(ctx);
         return instance;
     }
 
-    /**
-     * Check if we need to run verification (24h cache)
-     */
     private boolean shouldRunCheck() {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long lastCheck = prefs.getLong(KEY_LAST_CHECK, 0);
         return (System.currentTimeMillis() - lastCheck) >= CHECK_INTERVAL_MS;
     }
 
-    /**
-     * Mark check as completed (save timestamp)
-     */
     private void markCheckDone() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_LAST_CHECK, System.currentTimeMillis())
-            .apply();
+            .edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply();
     }
 
-    /**
-     * Fetch allowed hashes from Supabase system_settings
-     */
     private void fetchRemoteHashes() {
         new Thread(() -> {
-            try {
-                List<String> hashes = SupabaseDataManager.fetchSignatures(context);
-                allowedHashes = hashes;
-            } catch (Exception ignored) {}
-            try {
-                List<String> blocked = SupabaseDataManager.fetchBlockedSignatures(context);
-                blockedHashes = blocked;
-            } catch (Exception ignored) {}
+            try { allowedHashes = SupabaseDataManager.fetchSignatures(context); } catch (Exception ignored) {}
+            try { blockedHashes = SupabaseDataManager.fetchBlockedSignatures(context); } catch (Exception ignored) {}
             hashesLoaded = true;
         }).start();
     }
 
-    public String getCurrentAppHash() {
-        return currentHash;
-    }
-    
-    /**
-     * Run initial check with 24h cache support for heavy tasks ONLY.
-     * Returns null if passed, or error message string.
-     */
+    public String getCurrentAppHash() { return currentHash; }
+
+    // ── الفحص الأولي عند فتح التطبيق ────────────────────────────────
     public String runCheck() {
         if (com.apix.app.BuildConfig.DEBUG) return null;
 
-        // فحوصات فورية — لا كاش — في كل تشغيل
-        try { if (com.apix.app.x.hasVpn())    return "VPN_DETECTED"; }    catch (Throwable ignored) {}
-        try { if (com.apix.app.x.hasDanger())  return "DANGER_DETECTED"; } catch (Throwable ignored) {}
-        if (detectProxy())              return "Proxy detected";
-        if (detectSniffers())           return "Sniffer detected";
-        if (detectBlockedHash())        return "Blocked version detected";
-        if (detectSecondaryDisplay())   return "Secondary display not allowed";
+        // فحوصات فورية — تعمل في كل فتح بدون كاش
+        try { if (com.apix.app.x.hasVpn())   return "VPN_DETECTED";    } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger()) return "DANGER_DETECTED"; } catch (Throwable ignored) {}
+        if (detectProxy())            return "Proxy detected";
+        if (detectSniffers())         return "Sniffer detected";
+        if (detectBlockedHash())      return "Blocked version detected";
+        if (detectSecondaryDisplay()) return "Secondary display not allowed";
 
         // فحوصات ثقيلة — كاش 24 ساعة
         if (!shouldRunCheck()) return null;
-        if (detectCloudPhone())  return "Cloud phone not allowed";
-        if (detectTampering())   return "App files tampered";
-        if (detectDebugger())    return "Debugger detected";
-        if (detectFrida())       return "Hacking tool detected";
-
+        if (detectCloudPhone()) return "Cloud phone not allowed";
+        if (detectTampering())  return "App files tampered";
+        if (detectDebugger())   return "Debugger detected";
+        if (detectFrida())      return "Hacking tool detected";
         markCheckDone();
         return null;
     }
@@ -179,101 +145,76 @@ public class AppVerifier {
         return blockedHashes.contains(currentHash.toLowerCase());
     }
 
+    // ── الفحص غير المتزامن عند فتح التطبيق ──────────────────────────
     public void runCheckAsync(VerifyCallback callback) {
         if (com.apix.app.BuildConfig.DEBUG) {
             if (callback != null) callback.onComplete(true, null);
             return;
         }
-
         new Thread(() -> {
-            // فحوصات فورية لا تخضع لكاش الـ 24 ساعة أبداً
-            // تعمل في كل فتح للتطبيق بغض النظر عن آخر فحص
-            if (com.apix.app.x.hasVpn()) {
-                if (callback != null) callback.onComplete(false, "VPN_DETECTED");
-                return;
-            }
-            if (com.apix.app.x.hasDanger()) {
-                if (callback != null) callback.onComplete(false, "DANGER_DETECTED");
-                return;
-            }
-            if (detectProxy()) {
-                if (callback != null) callback.onComplete(false, "Proxy detected");
-                return;
-            }
-            if (detectSniffers()) {
-                if (callback != null) callback.onComplete(false, "Sniffer detected");
-                return;
-            }
-            if (detectBlockedHash()) {
-                if (callback != null) callback.onComplete(false, "Blocked version");
-                return;
-            }
+            // فحوصات فورية — قبل أي شيء، بدون كاش
+            try { if (com.apix.app.x.hasVpn())   { if (callback != null) callback.onComplete(false, "VPN_DETECTED");    return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.hasDanger()) { if (callback != null) callback.onComplete(false, "DANGER_DETECTED"); return; } } catch (Throwable ignored) {}
+            if (detectProxy())    { if (callback != null) callback.onComplete(false, "Proxy detected");   return; }
+            if (detectSniffers()) { if (callback != null) callback.onComplete(false, "Sniffer detected"); return; }
+            if (detectBlockedHash()) { if (callback != null) callback.onComplete(false, "Blocked version"); return; }
 
-            // الفحوصات الثقيلة تخضع للكاش الـ 24 ساعة فقط
+            // فحوصات ثقيلة — كاش 24 ساعة
             if (!shouldRunCheck()) {
                 if (callback != null) callback.onComplete(true, null);
                 return;
             }
-
             String result = null;
-            if (detectCloudPhone())   result = "Cloud phone not allowed";
-            else if (detectTampering()) result = "App files tampered";
-            else if (detectDebugger())  result = "Debugger detected";
-            else if (detectFrida())     result = "Hacking tool detected";
-
+            if (detectCloudPhone())      result = "Cloud phone not allowed";
+            else if (detectTampering())  result = "App files tampered";
+            else if (detectDebugger())   result = "Debugger detected";
+            else if (detectFrida())      result = "Hacking tool detected";
             if (result == null) markCheckDone();
             if (callback != null) callback.onComplete(result == null, result);
         }).start();
     }
-    
-    private void showDebugToast(final String threatName) {
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            android.widget.Toast.makeText(context, "Alert: Detected " + threatName, android.widget.Toast.LENGTH_LONG).show();
-        });
-    }
 
+    // ── المراقبة المستمرة أثناء الجلسة ──────────────────────────────
     public void startMonitor() {
         if (com.apix.app.BuildConfig.DEBUG) return;
         if (running) return;
         running = true;
-        
+
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    if (detectBlockedHash()) { killApp(); return; }
-                    if (detectSniffers()) { killApp(); return; }
-                    if (detectCloudPhone()) { killApp(); return; }
-                    if (detectSecondaryDisplay()) { killApp(); return; }
-                    if (detectProxy()) { killApp(); return; }
-                    if (detectHostsMod()) { killApp(); return; }
-                    if (detectUnauthorizedVPN()) { killApp(); return; }
+                    try { if (com.apix.app.x.hasVpn())   { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger()) { killApp(); return; } } catch (Throwable ignored) {}
+                    if (detectBlockedHash())         { killApp(); return; }
+                    if (detectSniffers())            { killApp(); return; }
+                    if (detectCloudPhone())          { killApp(); return; }
+                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    if (detectProxy())               { killApp(); return; }
+                    if (detectHostsMod())            { killApp(); return; }
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectPrivateDNS()) { killApp(); return; }
-                    if (detectDebugger()) { killApp(); return; }
-                    if (detectFrida()) { killApp(); return; }
-                    if (detectTampering()) { killApp(); return; }
-                    
+                    if (detectPrivateDNS())          { killApp(); return; }
+                    if (detectDebugger())            { killApp(); return; }
+                    if (detectFrida())               { killApp(); return; }
+                    if (detectTampering())           { killApp(); return; }
+
                     Thread.sleep(5 + (long)(Math.random() * 14));
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception ignored) {}
             }
         }, "t1");
-        
+
         monitorThread.setDaemon(true);
         monitorThread.setPriority(Thread.MAX_PRIORITY);
         monitorThread.start();
     }
 
-    
     public void stopMonitor() {
         running = false;
-        if (monitorThread != null) {
-            monitorThread.interrupt();
-            monitorThread = null;
-        }
+        if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
-    
+
     private void killApp() {
         running = false;
         try {
@@ -292,9 +233,9 @@ public class AppVerifier {
         android.os.Process.killProcess(android.os.Process.myPid());
         System.exit(0);
     }
-    
+
     // ======== DYNAMIC HASH VERIFICATION ========
-    
+
     private boolean detectDynamicHashMismatch() {
         if (!hashesLoaded || allowedHashes.isEmpty()) return false;
         if (currentHash == null) return true;
@@ -302,17 +243,17 @@ public class AppVerifier {
     }
 
     // ======== CLOUD PHONE DETECTION ========
-    
+
     private boolean detectCloudPhone() {
-        String model = Build.MODEL.toLowerCase();
+        String model       = Build.MODEL.toLowerCase();
         String manufacturer = Build.MANUFACTURER.toLowerCase();
-        String brand = Build.BRAND.toLowerCase();
-        String product = Build.PRODUCT.toLowerCase();
-        String device = Build.DEVICE.toLowerCase();
-        String hardware = Build.HARDWARE.toLowerCase();
+        String brand       = Build.BRAND.toLowerCase();
+        String product     = Build.PRODUCT.toLowerCase();
+        String device      = Build.DEVICE.toLowerCase();
+        String hardware    = Build.HARDWARE.toLowerCase();
         String fingerprint = Build.FINGERPRINT.toLowerCase();
-        String board = Build.BOARD.toLowerCase();
-        
+        String board       = Build.BOARD.toLowerCase();
+
         for (String indicator : CI) {
             if (model.contains(indicator) || manufacturer.contains(indicator) ||
                 brand.contains(indicator) || product.contains(indicator) ||
@@ -321,24 +262,17 @@ public class AppVerifier {
                 return true;
             }
         }
-        
+
         if (model.contains("vmos") || Build.DISPLAY.toLowerCase().contains("vmos") ||
             new File("/data/data/com.vmos.pro").exists() ||
-            new File("/data/data/com.vmos.app").exists()) {
-            return true;
-        }
-        
+            new File("/data/data/com.vmos.app").exists()) return true;
+
         String[] cpf = {
-            "/data/data/com.redfinger.app",
-            "/data/data/com.redfinger.cloud",
-            "/data/data/com.nowgg.cloud",
-            "/system/app/VMOSFakeGps",
-            "/data/vmos",
+            "/data/data/com.redfinger.app", "/data/data/com.redfinger.cloud",
+            "/data/data/com.nowgg.cloud", "/system/app/VMOSFakeGps", "/data/vmos",
         };
-        for (String path : cpf) {
-            if (new File(path).exists()) return true;
-        }
-        
+        for (String path : cpf) { if (new File(path).exists()) return true; }
+
         String[] propKeys = {
             "ro.product.model", "ro.product.brand", "ro.product.manufacturer",
             "ro.product.device", "ro.product.name", "ro.build.fingerprint",
@@ -349,26 +283,20 @@ public class AppVerifier {
         for (String key : propKeys) {
             String val = sysProp(key).toLowerCase();
             if (val.contains("vmos") || val.contains("cloud.phone") ||
-                val.contains("redfinger") || val.contains("virtual.device")) {
-                return true;
-            }
+                val.contains("redfinger") || val.contains("virtual.device")) return true;
         }
-
         return false;
     }
 
-    /** Reads a system property without forking a shell process. */
     private static String sysProp(String key) {
         try {
             Class<?> c = Class.forName("android.os.SystemProperties");
             java.lang.reflect.Method get = c.getMethod("get", String.class);
             Object val = get.invoke(null, key);
             return val != null ? val.toString() : "";
-        } catch (Exception e) {
-            return "";
-        }
+        } catch (Exception e) { return ""; }
     }
-    
+
     private boolean detectSecondaryDisplay() {
         try {
             DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
@@ -378,9 +306,8 @@ public class AppVerifier {
                     for (Display display : displays) {
                         if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
                             int flags = display.getFlags();
-                            boolean isVirtual = (flags & Display.FLAG_PRESENTATION) != 0;
-                            boolean isPrivate = (flags & Display.FLAG_PRIVATE) != 0;
-                            if (isVirtual || isPrivate) return true;
+                            if ((flags & Display.FLAG_PRESENTATION) != 0 ||
+                                (flags & Display.FLAG_PRIVATE) != 0) return true;
                         }
                     }
                 }
@@ -388,18 +315,16 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     private boolean detectSniffers() {
         PackageManager pm = context.getPackageManager();
         for (String pkg : DP) {
-            try {
-                pm.getPackageInfo(pkg, 0);
-                return true;
-            } catch (PackageManager.NameNotFoundException ignored) {}
+            try { pm.getPackageInfo(pkg, 0); return true; }
+            catch (PackageManager.NameNotFoundException ignored) {}
         }
         return false;
     }
-    
+
     private boolean detectProxy() {
         String proxyHost = System.getProperty("http.proxyHost");
         if (proxyHost != null && !proxyHost.isEmpty()) return true;
@@ -410,7 +335,7 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     private boolean detectHostsMod() {
         try {
             File hostsFile = new File("/etc/hosts");
@@ -418,7 +343,7 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     private boolean detectUnauthorizedVPN() {
         try {
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -427,22 +352,20 @@ public class AppVerifier {
                 Network activeNetwork = cm.getActiveNetwork();
                 if (activeNetwork != null) {
                     NetworkCapabilities caps = cm.getNetworkCapabilities(activeNetwork);
-                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
                         return !isWhitelistedVPN();
-                    }
                 }
             } else {
                 List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
                 for (NetworkInterface ni : interfaces) {
-                    if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp")) {
+                    if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))
                         return !isWhitelistedVPN();
-                    }
                 }
             }
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     private boolean isWhitelistedVPN() {
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
@@ -462,7 +385,7 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     @SuppressWarnings("deprecation")
     private String computeHash() {
         try {
@@ -483,7 +406,7 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return null;
     }
-    
+
     private String hashSig(Signature sig) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -493,7 +416,7 @@ public class AppVerifier {
             return sb.toString();
         } catch (Exception e) { return null; }
     }
-    
+
     private boolean detectPrivateDNS() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
@@ -514,15 +437,12 @@ public class AppVerifier {
         }
         return false;
     }
-    
+
     private boolean detectDebugger() {
         try {
             ApplicationInfo appInfo = context.getApplicationInfo();
-            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
-                return false; // Debug build - allow testing
-            }
+            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) return false;
         } catch (Exception ignored) {}
-        
         if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return true;
         try {
             BufferedReader reader = new BufferedReader(
@@ -539,14 +459,11 @@ public class AppVerifier {
         } catch (Exception ignored) {}
         return false;
     }
-    
+
     private boolean detectFrida() {
         for (int port : FP) {
-            try {
-                java.net.Socket socket = new java.net.Socket("127.0.0.1", port);
-                socket.close();
-                return true;
-            } catch (Exception ignored) {}
+            try { java.net.Socket s = new java.net.Socket("127.0.0.1", port); s.close(); return true; }
+            catch (Exception ignored) {}
         }
         try {
             BufferedReader reader = new BufferedReader(
@@ -557,17 +474,16 @@ public class AppVerifier {
             }
             reader.close();
         } catch (Exception ignored) {}
-        File fp1 = new File("/data/local/tmp/frida-server");
-        File fp2 = new File("/data/local/tmp/re.frida.server");
-        if (fp1.exists() || fp2.exists()) return true;
+        if (new File("/data/local/tmp/frida-server").exists() ||
+            new File("/data/local/tmp/re.frida.server").exists()) return true;
         return false;
     }
-    
+
     private boolean detectTampering() {
         if (expectedDexCount <= 0) return false;
         return countDex() != expectedDexCount;
     }
-    
+
     private int countDex() {
         try {
             String apkPath = context.getApplicationInfo().sourceDir;
