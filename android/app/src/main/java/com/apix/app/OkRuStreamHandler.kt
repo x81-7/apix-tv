@@ -9,14 +9,26 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 
 object OkRuStreamHandler {
 
     private const val T = "OkRu"
 
-    // تم وضع الدالة هنا بالداخل لحل مشكلة (Unresolved reference)
+    // 1. ذاكرة مؤقتة لحفظ الروابط بشكل مستقل لكل قناة (videoId)
+    private val linksCache = ConcurrentHashMap<String, String>()
+
     fun isOkRuPayload(json: JSONObject): Boolean {
         return json.optString("type", "") == "okru_extractor"
+    }
+
+    // دالة تقوم باستدعائها من المشغل في حال فشل الرابط (Error Listener)
+    // لكي يتم مسح الرابط التالف وإجبار الملف على جلب رابط جديد في المحاولة القادمة
+    fun removeFailedLink(videoId: String) {
+        if (linksCache.containsKey(videoId)) {
+            linksCache.remove(videoId)
+            Log.d(T, "Removed failed link from cache for videoId: $videoId")
+        }
     }
 
     suspend fun loadStream(
@@ -37,34 +49,32 @@ object OkRuStreamHandler {
             return@withContext null
         }
 
-        // استخراج الرابط الحقيقي من OK.ru
-        val rawUrl = extractFromOkRu(videoId, cookie, tkn, userAgent)
-            ?: return@withContext null
+        // 2. التحقق من الذاكرة المؤقتة أولاً
+        var finalUrl = linksCache[videoId]
 
-        // تمرير الرابط للبروكسي المحلي
-        val proxiedUrl = try {
-            val hdrs = HashMap<String, String>()
-            hdrs["Cookie"]     = cookie
-            hdrs["User-Agent"] = userAgent
-            hdrs["Referer"]    = "https://ok.ru/video/$videoId"
-            hdrs["Connection"] = "close"
-            LocalStreamServer.setHeaders(hdrs)
-            LocalStreamServer.ensureStarted()
-            LocalStreamServer.wrap(rawUrl)
-        } catch (e: Exception) {
-            Log.w(T, "proxy wrap failed")
+        // إذا لم يكن الرابط محفوظاً، نقوم بعملية الجلب
+        if (finalUrl == null) {
+            Log.d(T, "Fetching new link for videoId: $videoId")
+            finalUrl = extractFromOkRu(videoId, cookie, tkn, userAgent)
+            
+            // إذا نجح الجلب، نحفظ الرابط في الذاكرة المؤقتة
+            if (finalUrl != null) {
+                linksCache[videoId] = finalUrl
+            }
+        } else {
+            Log.d(T, "Using cached link for videoId: $videoId")
+        }
+
+        // إذا فشل الاستخراج ولم يكن هناك رابط محفوظ
+        if (finalUrl == null) {
             return@withContext null
         }
 
+        // 3. تمرير الرابط النهائي مباشرة بدون بروكسي محلي وبدون أي هيدرات (Headers)
         baseConfig.copy(
-            url = proxiedUrl,
-            headers = PlayerHeaders(
-                userAgent = userAgent,
-                referer   = "https://ok.ru/video/$videoId",
-                cookie    = null,
-                origin    = "https://ok.ru"
-            ),
-            customHeaders = null 
+            url = finalUrl,
+            headers = null, // تعطيل الهيدرات تماماً كما طلبت
+            customHeaders = null // تعطيل الهيدرات المخصصة
         )
     }
 
@@ -83,6 +93,7 @@ object OkRuStreamHandler {
             conn.connectTimeout = 12000
             conn.readTimeout    = 15000
 
+            // هذه الهيدرات تستخدم فقط أثناء "عملية الجلب" وليس للمشغل
             conn.setRequestProperty("Content-Type",  "application/x-www-form-urlencoded")
             conn.setRequestProperty("User-Agent",    userAgent)
             conn.setRequestProperty("Cookie",        cookie)
