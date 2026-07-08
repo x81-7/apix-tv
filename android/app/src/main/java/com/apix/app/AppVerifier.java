@@ -123,8 +123,8 @@ public class AppVerifier {
         if (com.apix.app.BuildConfig.DEBUG) return null;
 
         // فحوصات فورية — تعمل في كل فتح بدون كاش
-        try { if (com.apix.app.x.hasVpn())   return "VPN_DETECTED";    } catch (Throwable ignored) {}
-        try { if (com.apix.app.x.hasDanger()) return "DANGER_DETECTED"; } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.vpnTunnelUp()) return "VPN_DETECTED";    } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger())   return "DANGER_DETECTED"; } catch (Throwable ignored) {}
         if (detectProxy())            return "Proxy detected";
         if (detectSniffers())         return "Sniffer detected";
         if (detectBlockedHash())      return "Blocked version detected";
@@ -153,8 +153,8 @@ public class AppVerifier {
         }
         new Thread(() -> {
             // فحوصات فورية — قبل أي شيء، بدون كاش
-            try { if (com.apix.app.x.hasVpn())   { if (callback != null) callback.onComplete(false, "VPN_DETECTED");    return; } } catch (Throwable ignored) {}
-            try { if (com.apix.app.x.hasDanger()) { if (callback != null) callback.onComplete(false, "DANGER_DETECTED"); return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "VPN_DETECTED");    return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "DANGER_DETECTED"); return; } } catch (Throwable ignored) {}
             if (detectProxy())    { if (callback != null) callback.onComplete(false, "Proxy detected");   return; }
             if (detectSniffers()) { if (callback != null) callback.onComplete(false, "Sniffer detected"); return; }
             if (detectBlockedHash()) { if (callback != null) callback.onComplete(false, "Blocked version"); return; }
@@ -183,8 +183,8 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    try { if (com.apix.app.x.hasVpn())   { killApp(); return; } } catch (Throwable ignored) {}
-                    try { if (com.apix.app.x.hasDanger()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectSniffers())            { killApp(); return; }
                     if (detectCloudPhone())          { killApp(); return; }
