@@ -1,429 +1,558 @@
-package com.apix.app.ui.screens
+package com.apix.app;
 
-import android.net.Uri
-import android.util.Log
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.apix.app.data.PlayerConfig
-import com.apix.app.data.PlayerHeaders
-import com.apix.app.ui.theme.Gold
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.PrintWriter
-import java.net.HttpURLConnection
-import java.net.ServerSocket
-import java.net.Socket
-import java.net.URL
-import java.net.URLDecoder
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.concurrent.thread
+import android.app.ActivityManager;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.hardware.display.DisplayManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.os.Build;
+import android.os.Debug;
+import android.util.Log;
+import android.view.Display;
 
-// ── Local DASH Server ───────────────────────────────────────────────────────
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
-private object YtDashServer {
+/**
+ * Application Verifier - Runtime integrity & environment validation.
+ * 
+ * Supports dynamic hash verification from remote config with 24h cache.
+ */
+public class AppVerifier {
+    
+    private static final String TAG = "av";
+    private static AppVerifier instance;
+    private Context context;
+    private Thread monitorThread;
+    private volatile boolean running = false;
+    
+    private String currentHash = null;
+    private int expectedDexCount = -1;
+    
+    // Dynamic allowed hashes from Supabase
+    private volatile List<String> allowedHashes = new ArrayList<>();
+    private volatile List<String> blockedHashes = new ArrayList<>();
+    private volatile boolean hashesLoaded = false;
 
-    private var serverSocket: ServerSocket? = null
-    private var port: Int = 0
-    private val manifests = ConcurrentHashMap<String, String>()
+    // One-time validation with EncryptedSharedPreferences fallback
+    private static final String PREFS_NAME = "app_vf";
+    private static final String KEY_LAST_CHECK = "lc";
+    private static final String KEY_IS_VALID = "iv";
+    private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L; // 24 hours
+    
+    // Dangerous packages
+    private static final String[] DP = {
+        "com.guoshi.httpcanary", "com.guoshi.httpcanary.premium",
+        "com.minhui.networkcapture", "jp.co.because.network.analysis",
+        "com.charles.proxy", "com.egorovandreyrm.pcapremote",
+        "app.greyshirts.sslcapture", "com.reqbin.httpbin",
+        "io.anyline.xposed", "de.robv.android.xposed.installer",
+        "org.lsposed.manager", "com.topjohnwu.magisk",
+        "eu.chainfire.supersu", "me.weishu.exp",
+        "com.saurik.substrate", "com.zachspong.temprootremovejb",
+        "com.mt.mtmanager", "bin.mt.plus",
+        "com.apktool.apktools", "com.jrummyapps.rootbrowser",
+        "com.noshufou.android.su", "com.koushikdutta.superuser",
+        "com.chelpus.lackypatch",
+        "com.android.vending.billing.InAppBillingService.LACK",
+        "com.ramdroid.appquarantine",
+        "re.frida.server", "com.frida",
+        "com.redfinger.app", "com.redfinger.cloud",
+        "com.nowgg.cloud", "com.netease.mumu",
+        "com.microvirt.memuime", "com.bignox.appcenter",
+        "com.ldmnq.launcher3", "com.ldmnq.launcher",
+        "com.kaopu.gameassistant", "com.excelliance.multiaccount",
+        "com.parallel.space", "com.parallel.space.lite",
+        "com.lbe.parallel.intl", "com.jumobile.smartapp.dual",
+    };
+    
+    private static final String[] CI = {
+        "vmos", "redfinger", "nowgg", "cloudphone", "remotegaming",
+        "cloud_phone", "virtual_phone", "phonecloud", "genymotion",
+        "tencent_cloud", "huawei_cloud", "alicloud", "aws_device_farm",
+    };
+    
+    private static final int[] FP = {27042, 27043};
+    private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
-    @Synchronized
-    fun ensureRunning() {
-        if (serverSocket != null && !serverSocket!!.isClosed) return
-        try {
-            serverSocket = ServerSocket(0)
-            port = serverSocket!!.localPort
-            thread(isDaemon = true) {
-                while (serverSocket != null && !serverSocket!!.isClosed) {
-                    try { handleClient(serverSocket!!.accept()) } catch (_: Exception) {}
-                }
-            }
-        } catch (e: Exception) { Log.e("YtDash", "server start failed", e) }
+    public interface VerifyCallback {
+        void onComplete(boolean passed, String failReason);
     }
 
-    fun register(xml: String): String? {
-        if (port == 0) return null
-        val id = UUID.randomUUID().toString().replace("-", "")
-        manifests[id] = xml
-        return "http://127.0.0.1:$port/$id.mpd"
+    private AppVerifier(Context ctx) {
+        this.context = ctx.getApplicationContext();
+        this.currentHash = computeHash();
+        this.expectedDexCount = countDex();
+        fetchRemoteHashes();
+    }
+    
+    public static synchronized AppVerifier getInstance(Context ctx) {
+        if (instance == null) {
+            instance = new AppVerifier(ctx);
+        }
+        return instance;
     }
 
-    private fun handleClient(client: Socket) {
-        thread(isDaemon = true) {
+    /**
+     * Check if we need to run verification (24h cache)
+     */
+    private boolean shouldRunCheck() {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        long lastCheck = prefs.getLong(KEY_LAST_CHECK, 0);
+        return (System.currentTimeMillis() - lastCheck) >= CHECK_INTERVAL_MS;
+    }
+
+    /**
+     * Mark check as completed (save timestamp)
+     */
+    private void markCheckDone() {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LAST_CHECK, System.currentTimeMillis())
+            .apply();
+    }
+
+    /**
+     * Fetch allowed hashes from Supabase system_settings
+     */
+    private void fetchRemoteHashes() {
+        new Thread(() -> {
             try {
-                client.use {
-                    val reader = BufferedReader(InputStreamReader(it.getInputStream()))
-                    val writer = PrintWriter(it.getOutputStream(), true)
-                    val line = reader.readLine() ?: return@thread
-                    if (!line.startsWith("GET")) return@thread
-                    val id = line.split(" ").getOrNull(1)
-                        ?.trimStart('/')?.removeSuffix(".mpd") ?: return@thread
-                    val xml = manifests[id]
-                    if (xml != null) {
-                        writer.print("HTTP/1.1 200 OK\r\n")
-                        writer.print("Content-Type: application/dash+xml\r\n")
-                        writer.print("Access-Control-Allow-Origin: *\r\n")
-                        writer.print("Connection: close\r\n\r\n")
-                        writer.print(xml)
-                    } else {
-                        writer.print("HTTP/1.1 404 Not Found\r\n\r\n")
-                    }
-                    writer.flush()
-                }
-            } catch (_: Exception) {}
-        }
-    }
-}
-
-// ── YouTube Extractor (بدون NewPipe — يعمل بدون dependency خارجي) ───────────
-
-private const val YT_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-private const val YT_API = "https://www.youtube.com/youtubei/v1/player?key=$YT_KEY"
-private val YTUA = "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
-
-data class YtStreamInfo(
-    val url: String,
-    val mimeType: String,
-    val height: Int,
-    val initRange: String?,
-    val indexRange: String?
-)
-
-data class YtAudioInfo(
-    val url: String,
-    val mimeType: String,
-    val bitrate: Int,
-    val initRange: String?,
-    val indexRange: String?,
-    val language: String
-)
-
-private suspend fun extractYouTube(videoId: String): List<String> = withContext(Dispatchers.IO) {
-    val results = mutableListOf<String>()
-    try {
-        // ── YouTube Internal API (مشابه لـ NewPipe) ──────────────────────
-        val body = """
-        {
-          "videoId": "$videoId",
-          "context": {
-            "client": {
-              "clientName": "ANDROID",
-              "clientVersion": "19.09.37",
-              "androidSdkVersion": 30,
-              "userAgent": "$YTUA",
-              "hl": "ar",
-              "timeZone": "Asia/Riyadh",
-              "utcOffsetMinutes": 180
-            }
-          },
-          "params": "2AMBkaGB"
-        }
-        """.trimIndent()
-
-        val conn = URL(YT_API).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.doOutput = true
-        conn.connectTimeout = 15000
-        conn.readTimeout = 20000
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("User-Agent", YTUA)
-        conn.setRequestProperty("X-Youtube-Client-Name", "3")
-        conn.setRequestProperty("X-Youtube-Client-Version", "19.09.37")
-        conn.setRequestProperty("Origin", "https://www.youtube.com")
-        conn.outputStream.write(body.toByteArray())
-
-        val response = conn.inputStream.bufferedReader().readText()
-        conn.disconnect()
-
-        val root = JSONObject(response)
-        val streaming = root
-            .optJSONObject("streamingData") ?: return@withContext results
-
-        val duration = root
-            .optJSONObject("videoDetails")
-            ?.optLong("lengthSeconds") ?: 3600L
-
-        // ── Adaptive Formats (فيديو + صوت منفصل) ────────────────────────
-        val adaptive = streaming.optJSONArray("adaptiveFormats")
-        val videoStreams = mutableListOf<YtStreamInfo>()
-        val audioStreams = mutableListOf<YtAudioInfo>()
-
-        if (adaptive != null) {
-            for (i in 0 until adaptive.length()) {
-                val fmt = adaptive.getJSONObject(i)
-                val url = fmt.optString("url").ifEmpty {
-                    decipher(fmt.optString("signatureCipher", fmt.optString("cipher", "")))
-                }
-                if (url.isEmpty()) continue
-
-                val mime = fmt.optString("mimeType", "")
-                val itag = fmt.optInt("itag", 0)
-
-                when {
-                    mime.startsWith("video/") && !fmt.has("audioQuality") -> {
-                        val height = fmt.optInt("height", 0)
-                        val initR = fmt.optJSONObject("initRange")?.let {
-                            "${it.optString("start")}-${it.optString("end")}"
-                        }
-                        val indexR = fmt.optJSONObject("indexRange")?.let {
-                            "${it.optString("start")}-${it.optString("end")}"
-                        }
-                        videoStreams.add(YtStreamInfo(
-                            url = url,
-                            mimeType = mime.substringBefore(";"),
-                            height = height,
-                            initRange = initR,
-                            indexRange = indexR
-                        ))
-                    }
-                    mime.startsWith("audio/") -> {
-                        val br = fmt.optInt("bitrate", 128000)
-                        val initR = fmt.optJSONObject("initRange")?.let {
-                            "${it.optString("start")}-${it.optString("end")}"
-                        }
-                        val indexR = fmt.optJSONObject("indexRange")?.let {
-                            "${it.optString("start")}-${it.optString("end")}"
-                        }
-                        val lang = fmt.optJSONObject("audioTrack")
-                            ?.optString("id", "ar")
-                            ?.substringBefore(".") ?: "ar"
-                        audioStreams.add(YtAudioInfo(
-                            url = url,
-                            mimeType = mime.substringBefore(";"),
-                            bitrate = br,
-                            initRange = initR,
-                            indexRange = indexR,
-                            language = lang.uppercase()
-                        ))
-                    }
-                }
-            }
-        }
-
-        // ── Muxed Formats (احتياطي: فيديو+صوت مدمج) ─────────────────────
-        val muxed = streaming.optJSONArray("formats")
-        val muxedLinks = mutableListOf<Triple<String, Int, String>>()
-        if (muxed != null) {
-            for (i in 0 until muxed.length()) {
-                val fmt = muxed.getJSONObject(i)
-                val url = fmt.optString("url")
-                if (url.isEmpty()) continue
-                val height = fmt.optInt("height", 0)
-                val mime = fmt.optString("mimeType", "video/mp4")
-                muxedLinks.add(Triple(url, height, mime.substringBefore(";")))
-            }
-        }
-
-        // ── بناء DASH Manifest ────────────────────────────────────────────
-        YtDashServer.ensureRunning()
-
-        // ترتيب الفيديو من الأعلى للأسفل
-        val sortedVideo = videoStreams
-            .distinctBy { it.height }
-            .sortedByDescending { it.height }
-
-        // تجميع الصوت حسب اللغة
-        val audioByLang = audioStreams.groupBy { it.language }
-
-        for (video in sortedVideo) {
-            // أفضل صوت متوافق مع مشفّر الفيديو
-            val preferWebm = video.mimeType.contains("webm")
-            val bestAudios = if (audioByLang.isEmpty()) {
-                emptyList()
-            } else {
-                // أخذ أفضل track لكل لغة
-                audioByLang.values.mapNotNull { tracks ->
-                    tracks.sortedWith(
-                        compareByDescending<YtAudioInfo> {
-                            if (preferWebm) it.mimeType.contains("webm") else it.mimeType.contains("mp4")
-                        }.thenByDescending { it.bitrate }
-                    ).firstOrNull()
-                }
-            }
-
-            val xml = buildDashXml(video, bestAudios, duration)
-            val localUrl = YtDashServer.register(xml)
-            if (localUrl != null) results.add(localUrl)
-        }
-
-        // إضافة Muxed كـ fallback آخر
-        muxedLinks.sortedByDescending { it.second }.forEach { (url, _, _) ->
-            results.add(url)
-        }
-
-    } catch (e: Exception) {
-        Log.e("YtExtractor", "extraction failed", e)
-    }
-    results
-}
-
-// ── Signature Decipher (بسيط — للروابط المشفرة) ────────────────────────────
-private fun decipher(cipher: String): String {
-    return try {
-        val params = cipher.split("&").associate {
-            val (k, v) = it.split("=", limit = 2)
-            k to URLDecoder.decode(v, "UTF-8")
-        }
-        val url  = params["url"] ?: return ""
-        val sig  = params["s"]   ?: return url
-        val sp   = params["sp"]  ?: "signature"
-        "$url&$sp=$sig"
-    } catch (_: Exception) { "" }
-}
-
-// ── DASH XML Builder ────────────────────────────────────────────────────────
-private fun buildDashXml(
-    video: YtStreamInfo,
-    audios: List<YtAudioInfo>,
-    durationSec: Long
-): String {
-    val sb = StringBuilder()
-    sb.append("""<?xml version="1.0" encoding="UTF-8"?>""")
-    sb.append("""<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static" minBufferTime="PT5S" mediaPresentationDuration="PT${durationSec}S">""")
-    sb.append("<Period>")
-
-    // Video
-    val vCodec = if (video.mimeType.contains("webm")) "vp9" else "avc1.4d401f"
-    val vSeg = if (video.initRange != null && video.indexRange != null)
-        """<SegmentBase indexRange="${video.indexRange}"><Initialization range="${video.initRange}"/></SegmentBase>""" else ""
-    sb.append("""<AdaptationSet mimeType="${video.mimeType}" subsegmentAlignment="true">""")
-    sb.append("""<Representation id="v${video.height}" bandwidth="4000000" height="${video.height}" codecs="$vCodec">""")
-    sb.append("""<BaseURL>${esc(video.url)}</BaseURL>$vSeg</Representation></AdaptationSet>""")
-
-    // Audio tracks
-    audios.forEachIndexed { i, audio ->
-        val aCodec = if (audio.mimeType.contains("webm")) "opus" else "mp4a.40.2"
-        val aSeg = if (audio.initRange != null && audio.indexRange != null)
-            """<SegmentBase indexRange="${audio.indexRange}"><Initialization range="${audio.initRange}"/></SegmentBase>""" else ""
-        sb.append("""<AdaptationSet mimeType="${audio.mimeType}" subsegmentAlignment="true" lang="${audio.language.lowercase()}">""")
-        sb.append("""<Representation id="a$i" bandwidth="${audio.bitrate}" codecs="$aCodec">""")
-        sb.append("""<BaseURL>${esc(audio.url)}</BaseURL>$aSeg</Representation></AdaptationSet>""")
+                List<String> hashes = SupabaseDataManager.fetchSignatures(context);
+                allowedHashes = hashes;
+            } catch (Exception ignored) {}
+            try {
+                List<String> blocked = SupabaseDataManager.fetchBlockedSignatures(context);
+                blockedHashes = blocked;
+            } catch (Exception ignored) {}
+            hashesLoaded = true;
+        }).start();
     }
 
-    sb.append("</Period></MPD>")
-    return sb.toString()
-}
+    public String getCurrentAppHash() {
+        return currentHash;
+    }
+    
+    /**
+     * Run initial check with 24h cache support for heavy tasks ONLY.
+     * Returns null if passed, or error message string.
+     */
+    public String runCheck() {
+        if (com.apix.app.BuildConfig.DEBUG) return null;
+        // 1. Live checks (Must run always)
+        if (detectBlockedHash()) return "Blocked version detected";
+        if (detectUnauthorizedVPN()) return "Unauthorized VPN detected";
+        if (detectProxy()) return "Proxy detected";
+        if (detectSniffers()) return "Network sniffer detected";
+        if (detectDebugger()) return "Debugger detected";
+        if (detectFrida()) return "Hacking tool detected";
+        if (detectSecondaryDisplay()) return "Secondary display not allowed";
 
-private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        // 2. 24h cache for heavy checks
+        if (!shouldRunCheck()) {
+            return null; 
+        }
+        
+        // 3. Heavy checks
+        if (detectCloudPhone()) return "Cloud phone not allowed";
+        if (detectTampering()) return "App files tampered";
+        
+        markCheckDone();
+        return null;
+    }
 
-// ── Main Composable ─────────────────────────────────────────────────────────
+    private boolean detectBlockedHash() {
+        if (!hashesLoaded || blockedHashes.isEmpty() || currentHash == null) return false;
+        return blockedHashes.contains(currentHash.toLowerCase());
+    }
 
-@Composable
-fun YouTubeSnifferScreen(
-    youtubeUrl: String,
-    config: PlayerConfig,
-    onBack: () -> Unit,
-    onStreamReady: (String) -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    var phase by remember { mutableStateOf("loading") }
-    var streams by remember { mutableStateOf<List<String>>(emptyList()) }
+    public void runCheckAsync(VerifyCallback callback) {
+        if (com.apix.app.BuildConfig.DEBUG) {
+            if (callback != null) callback.onComplete(true, null);
+            return;
+        }
+        if (!shouldRunCheck()) {
+            if (callback != null) callback.onComplete(true, null);
+            return;
+        }
+        
+        new Thread(() -> {
+            String result = runCheck();
+            if (callback != null) {
+                callback.onComplete(result == null, result);
+            }
+        }).start();
+    }
+    
+    private void showDebugToast(final String threatName) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(context, "Alert: Detected " + threatName, android.widget.Toast.LENGTH_LONG).show();
+        });
+    }
 
-    // استخراج videoId
-    val videoId = remember(youtubeUrl) {
+    public void startMonitor() {
+        if (com.apix.app.BuildConfig.DEBUG) return;
+        if (running) return;
+        running = true;
+        
+        monitorThread = new Thread(() -> {
+            while (running) {
+                try {
+                    if (detectBlockedHash()) { killApp(); return; }
+                    if (detectSniffers()) { killApp(); return; }
+                    if (detectCloudPhone()) { killApp(); return; }
+                    if (detectSecondaryDisplay()) { killApp(); return; }
+                    if (detectProxy()) { killApp(); return; }
+                    if (detectHostsMod()) { killApp(); return; }
+                    if (detectUnauthorizedVPN()) { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp(); return; }
+                    if (detectPrivateDNS()) { killApp(); return; }
+                    if (detectDebugger()) { killApp(); return; }
+                    if (detectFrida()) { killApp(); return; }
+                    if (detectTampering()) { killApp(); return; }
+                    
+                    Thread.sleep(5 + (long)(Math.random() * 14));
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception ignored) {}
+            }
+        }, "t1");
+        
+        monitorThread.setDaemon(true);
+        monitorThread.setPriority(Thread.MAX_PRIORITY);
+        monitorThread.start();
+    }
+
+    
+    public void stopMonitor() {
+        running = false;
+        if (monitorThread != null) {
+            monitorThread.interrupt();
+            monitorThread = null;
+        }
+    }
+    
+    private void killApp() {
+        running = false;
         try {
-            val uri = Uri.parse(youtubeUrl)
-            uri.getQueryParameter("v")
-                ?: uri.pathSegments.lastOrNull()
-                ?: youtubeUrl.substringAfter("v=").substringBefore("&")
-        } catch (_: Exception) { "" }
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+                if (processes != null) {
+                    for (ActivityManager.RunningAppProcessInfo proc : processes) {
+                        if (proc.processName.contains(context.getPackageName())) {
+                            android.os.Process.killProcess(proc.pid);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(0);
+    }
+    
+    // ======== DYNAMIC HASH VERIFICATION ========
+    
+    private boolean detectDynamicHashMismatch() {
+        if (!hashesLoaded || allowedHashes.isEmpty()) return false;
+        if (currentHash == null) return true;
+        return !allowedHashes.contains(currentHash.toLowerCase());
     }
 
-    LaunchedEffect(videoId) {
-        if (videoId.isEmpty()) { phase = "error"; return@LaunchedEffect }
-        phase = "loading"
-        val result = extractYouTube(videoId)
-        if (result.isEmpty()) {
-            phase = "error"
-        } else {
-            streams = result
-            val primaryStream = result.first()
-            val playerConfig = config.copy(
-                url           = primaryStream,
-                drm           = null,
-                drmLicenseHeaders = null,
-                useLocalProxy = false,
-                headers       = PlayerHeaders(
-                    userAgent = YTUA,
-                    referer   = "https://www.youtube.com/",
-                    origin    = "https://www.youtube.com"
-                ),
-                // السيرفرات المتبقية كـ fallback
-                fallbackServers = result.drop(1).mapIndexed { i, url ->
-                    com.apix.app.data.FallbackServer(
-                        name = "جودة ${i + 2}",
-                        url  = url
-                    )
-                }
-            )
-            onStreamReady(primaryStream)
-            phase = "playing"
-            // نمرر الـ config للـ PlayerScreen عبر onStreamReady
-            // لكن نحتاج navigateTo — سنعالج هذا عبر ComposeActivity
+    // ======== CLOUD PHONE DETECTION ========
+    
+    private boolean detectCloudPhone() {
+        String model = Build.MODEL.toLowerCase();
+        String manufacturer = Build.MANUFACTURER.toLowerCase();
+        String brand = Build.BRAND.toLowerCase();
+        String product = Build.PRODUCT.toLowerCase();
+        String device = Build.DEVICE.toLowerCase();
+        String hardware = Build.HARDWARE.toLowerCase();
+        String fingerprint = Build.FINGERPRINT.toLowerCase();
+        String board = Build.BOARD.toLowerCase();
+        
+        for (String indicator : CI) {
+            if (model.contains(indicator) || manufacturer.contains(indicator) ||
+                brand.contains(indicator) || product.contains(indicator) ||
+                device.contains(indicator) || hardware.contains(indicator) ||
+                fingerprint.contains(indicator) || board.contains(indicator)) {
+                return true;
+            }
         }
-    }
-
-    when (phase) {
-        "playing" -> {
-            val playerConfig = config.copy(
-                url           = streams.firstOrNull() ?: "",
-                drm           = null,
-                drmLicenseHeaders = null,
-                useLocalProxy = false,
-                headers       = PlayerHeaders(
-                    userAgent = YTUA,
-                    referer   = "https://www.youtube.com/",
-                    origin    = "https://www.youtube.com"
-                ),
-                fallbackServers = streams.drop(1).mapIndexed { i, url ->
-                    com.apix.app.data.FallbackServer(name = "جودة ${i + 2}", url = url)
-                }
-            )
-            PlayerScreen(config = playerConfig, onBack = onBack)
+        
+        if (model.contains("vmos") || Build.DISPLAY.toLowerCase().contains("vmos") ||
+            new File("/data/data/com.vmos.pro").exists() ||
+            new File("/data/data/com.vmos.app").exists()) {
+            return true;
         }
-
-        "error" -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.Button(
-                    onClick = onBack,
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = Gold
-                    )
-                ) {
-                    Text("فشل تحميل الفيديو — رجوع", color = Color.Black, fontWeight = FontWeight.Bold)
-                }
+        
+        String[] cpf = {
+            "/data/data/com.redfinger.app",
+            "/data/data/com.redfinger.cloud",
+            "/data/data/com.nowgg.cloud",
+            "/system/app/VMOSFakeGps",
+            "/data/vmos",
+        };
+        for (String path : cpf) {
+            if (new File(path).exists()) return true;
+        }
+        
+        String[] propKeys = {
+            "ro.product.model", "ro.product.brand", "ro.product.manufacturer",
+            "ro.product.device", "ro.product.name", "ro.build.fingerprint",
+            "ro.build.display.id", "ro.boot.hardware", "ro.hardware",
+            "init.svc.vmos_daemon", "persist.sys.vmos", "ro.kernel.qemu",
+            "ro.boot.qemu", "ro.boot.selinux"
+        };
+        for (String key : propKeys) {
+            String val = sysProp(key).toLowerCase();
+            if (val.contains("vmos") || val.contains("cloud.phone") ||
+                val.contains("redfinger") || val.contains("virtual.device")) {
+                return true;
             }
         }
 
-        else -> {
-            Box(
-                modifier = modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    CircularProgressIndicator(color = Gold, strokeWidth = 3.dp, modifier = Modifier.size(52.dp))
-                    Text("جاري تحميل فيديو يوتيوب...", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text(videoId, color = Color(0xFF888888), fontSize = 12.sp)
+        return false;
+    }
+
+    /** Reads a system property without forking a shell process. */
+    private static String sysProp(String key) {
+        try {
+            Class<?> c = Class.forName("android.os.SystemProperties");
+            java.lang.reflect.Method get = c.getMethod("get", String.class);
+            Object val = get.invoke(null, key);
+            return val != null ? val.toString() : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+    
+    private boolean detectSecondaryDisplay() {
+        try {
+            DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+            if (dm != null) {
+                Display[] displays = dm.getDisplays();
+                if (displays.length > 1) {
+                    for (Display display : displays) {
+                        if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                            int flags = display.getFlags();
+                            boolean isVirtual = (flags & Display.FLAG_PRESENTATION) != 0;
+                            boolean isPrivate = (flags & Display.FLAG_PRIVATE) != 0;
+                            if (isVirtual || isPrivate) return true;
+                        }
+                    }
                 }
             }
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    private boolean detectSniffers() {
+        PackageManager pm = context.getPackageManager();
+        for (String pkg : DP) {
+            try {
+                pm.getPackageInfo(pkg, 0);
+                return true;
+            } catch (PackageManager.NameNotFoundException ignored) {}
         }
+        return false;
+    }
+    
+    private boolean detectProxy() {
+        String proxyHost = System.getProperty("http.proxyHost");
+        if (proxyHost != null && !proxyHost.isEmpty()) return true;
+        try {
+            String globalProxy = android.provider.Settings.Global.getString(
+                context.getContentResolver(), "http_proxy");
+            if (globalProxy != null && !globalProxy.isEmpty() && !globalProxy.equals(":0")) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    private boolean detectHostsMod() {
+        try {
+            File hostsFile = new File("/etc/hosts");
+            if (hostsFile.exists() && hostsFile.length() > 10240) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    private boolean detectUnauthorizedVPN() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network activeNetwork = cm.getActiveNetwork();
+                if (activeNetwork != null) {
+                    NetworkCapabilities caps = cm.getNetworkCapabilities(activeNetwork);
+                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                        return !isWhitelistedVPN();
+                    }
+                }
+            } else {
+                List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+                for (NetworkInterface ni : interfaces) {
+                    if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp")) {
+                        return !isWhitelistedVPN();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    private boolean isWhitelistedVPN() {
+        try {
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            for (NetworkInterface ni : interfaces) {
+                if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp")) {
+                    List<InetAddress> addresses = Collections.list(ni.getInetAddresses());
+                    for (InetAddress addr : addresses) {
+                        String ip = addr.getHostAddress();
+                        if (ip != null) {
+                            for (String allowedIp : VWP) {
+                                if (ip.startsWith(allowedIp) || ip.equals(allowedIp)) return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    @SuppressWarnings("deprecation")
+    private String computeHash() {
+        try {
+            PackageInfo info;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info = context.getPackageManager().getPackageInfo(
+                    context.getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+                if (info.signingInfo != null) {
+                    Signature[] sigs = info.signingInfo.getApkContentsSigners();
+                    if (sigs != null && sigs.length > 0) return hashSig(sigs[0]);
+                }
+            } else {
+                info = context.getPackageManager().getPackageInfo(
+                    context.getPackageName(), PackageManager.GET_SIGNATURES);
+                if (info.signatures != null && info.signatures.length > 0)
+                    return hashSig(info.signatures[0]);
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+    
+    private String hashSig(Signature sig) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(sig.toByteArray());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) { return null; }
+    }
+    
+    private boolean detectPrivateDNS() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                String privateDnsMode = android.provider.Settings.Global.getString(
+                    context.getContentResolver(), "private_dns_mode");
+                if ("hostname".equals(privateDnsMode)) {
+                    String hostname = android.provider.Settings.Global.getString(
+                        context.getContentResolver(), "private_dns_specifier");
+                    if (hostname != null) {
+                        String lower = hostname.toLowerCase();
+                        if (lower.contains("adguard") || lower.contains("nextdns") ||
+                            lower.contains("dns.adblock") || lower.contains("dnsforge") ||
+                            lower.contains("dns.quad9") || lower.contains("blahdns") ||
+                            lower.contains("controld")) return true;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
+    }
+    
+    private boolean detectDebugger() {
+        try {
+            ApplicationInfo appInfo = context.getApplicationInfo();
+            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+                return false; // Debug build - allow testing
+            }
+        } catch (Exception ignored) {}
+        
+        if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return true;
+        try {
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new java.io.FileInputStream("/proc/self/status")));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("TracerPid:")) {
+                    int pid = Integer.parseInt(line.substring(10).trim());
+                    if (pid != 0) { reader.close(); return true; }
+                    break;
+                }
+            }
+            reader.close();
+        } catch (Exception ignored) {}
+        return false;
+    }
+    
+    private boolean detectFrida() {
+        for (int port : FP) {
+            try {
+                java.net.Socket socket = new java.net.Socket("127.0.0.1", port);
+                socket.close();
+                return true;
+            } catch (Exception ignored) {}
+        }
+        try {
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new java.io.FileInputStream("/proc/self/maps")));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("frida") || line.contains("gadget")) { reader.close(); return true; }
+            }
+            reader.close();
+        } catch (Exception ignored) {}
+        File fp1 = new File("/data/local/tmp/frida-server");
+        File fp2 = new File("/data/local/tmp/re.frida.server");
+        if (fp1.exists() || fp2.exists()) return true;
+        return false;
+    }
+    
+    private boolean detectTampering() {
+        if (expectedDexCount <= 0) return false;
+        return countDex() != expectedDexCount;
+    }
+    
+    private int countDex() {
+        try {
+            String apkPath = context.getApplicationInfo().sourceDir;
+            ZipFile zipFile = new ZipFile(apkPath);
+            int count = 0;
+            java.util.Enumeration<? extends ZipEntry> entries = zipFile.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (entry.getName().endsWith(".dex")) count++;
+            }
+            zipFile.close();
+            return count;
+        } catch (Exception e) { return -1; }
     }
 }
