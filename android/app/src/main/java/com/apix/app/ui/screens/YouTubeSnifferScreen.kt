@@ -218,7 +218,8 @@ private suspend fun extractYouTube(videoId: String): List<String> = withContext(
         if (muxed != null) {
             for (i in 0 until muxed.length()) {
                 val fmt = muxed.getJSONObject(i)
-                val url = fmt.optString("url").ifEmpty { continue }
+                val url = fmt.optString("url")
+                if (url.isEmpty()) continue
                 val height = fmt.optInt("height", 0)
                 val mime = fmt.optString("mimeType", "video/mp4")
                 muxedLinks.add(Triple(url, height, mime.substringBefore(";")))
