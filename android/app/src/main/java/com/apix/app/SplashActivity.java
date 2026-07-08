@@ -116,19 +116,13 @@ public class SplashActivity extends AppCompatActivity {
         }
 
         AppVerifier.getInstance(this).runCheckAsync((passed, failReason) -> {
-            new Handler(Looper.getMainLooper()).post(() -> {
-                if (passed) {
-                    checkForUpdate();
-                } else {
-                    progressBar.setVisibility(View.GONE);
-                    errorText.setVisibility(View.VISIBLE);
-                    errorText.setText(failReason != null ? failReason : "فشل فحص الأمان");
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        finishAffinity();
-                        System.exit(0);
-                    }, 3000);
-                }
-            });
+            if (passed) {
+                new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
+            } else {
+                // قتل صامت فوري — بدون أي رسالة أو تأخير
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
+            }
         });
     }
 
