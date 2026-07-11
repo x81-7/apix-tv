@@ -1,36 +1,96 @@
 import SwiftUI
 import AVKit
 import Combine
+import UIKit
 
-// MARK: - Constants (Android Matching)
-let colorGold = Color(red: 212/255, green: 160/255, blue: 23/255) // #D4A017
-let colorRed = Color(red: 229/255, green: 9/255, blue: 20/255)    // #E50914
-let colorBgDark = Color(red: 17/255, green: 17/255, blue: 17/255) // #111111
-let colorRowSelected = Color(red: 42/255, green: 42/255, blue: 42/255) // #2A2A2A
-let colorDivider = Color(red: 34/255, green: 34/255, blue: 34/255) // #222222
+// MARK: - APiX palette (matches Android)
+let colorGold = Color(red: 212/255, green: 160/255, blue: 23/255)      // #D4A017
+let colorRed = Color(red: 229/255, green: 9/255, blue: 20/255)         // #E50914
+let colorBgDark = Color(red: 17/255, green: 17/255, blue: 17/255)      // #111111
+let colorRowSelected = Color(red: 42/255, green: 42/255, blue: 42/255)  // #2A2A2A
+let colorDivider = Color(red: 34/255, green: 34/255, blue: 34/255)      // #222222
 
-// MARK: - Models
-struct PlayerServer: Identifiable {
+// MARK: - Playback Models
+
+struct PlayerServer: Identifiable, Equatable {
     let id = UUID()
     let name: String
     let url: String
     let headers: [String: String]
     let clearKey: String?
+    let healthScore: Int
+    let qualities: [PlayerQuality]
+    let subtitles: [PlayerSubtitleTrack]
+    let audioSources: [PlayerAudioSource]
+
+    init(
+        name: String,
+        url: String,
+        headers: [String: String] = [:],
+        clearKey: String? = nil,
+        healthScore: Int = 0,
+        qualities: [PlayerQuality] = [],
+        subtitles: [PlayerSubtitleTrack] = [],
+        audioSources: [PlayerAudioSource] = []
+    ) {
+        self.name = name
+        self.url = url
+        self.headers = headers
+        self.clearKey = clearKey
+        self.healthScore = healthScore
+        self.qualities = qualities
+        self.subtitles = subtitles
+        self.audioSources = audioSources
+    }
 }
 
-struct PlayerQuality: Identifiable {
+struct PlayerQuality: Identifiable, Equatable {
     let id = UUID()
     let label: String
     let bitrate: Double
+    let fps: Int?
+    let requiredMbps: Double
+
+    var detailText: String {
+        var parts: [String] = [label]
+        if let fps {
+            parts.append("\(fps)fps")
+        }
+        if bitrate > 0 {
+            let mbps = bitrate / 1_000_000.0
+            parts.append(String(format: "%.1f Mbps", mbps))
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    var shortLabel: String { label }
 }
 
-struct PlayerAudioSource: Identifiable {
+struct PlayerAudioSource: Identifiable, Equatable {
     let id = UUID()
     let name: String
     let url: String
+    let languageCode: String?
+
+    init(name: String, url: String, languageCode: String? = nil) {
+        self.name = name
+        self.url = url
+        self.languageCode = languageCode
+    }
 }
 
-// MARK: - Icons Enum
+struct PlayerSubtitleTrack: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let url: String
+    let languageCode: String
+
+    var isAllowed: Bool {
+        let code = languageCode.lowercased()
+        return code == "ar" || code == "en"
+    }
+}
+
 enum PlayerIconType {
     case play
     case pause
@@ -43,127 +103,338 @@ enum PlayerIconType {
     case pip
 }
 
+enum PlayerDisplayMode: CaseIterable, Equatable {
+    case fit
+    case fill
+    case stretch
+    case cinema
+
+    var title: String {
+        switch self {
+        case .fit: return "ملاءمة"
+        case .fill: return "ملء"
+        case .stretch: return "تمديد"
+        case .cinema: return "سينما"
+        }
+    }
+
+    var gravity: AVLayerVideoGravity {
+        switch self {
+        case .fit: return .resizeAspect
+        case .fill: return .resizeAspectFill
+        case .stretch: return .resize
+        case .cinema: return .resizeAspectFill
+        }
+    }
+
+    var zoom: CGFloat {
+        switch self {
+        case .cinema: return 1.06
+        default: return 1.0
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .fit: return "arrow.up.left.and.arrow.down.right"
+        case .fill: return "rectangle.expand.vertical"
+        case .stretch: return "arrow.left.and.right.righttriangle.left.righttriangle.right"
+        case .cinema: return "tv"
+        }
+    }
+
+    mutating func cycle() {
+        let cases = Self.allCases
+        guard let idx = cases.firstIndex(of: self) else {
+            self = .fit
+            return
+        }
+        self = cases[(idx + 1) % cases.count]
+    }
+}
+
 // MARK: - Coordinator
+
 @MainActor
 final class NativePlayerCoordinator: ObservableObject {
     let player = AVPlayer()
-    
+
     @Published var isPlaying = false
     @Published var isBuffering = true
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var errorMessage: String?
     @Published var title = ""
-    
+
     @Published var servers: [PlayerServer] = []
     @Published var currentServerIndex = 0
-    
-    @Published var qualities: [PlayerQuality] = [
-        PlayerQuality(label: "تلقائي", bitrate: 0),
-        PlayerQuality(label: "4K", bitrate: 20_000_000),
-        PlayerQuality(label: "1080p", bitrate: 8_000_000),
-        PlayerQuality(label: "720p", bitrate: 4_000_000),
-        PlayerQuality(label: "480p", bitrate: 1_500_000),
-        PlayerQuality(label: "360p", bitrate: 800_000)
-    ]
+
+    @Published var qualities: [PlayerQuality] = Self.defaultQualities
     @Published var currentQualityIndex = 0
+
+    @Published var subtitleTracks: [PlayerSubtitleTrack] = []
+    @Published var currentSubtitleIndex = 0
+
     @Published var audioSources: [PlayerAudioSource] = []
-    
+    @Published var currentAudioIndex = 0
+
+    @Published var displayMode: PlayerDisplayMode = .fit
+
     private var timeObserver: Any?
     private var cancellables = Set<AnyCancellable>()
-    
+
+    static let defaultQualities: [PlayerQuality] = [
+        PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0),
+        PlayerQuality(label: "4K", bitrate: 20_000_000, fps: 60, requiredMbps: 20),
+        PlayerQuality(label: "1080p", bitrate: 8_000_000, fps: 60, requiredMbps: 8),
+        PlayerQuality(label: "720p", bitrate: 4_000_000, fps: 60, requiredMbps: 4),
+        PlayerQuality(label: "480p", bitrate: 1_500_000, fps: 30, requiredMbps: 1.5),
+        PlayerQuality(label: "360p", bitrate: 800_000, fps: 30, requiredMbps: 0.8)
+    ]
+
     init() {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
         } catch {
-            print("AVAudioSession Setup Failed: \(error.localizedDescription)")
+            print("AVAudioSession setup failed: \(error.localizedDescription)")
         }
     }
-    
+
+    // MARK: - Existing Channel-based flow
+
     func setup(channel: Channel) {
-        self.title = channel.name
-        var newServers: [PlayerServer] = []
-        
         let primaryUrlString = channel.playbackURL ?? ""
-        if !primaryUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر الأساسي", url: primaryUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+        let backupUrlString = channel.backupURL?.absoluteString
+
+        let primary = PlayerServer(
+            name: "السيرفر الأساسي",
+            url: primaryUrlString,
+            headers: channel.effectiveHeaders,
+            clearKey: channel.clearKeyCombined,
+            healthScore: 100
+        )
+
+        var servers: [PlayerServer] = []
+        if !primaryUrlString.isEmpty { servers.append(primary) }
+
+        if let backupUrlString, !backupUrlString.isEmpty {
+            servers.append(PlayerServer(
+                name: "السيرفر الاحتياطي",
+                url: backupUrlString,
+                headers: channel.effectiveHeaders,
+                clearKey: channel.clearKeyCombined,
+                healthScore: 60
+            ))
         }
-        
-        if let backupUrlString = channel.backupURL?.absoluteString, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر الاحتياطي", url: backupUrlString, headers: channel.effectiveHeaders, clearKey: channel.clearKeyCombined))
+
+        applyPlaybackConfiguration(
+            title: channel.name,
+            servers: servers,
+            fallbackUrl: primaryUrlString,
+            fallbackHeaders: channel.effectiveHeaders,
+            fallbackClearKey: channel.clearKeyCombined,
+            fallbackBackupUrl: backupUrlString,
+            qualities: Self.defaultQualities,
+            subtitles: [],
+            audioSources: []
+        )
+    }
+
+    // MARK: - APiX resolved flow
+
+    func setup(
+        title: String,
+        url: String,
+        headers: [String: String] = [:],
+        clearKey: String? = nil,
+        backupUrl: String? = nil,
+        servers: [PlayerServer] = [],
+        qualities: [PlayerQuality] = [],
+        subtitles: [PlayerSubtitleTrack] = [],
+        audioSources: [PlayerAudioSource] = []
+    ) {
+        applyPlaybackConfiguration(
+            title: title,
+            servers: servers,
+            fallbackUrl: url,
+            fallbackHeaders: headers,
+            fallbackClearKey: clearKey,
+            fallbackBackupUrl: backupUrl,
+            qualities: qualities,
+            subtitles: subtitles,
+            audioSources: audioSources
+        )
+    }
+
+    private func applyPlaybackConfiguration(
+        title: String,
+        servers: [PlayerServer],
+        fallbackUrl: String,
+        fallbackHeaders: [String: String],
+        fallbackClearKey: String?,
+        fallbackBackupUrl: String?,
+        qualities: [PlayerQuality],
+        subtitles: [PlayerSubtitleTrack],
+        audioSources: [PlayerAudioSource]
+    ) {
+        self.title = title
+        self.errorMessage = nil
+        self.isBuffering = true
+        self.currentTime = 0
+        self.duration = 0
+
+        var finalServers = servers
+            .filter { !$0.url.isEmpty }
+            .sorted { lhs, rhs in
+                if lhs.healthScore == rhs.healthScore { return lhs.name < rhs.name }
+                return lhs.healthScore > rhs.healthScore
+            }
+
+        if finalServers.isEmpty, !fallbackUrl.isEmpty {
+            finalServers = [
+                PlayerServer(
+                    name: "السيرفر الأساسي",
+                    url: fallbackUrl,
+                    headers: fallbackHeaders,
+                    clearKey: fallbackClearKey,
+                    healthScore: 100,
+                    qualities: qualities.isEmpty ? Self.defaultQualities : qualities,
+                    subtitles: subtitles.filter(\.isAllowed),
+                    audioSources: audioSources
+                )
+            ]
+
+            if let fallbackBackupUrl, !fallbackBackupUrl.isEmpty {
+                finalServers.append(
+                    PlayerServer(
+                        name: "السيرفر الاحتياطي",
+                        url: fallbackBackupUrl,
+                        headers: fallbackHeaders,
+                        clearKey: fallbackClearKey,
+                        healthScore: 60,
+                        qualities: qualities.isEmpty ? Self.defaultQualities : qualities,
+                        subtitles: subtitles.filter(\.isAllowed),
+                        audioSources: audioSources
+                    )
+                )
+            }
+        } else if !qualities.isEmpty || !subtitles.isEmpty || !audioSources.isEmpty {
+            finalServers = finalServers.map { server in
+                PlayerServer(
+                    name: server.name,
+                    url: server.url,
+                    headers: server.headers,
+                    clearKey: server.clearKey,
+                    healthScore: server.healthScore,
+                    qualities: server.qualities.isEmpty ? (qualities.isEmpty ? Self.defaultQualities : qualities) : server.qualities,
+                    subtitles: server.subtitles.isEmpty ? subtitles.filter(\.isAllowed) : server.subtitles.filter(\.isAllowed),
+                    audioSources: server.audioSources.isEmpty ? audioSources : server.audioSources
+                )
+            }
         }
-        
-        self.servers = newServers
-        self.audioSources = []
-        
+
+        self.servers = finalServers
+        self.currentServerIndex = 0
+
+        let activeServer = finalServers.first
+        let activeQualities = (activeServer?.qualities.isEmpty == false ? activeServer!.qualities : (qualities.isEmpty ? Self.defaultQualities : qualities))
+            .sorted { $0.bitrate > $1.bitrate }
+
+        self.qualities = activeQualities.contains(where: { $0.label == "تلقائي" }) ? activeQualities : ([PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0)] + activeQualities)
+
+        self.subtitleTracks = (activeServer?.subtitles.isEmpty == false ? activeServer!.subtitles : subtitles)
+            .filter(\.isAllowed)
+        self.audioSources = activeServer?.audioSources.isEmpty == false ? activeServer!.audioSources : audioSources
+
+        self.currentQualityIndex = 0
+        self.currentSubtitleIndex = 0
+        self.currentAudioIndex = 0
+
         if !self.servers.isEmpty {
-            self.loadServer(index: 0)
+            loadServer(index: 0)
         } else {
             self.errorMessage = "No valid URLs found"
             self.isBuffering = false
         }
     }
 
-    func setupFromApix(_ config: ApixResolvedConfig, fallbackTitle: String) {
-        self.title = config.title ?? fallbackTitle
-        var newServers: [PlayerServer] = [
-            PlayerServer(name: "السيرفر الأساسي", url: config.url, headers: config.headers, clearKey: config.clearKey)
-        ]
-        
-        if let backupUrlString = config.backupUrl, !backupUrlString.isEmpty {
-            newServers.append(PlayerServer(name: "السيرفر الاحتياطي", url: backupUrlString, headers: config.headers, clearKey: config.clearKey))
-        }
-        
-        self.servers = newServers
-        self.audioSources = []
-        self.loadServer(index: 0)
-    }
-    
     func loadServer(index: Int) {
         guard servers.indices.contains(index) else { return }
-        self.currentServerIndex = index
+        currentServerIndex = index
+
         let selectedServer = servers[index]
-        self.load(url: selectedServer.url, headers: selectedServer.headers, clearKey: selectedServer.clearKey)
+        qualities = selectedServer.qualities.isEmpty ? Self.defaultQualities : selectedServer.qualities.sorted { $0.bitrate > $1.bitrate }
+        if !qualities.contains(where: { $0.label == "تلقائي" }) {
+            qualities.insert(PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0), at: 0)
+        }
+
+        subtitleTracks = selectedServer.subtitles.filter(\.isAllowed)
+        audioSources = selectedServer.audioSources
+
+        currentQualityIndex = 0
+        currentSubtitleIndex = 0
+        currentAudioIndex = 0
+
+        load(url: selectedServer.url, headers: selectedServer.headers, clearKey: selectedServer.clearKey)
     }
-    
+
     func setQuality(index: Int) {
-        self.currentQualityIndex = index
-        self.player.currentItem?.preferredPeakBitRate = qualities[index].bitrate
+        guard qualities.indices.contains(index) else { return }
+        currentQualityIndex = index
+        let selected = qualities[index]
+        player.currentItem?.preferredPeakBitRate = selected.bitrate
     }
-    
+
+    func setSubtitle(index: Int) {
+        guard subtitleTracks.indices.contains(index) else { return }
+        currentSubtitleIndex = index
+        // Hook point for subtitle renderer / AVMediaSelection logic
+    }
+
+    func setAudio(index: Int) {
+        guard audioSources.indices.contains(index) else { return }
+        currentAudioIndex = index
+        // Hook point for audio track selection logic
+    }
+
+    func cycleDisplayMode() {
+        displayMode.cycle()
+    }
+
     func load(url: String, headers: [String: String], clearKey: String?) {
-        self.cleanupAll()
-        self.errorMessage = nil
-        self.isBuffering = true
-        self.currentTime = 0
-        self.duration = 0
-        
+        cleanupPlaybackOnly()
+        errorMessage = nil
+        isBuffering = true
+        currentTime = 0
+        duration = 0
+
         guard let validUrl = URL(string: url) else {
-            self.errorMessage = "Invalid stream URL"
+            errorMessage = "Invalid stream URL"
+            isBuffering = false
             return
         }
-        
+
         var options: [String: Any] = [:]
         if !headers.isEmpty {
-            options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            options[AVURLAssetHTTPHeaderFieldsKey] = headers
         }
-        
+
         let asset = AVURLAsset(url: validUrl, options: options.isEmpty ? nil : options)
         let item = AVPlayerItem(asset: asset)
-        
-        self.player.replaceCurrentItem(with: item)
-        self.setupObservers(for: item)
-        self.player.play()
+        _ = clearKey
+
+        player.replaceCurrentItem(with: item)
+        setupObservers(for: item)
+        player.play()
     }
-    
+
     private func setupObservers(for item: AVPlayerItem) {
-        // مراقبة حالة التشغيل
         item.publisher(for: \.status)
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
-                guard let self = self else { return }
+                guard let self else { return }
                 switch status {
                 case .readyToPlay:
                     self.isBuffering = false
@@ -173,20 +444,21 @@ final class NativePlayerCoordinator: ObservableObject {
                 default:
                     break
                 }
-            }.store(in: &cancellables)
-            
-        // مراقبة المدة الزمنية بشكل دقيق لتفادي مشكلة الـ (00:00)
+            }
+            .store(in: &cancellables)
+
         item.publisher(for: \.duration)
             .receive(on: RunLoop.main)
             .sink { [weak self] dur in
                 let secs = dur.seconds
                 self?.duration = (secs.isNaN || secs.isInfinite) ? 0 : secs
-            }.store(in: &cancellables)
-        
+            }
+            .store(in: &cancellables)
+
         player.publisher(for: \.timeControlStatus)
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
-                guard let self = self else { return }
+                guard let self else { return }
                 self.isPlaying = (status == .playing)
                 if status == .playing {
                     self.isBuffering = false
@@ -194,74 +466,80 @@ final class NativePlayerCoordinator: ObservableObject {
                 if status == .waitingToPlayAtSpecifiedRate {
                     self.isBuffering = true
                 }
-            }.store(in: &cancellables)
-        
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.isBuffering = true
-            }.store(in: &cancellables)
-        
-        // تحديث شريط الوقت بدون توقف
+            }
+            .store(in: &cancellables)
+
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        self.timeObserver = self.player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                self.currentTime = time.seconds
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            Task { @MainActor in
+                self?.currentTime = time.seconds
             }
         }
     }
-    
+
     func togglePlay() {
-        if self.player.timeControlStatus == .playing {
-            self.player.pause()
+        if player.timeControlStatus == .playing {
+            player.pause()
         } else {
-            self.player.play()
+            player.play()
         }
     }
-    
+
     func seek(by seconds: Double) {
-        let targetTime = max(0, min(self.currentTime + seconds, self.duration > 0 ? self.duration : .infinity))
+        let maxTime = duration > 0 ? duration : .infinity
+        let targetTime = max(0, min(currentTime + seconds, maxTime))
         let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        self.player.seek(to: target)
+        player.seek(to: target)
     }
-    
+
     func seekTo(fraction: Double) {
-        guard self.duration > 0 else { return } // لا تسحب الشريط إذا كان بث مباشر
-        let targetTime = self.duration * fraction
+        guard duration > 0 else { return }
+        let targetTime = duration * fraction
         let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        
-        self.player.seek(to: target) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        player.seek(to: target) { [weak self] _ in
+            Task { @MainActor in
                 self?.currentTime = targetTime
             }
         }
     }
-    
-    func cleanupAll() {
-        if let observer = self.timeObserver {
-            self.player.removeTimeObserver(observer)
-            self.timeObserver = nil
+
+    func cleanupPlaybackOnly() {
+        if let observer = timeObserver {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
         }
-        self.cancellables.removeAll()
-        self.player.pause()
-        self.player.replaceCurrentItem(with: nil)
+        cancellables.removeAll()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
     }
-    
+
+    func cleanupAll() {
+        cleanupPlaybackOnly()
+    }
+
     deinit {
-        if let observer = self.timeObserver {
-            self.player.removeTimeObserver(observer)
+        if let observer = timeObserver {
+            player.removeTimeObserver(observer)
         }
     }
 }
 
 // MARK: - Video Layer
+
 class PlayerUIView: UIView {
     var playerLayer: AVPlayerLayer {
-        return layer as! AVPlayerLayer
+        layer as! AVPlayerLayer
     }
+
     override class var layerClass: AnyClass {
-        return AVPlayerLayer.self
+        AVPlayerLayer.self
     }
 }
 
@@ -284,142 +562,200 @@ struct PlayerVideoLayer: UIViewRepresentable {
 }
 
 // MARK: - Main Player View
+
 struct NativePlayerView: View {
     let channel: Channel
-    
+
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = NativePlayerCoordinator()
-    
+
     @State private var showControls: Bool = true
-    @State private var videoGravity: AVLayerVideoGravity = .resizeAspect
     @State private var hideTimer: Timer?
     @State private var isResolving: Bool = false
-    
-    // Dialog States
-    @State private var showSettingsDialog: Bool = false
+
+    @State private var showQualityDialog: Bool = false
     @State private var showServerDialog: Bool = false
+    @State private var showSubtitleDialog: Bool = false
     @State private var showAudioDialog: Bool = false
-    
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
-            PlayerVideoLayer(player: viewModel.player, gravity: videoGravity)
+
+            PlayerVideoLayer(player: viewModel.player, gravity: viewModel.displayMode.gravity)
+                .scaleEffect(viewModel.displayMode.zoom)
                 .ignoresSafeArea()
-            
-            // 1. الحل الجذري لمشكلة الأزرار: طبقة زجاجية تلتقط لمس الشاشة لإخفاء/إظهار المشغل وتكون "خلف" الأزرار
-            Color.clear
                 .contentShape(Rectangle())
-                .ignoresSafeArea()
                 .onTapGesture {
-                    self.toggleControls()
+                    toggleControls()
                 }
-            
-            // 2. مؤشر التحميل
+                .zIndex(0)
+
             if viewModel.isBuffering && viewModel.errorMessage == nil && !isResolving {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(colorRed)
                     .scaleEffect(1.6)
                     .allowsHitTesting(false)
+                    .zIndex(1)
             }
-            
+
             if isResolving {
-                Color.black.opacity(0.6).ignoresSafeArea()
+                Color.black.opacity(0.6).ignoresSafeArea().zIndex(1)
                 VStack(spacing: 16) {
                     ProgressView().tint(colorRed).scaleEffect(1.6)
                 }
+                .zIndex(2)
             }
-            
-            // 3. رسالة الخطأ
+
             if let error = viewModel.errorMessage {
-                Color.black.opacity(0.9).ignoresSafeArea()
+                Color.black.opacity(0.9).ignoresSafeArea().zIndex(1)
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 64))
                         .foregroundColor(colorRed)
+
                     Text(error)
                         .foregroundColor(.white)
                         .font(.system(size: 16, weight: .bold))
                         .multilineTextAlignment(.center)
                         .padding(32)
-                    
+
                     PlayerIconButton(type: .back, size: 36) {
+                        viewModel.player.pause()
                         dismiss()
                     }
                 }
+                .zIndex(2)
             }
-            
-            // 4. طبقة التحكم (الأزرار ستتفاعل الآن بكفاءة لأن إيماءة اللمس أصبحت خلفها)
+
             if showControls && viewModel.errorMessage == nil && !isResolving {
                 controlsLayer
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+                    .zIndex(2)
             }
-            
-            // 5. النوافذ العائمة (تصميم أندرويد)
-            if showSettingsDialog {
-                APiXDialog(title: "الجودة", isPresented: $showSettingsDialog) {
+
+            if showQualityDialog {
+                APiXDialog(title: "الجودة", isPresented: $showQualityDialog) {
                     ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, quality in
-                        APiXDialogRow(title: quality.label, isSelected: index == viewModel.currentQualityIndex) {
-                            self.viewModel.setQuality(index: index)
-                            self.showSettingsDialog = false
-                            self.resetTimer()
+                        APiXDialogRow(
+                            title: quality.detailText,
+                            isSelected: index == viewModel.currentQualityIndex
+                        ) {
+                            viewModel.setQuality(index: index)
+                            showQualityDialog = false
+                            resetTimer()
                         }
                     }
                 }
+                .zIndex(3)
             }
-            
+
             if showServerDialog {
-                APiXDialog(title: "اختر السيرفر", isPresented: $showServerDialog) {
+                APiXDialog(title: "السيرفرات", isPresented: $showServerDialog) {
                     ForEach(Array(viewModel.servers.enumerated()), id: \.offset) { index, server in
-                        APiXDialogRow(title: server.name, isSelected: index == viewModel.currentServerIndex) {
-                            self.viewModel.loadServer(index: index)
-                            self.showServerDialog = false
-                            self.resetTimer()
+                        APiXDialogRow(
+                            title: server.name,
+                            subtitle: server.qualities.first?.detailText,
+                            isSelected: index == viewModel.currentServerIndex
+                        ) {
+                            viewModel.loadServer(index: index)
+                            showServerDialog = false
+                            resetTimer()
                         }
                     }
                 }
+                .zIndex(3)
             }
-            
+
+            if showSubtitleDialog {
+                APiXDialog(title: "الترجمات", isPresented: $showSubtitleDialog) {
+                    if viewModel.subtitleTracks.isEmpty {
+                        APiXDialogRow(title: "لا توجد ترجمات", isSelected: false) {
+                            showSubtitleDialog = false
+                        }
+                    } else {
+                        ForEach(Array(viewModel.subtitleTracks.enumerated()), id: \.offset) { index, subtitle in
+                            APiXDialogRow(
+                                title: subtitle.name,
+                                subtitle: subtitle.languageCode.uppercased(),
+                                isSelected: index == viewModel.currentSubtitleIndex
+                            ) {
+                                viewModel.setSubtitle(index: index)
+                                showSubtitleDialog = false
+                                resetTimer()
+                            }
+                        }
+                    }
+                }
+                .zIndex(3)
+            }
+
+            if showAudioDialog {
+                APiXDialog(title: "الصوت", isPresented: $showAudioDialog) {
+                    if viewModel.audioSources.isEmpty {
+                        APiXDialogRow(title: "لا توجد مسارات صوت", isSelected: false) {
+                            showAudioDialog = false
+                        }
+                    } else {
+                        ForEach(Array(viewModel.audioSources.enumerated()), id: \.offset) { index, audio in
+                            APiXDialogRow(
+                                title: audio.name,
+                                subtitle: audio.languageCode?.uppercased(),
+                                isSelected: index == viewModel.currentAudioIndex
+                            ) {
+                                viewModel.setAudio(index: index)
+                                showAudioDialog = false
+                                resetTimer()
+                            }
+                        }
+                    }
+                }
+                .zIndex(3)
+            }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        // قمنا بحذف الـ onTapGesture الخاطئ من هنا!
         .onAppear {
-            self.forceLandscape()
-            self.resetTimer()
+            forceLandscape()
+            resetTimer()
         }
         .onDisappear {
-            self.forcePortrait()
-            self.viewModel.cleanupAll()
-            self.hideTimer?.invalidate()
+            forcePortrait()
+            viewModel.cleanupAll()
+            hideTimer?.invalidate()
         }
         .task {
-            await self.resolveAndPlay()
+            await resolveAndPlay()
         }
     }
-    
+
     // MARK: - Controls Layer
+
     private var controlsLayer: some View {
         ZStack {
             VStack(spacing: 0) {
                 LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: 100)
-                    .allowsHitTesting(false) // يسمح بمرور اللمس للخلفية لإخفاء المشغل
+                    .allowsHitTesting(false)
+
                 Spacer()
+
                 LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
                     .frame(height: 120)
                     .allowsHitTesting(false)
             }
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 HStack {
                     PlayerIconButton(type: .back, size: 36) {
-                        self.viewModel.player.pause()
-                        self.dismiss()
+                        viewModel.player.pause()
+                        dismiss()
                     }
+
                     Spacer()
+
                     Text(viewModel.title)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
@@ -428,78 +764,94 @@ struct NativePlayerView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                
+
                 Spacer()
-                
+
                 VStack(spacing: 4) {
                     HStack(spacing: 8) {
                         Text(formatTime(viewModel.currentTime))
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .lineLimit(1)
-                        
+
                         let progressValue = viewModel.duration > 0 ? (viewModel.currentTime / viewModel.duration) : 0
                         IOSProgressSlider(value: progressValue) { fraction in
                             if viewModel.duration > 0 {
-                                self.viewModel.seekTo(fraction: fraction)
+                                viewModel.seekTo(fraction: fraction)
                             }
-                            self.resetTimer()
+                            resetTimer()
                         }
                         .frame(height: 16)
-                        
+
                         Text(formatTime(viewModel.duration))
                             .font(.system(size: 14))
                             .foregroundColor(.white)
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 16)
-                    
+
                     HStack {
                         HStack(spacing: 16) {
                             PlayerIconButton(type: .rewind, size: 38) {
-                                self.viewModel.seek(by: -10)
-                                self.resetTimer()
+                                viewModel.seek(by: -10)
+                                resetTimer()
                             }
+
                             PlayerIconButton(type: viewModel.isPlaying ? .pause : .play, size: 44) {
-                                self.viewModel.togglePlay()
-                                self.resetTimer()
+                                viewModel.togglePlay()
+                                resetTimer()
                             }
+
                             PlayerIconButton(type: .forward, size: 38) {
-                                self.viewModel.seek(by: 10)
-                                self.resetTimer()
+                                viewModel.seek(by: 10)
+                                resetTimer()
                             }
                         }
-                        
+
                         Spacer()
-                        
+
                         HStack(spacing: 12) {
                             if !viewModel.audioSources.isEmpty {
-                                PlayerImageButton(systemName: "waveform", size: 32) {
-                                    self.showAudioDialog = true
-                                    self.hideTimer?.invalidate()
+                                PlayerImageButton(systemName: "speaker.wave.2.fill", size: 32) {
+                                    showAudioDialog = true
+                                    hideTimer?.invalidate()
                                 }
                             }
-                            
+
+                            if !viewModel.subtitleTracks.isEmpty {
+                                PlayerImageButton(systemName: "captions.bubble.fill", size: 32) {
+                                    showSubtitleDialog = true
+                                    hideTimer?.invalidate()
+                                }
+                            }
+
                             if viewModel.servers.count > 1 {
                                 PlayerIconButton(type: .server, size: 32) {
-                                    self.showServerDialog = true
-                                    self.hideTimer?.invalidate()
+                                    showServerDialog = true
+                                    hideTimer?.invalidate()
                                 }
                             }
-                            
-                            PlayerIconButton(type: .settings, size: 32) {
-                                self.showSettingsDialog = true
-                                self.hideTimer?.invalidate()
+
+                            if viewModel.qualities.count > 1 {
+                                PlayerQualityButton(
+                                    quality: viewModel.qualities[viewModel.currentQualityIndex],
+                                    action: {
+                                        showQualityDialog = true
+                                        hideTimer?.invalidate()
+                                    }
+                                )
                             }
-                            
-                            PlayerIconButton(type: .resize, size: 32) {
-                                let isAspect = videoGravity == .resizeAspect
-                                self.videoGravity = isAspect ? .resizeAspectFill : .resizeAspect
-                                self.resetTimer()
-                            }
-                            
+
+                            PlayerDisplayModeButton(
+                                mode: viewModel.displayMode,
+                                action: {
+                                    viewModel.cycleDisplayMode()
+                                    resetTimer()
+                                }
+                            )
+
                             PlayerIconButton(type: .pip, size: 32) {
-                                // إعدادات الـ PiP
+                                // PiP hook
                             }
                         }
                     }
@@ -509,41 +861,49 @@ struct NativePlayerView: View {
             }
         }
     }
-    
+
     // MARK: - Handlers
+
     private func resolveAndPlay() async {
         let urlString = channel.playbackURL ?? ""
+
         if ApixStreamResolverIOS.isApixStream(urlString) {
-            self.isResolving = true
+            isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
-                self.viewModel.setupFromApix(config, fallbackTitle: channel.name)
+                viewModel.setup(
+                    title: config.title ?? channel.name,
+                    url: config.url,
+                    headers: config.headers,
+                    clearKey: config.clearKey,
+                    backupUrl: config.backupUrl
+                )
             } else {
-                self.viewModel.setup(channel: channel)
+                viewModel.setup(channel: channel)
             }
-            self.isResolving = false
+            isResolving = false
         } else {
-            self.viewModel.setup(channel: channel)
+            viewModel.setup(channel: channel)
         }
     }
-    
+
     private func toggleControls() {
         withAnimation(.easeInOut(duration: 0.2)) {
-            self.showControls.toggle()
+            showControls.toggle()
         }
-        if self.showControls {
-            self.resetTimer()
+        if showControls {
+            resetTimer()
         }
     }
-    
+
     private func resetTimer() {
-        self.hideTimer?.invalidate()
-        self.hideTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+        hideTimer?.invalidate()
+        hideTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
             withAnimation(.easeInOut(duration: 0.3)) {
-                self.showControls = false
+                showControls = false
             }
         }
     }
-    
+
     private func formatTime(_ seconds: Double) -> String {
         guard seconds.isFinite && !seconds.isNaN && seconds >= 0 else { return "00:00" }
         let h = Int(seconds) / 3600
@@ -555,7 +915,7 @@ struct NativePlayerView: View {
             return String(format: "%02d:%02d", m, s)
         }
     }
-    
+
     private func forceLandscape() {
         if #available(iOS 16.0, *) {
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
@@ -564,7 +924,7 @@ struct NativePlayerView: View {
             UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
         }
     }
-    
+
     private func forcePortrait() {
         if #available(iOS 16.0, *) {
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
@@ -572,289 +932,5 @@ struct NativePlayerView: View {
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
         }
-    }
-}
-
-// MARK: - UI Buttons & Scale Effect
-struct ScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 1.2 : 1.0)
-            .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
-    }
-}
-
-struct PlayerIconButton: View {
-    let type: PlayerIconType
-    var size: CGFloat
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle().fill(Color.clear).frame(width: size, height: size)
-                PlayerIconPath(type: type)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    .frame(width: size * 0.65, height: size * 0.65)
-            }
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-}
-
-struct PlayerImageButton: View {
-    let systemName: String
-    var size: CGFloat
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle().fill(Color.clear).frame(width: size, height: size)
-                Image(systemName: systemName)
-                    .font(.system(size: size * 0.55, weight: .medium))
-                    .foregroundColor(.white)
-            }
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-}
-
-// MARK: - Slider (Matches Android Colors/Behavior)
-struct IOSProgressSlider: View {
-    let value: Double
-    let onEnd: (Double) -> Void
-    @State private var dragValue: Double? = nil
-    
-    var body: some View {
-        GeometryReader { geometry in
-            let displayValue = dragValue ?? value
-            let maxWidth = geometry.size.width
-            let sliderWidth = max(0, maxWidth * CGFloat(displayValue))
-            let circleOffset = max(0, min(maxWidth - 12, sliderWidth - 6))
-            
-            ZStack(alignment: .leading) {
-                // Inactive Track
-                Capsule()
-                    .fill(Color.white.opacity(0.26)) // 0x44FFFFFF
-                    .frame(height: 3)
-                // Active Track
-                Capsule()
-                    .fill(colorRed)
-                    .frame(width: sliderWidth, height: 3)
-                // Thumb
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 12, height: 12)
-                    .offset(x: circleOffset)
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { gesture in
-                        let fraction = min(max(0, gesture.location.x / maxWidth), 1)
-                        self.dragValue = fraction // يضمن حركة المؤشر مع الإصبع
-                    }
-                    .onEnded { gesture in
-                        let fraction = min(max(0, gesture.location.x / maxWidth), 1)
-                        self.onEnd(fraction)
-                        self.dragValue = nil
-                    }
-            )
-        }
-    }
-}
-
-// MARK: - Custom APiX Dialog (Exact Android Match)
-struct APiXDialog<Content: View>: View {
-    let title: String
-    @Binding var isPresented: Bool
-    @ViewBuilder let content: () -> Content
-    
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-                .onTapGesture { isPresented = false }
-            
-            VStack(spacing: 0) {
-                Text(title)
-                    .foregroundColor(colorGold)
-                    .font(.system(size: 16, weight: .bold))
-                    .padding(16)
-                
-                Divider().background(colorDivider)
-                
-                ScrollView {
-                    VStack(spacing: 4) {
-                        content()
-                    }
-                    .padding(8)
-                }
-                
-                Divider().background(colorDivider)
-                
-                Button(action: { isPresented = false }) {
-                    Text("إغلاق")
-                        .foregroundColor(colorGold)
-                        .font(.system(size: 14, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(12)
-                }
-            }
-            .background(colorBgDark)
-            .cornerRadius(12)
-            .frame(width: UIScreen.main.bounds.width > 500 ? 350 : UIScreen.main.bounds.width * 0.45)
-            .frame(maxHeight: UIScreen.main.bounds.height * 0.85)
-        }
-        .transition(.opacity)
-    }
-}
-
-struct APiXDialogRow: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(title)
-                    .foregroundColor(isSelected ? colorGold : .white)
-                    .font(.system(size: 13, weight: isSelected ? .bold : .regular))
-                    .lineLimit(1)
-                Spacer()
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(colorGold)
-                        .font(.system(size: 18))
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(isSelected ? colorRowSelected : Color.clear)
-            .cornerRadius(8)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Paths
-struct PlayerIconPath: Shape {
-    let type: PlayerIconType
-    
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let scaleX = rect.width / 24.0
-        let scaleY = rect.height / 24.0
-        
-        switch type {
-        case .play:
-            path.move(to: CGPoint(x: 8 * scaleX, y: 6 * scaleY))
-            path.addLine(to: CGPoint(x: 8 * scaleX, y: 18 * scaleY))
-            path.addLine(to: CGPoint(x: 18 * scaleX, y: 12 * scaleY))
-            path.closeSubpath()
-        case .pause:
-            path.move(to: CGPoint(x: 6 * scaleX, y: 7 * scaleY))
-            path.addArc(center: CGPoint(x: 8 * scaleX, y: 7 * scaleY), radius: 2 * scaleX, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-            path.addLine(to: CGPoint(x: 10 * scaleX, y: 17 * scaleY))
-            path.addArc(center: CGPoint(x: 8 * scaleX, y: 17 * scaleY), radius: 2 * scaleX, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            path.closeSubpath()
-            path.move(to: CGPoint(x: 14 * scaleX, y: 7 * scaleY))
-            path.addArc(center: CGPoint(x: 16 * scaleX, y: 7 * scaleY), radius: 2 * scaleX, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-            path.addLine(to: CGPoint(x: 18 * scaleX, y: 17 * scaleY))
-            path.addArc(center: CGPoint(x: 16 * scaleX, y: 17 * scaleY), radius: 2 * scaleX, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            path.closeSubpath()
-        case .forward:
-            path.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 14 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-            path.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 20 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-        case .rewind:
-            path.move(to: CGPoint(x: 15 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 10 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 15 * scaleX, y: 17 * scaleY))
-            path.move(to: CGPoint(x: 9 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 4 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 9 * scaleX, y: 17 * scaleY))
-        case .back:
-            path.move(to: CGPoint(x: 19 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
-            path.move(to: CGPoint(x: 12 * scaleX, y: 19 * scaleY))
-            path.addLine(to: CGPoint(x: 5 * scaleX, y: 12 * scaleY))
-            path.addLine(to: CGPoint(x: 12 * scaleX, y: 5 * scaleY))
-        case .resize:
-            path.move(to: CGPoint(x: 15 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 9 * scaleY))
-            path.move(to: CGPoint(x: 9 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 15 * scaleY))
-            path.move(to: CGPoint(x: 21 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 14 * scaleX, y: 10 * scaleY))
-            path.move(to: CGPoint(x: 3 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 10 * scaleX, y: 14 * scaleY))
-        case .server:
-            path.move(to: CGPoint(x: 2 * scaleX, y: 16.1 * scaleY))
-            path.addArc(center: CGPoint(x: 2 * scaleX, y: 20 * scaleY), radius: 5 * scaleX, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false)
-            path.move(to: CGPoint(x: 2 * scaleX, y: 12.05 * scaleY))
-            path.addArc(center: CGPoint(x: 2 * scaleX, y: 20 * scaleY), radius: 9 * scaleX, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false)
-            path.move(to: CGPoint(x: 2 * scaleX, y: 8 * scaleY))
-            path.addArc(center: CGPoint(x: 2 * scaleX, y: 20 * scaleY), radius: 13 * scaleX, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false)
-            path.move(to: CGPoint(x: 20 * scaleX, y: 4 * scaleY))
-            path.addLine(to: CGPoint(x: 4 * scaleX, y: 4 * scaleY))
-            path.move(to: CGPoint(x: 20 * scaleX, y: 4 * scaleY))
-            path.addLine(to: CGPoint(x: 20 * scaleX, y: 20 * scaleY))
-            path.addLine(to: CGPoint(x: 14 * scaleX, y: 20 * scaleY))
-        case .pip:
-            path.move(to: CGPoint(x: 9 * scaleX, y: 19 * scaleY))
-            path.addLine(to: CGPoint(x: 5 * scaleX, y: 19 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 17 * scaleY))
-            path.addLine(to: CGPoint(x: 3 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 5 * scaleX, y: 5 * scaleY))
-            path.addLine(to: CGPoint(x: 19 * scaleX, y: 5 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 7 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 10 * scaleY))
-            path.move(to: CGPoint(x: 13 * scaleX, y: 13 * scaleY))
-            path.addLine(to: CGPoint(x: 19 * scaleX, y: 13 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 15 * scaleY))
-            path.addLine(to: CGPoint(x: 21 * scaleX, y: 17 * scaleY))
-            path.addLine(to: CGPoint(x: 19 * scaleX, y: 19 * scaleY))
-            path.addLine(to: CGPoint(x: 13 * scaleX, y: 19 * scaleY))
-            path.addLine(to: CGPoint(x: 11 * scaleX, y: 17 * scaleY))
-            path.addLine(to: CGPoint(x: 11 * scaleX, y: 15 * scaleY))
-            path.addLine(to: CGPoint(x: 13 * scaleX, y: 13 * scaleY))
-            path.closeSubpath()
-        case .settings:
-            path.move(to: CGPoint(x: 12 * scaleX, y: 8 * scaleY))
-            path.addCurve(to: CGPoint(x: 16 * scaleX, y: 12 * scaleY), control1: CGPoint(x: 14.2 * scaleX, y: 8 * scaleY), control2: CGPoint(x: 16 * scaleX, y: 9.8 * scaleY))
-            path.addCurve(to: CGPoint(x: 12 * scaleX, y: 16 * scaleY), control1: CGPoint(x: 16 * scaleX, y: 14.2 * scaleY), control2: CGPoint(x: 14.2 * scaleX, y: 16 * scaleY))
-            path.addCurve(to: CGPoint(x: 8 * scaleX, y: 12 * scaleY), control1: CGPoint(x: 9.8 * scaleX, y: 16 * scaleY), control2: CGPoint(x: 8 * scaleX, y: 14.2 * scaleY))
-            path.addCurve(to: CGPoint(x: 12 * scaleX, y: 8 * scaleY), control1: CGPoint(x: 8 * scaleX, y: 9.8 * scaleY), control2: CGPoint(x: 9.8 * scaleX, y: 8 * scaleY))
-            path.move(to: CGPoint(x: 19.4 * scaleX, y: 13 * scaleY))
-            path.addLine(to: CGPoint(x: 21.3 * scaleX, y: 14.5 * scaleY))
-            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 18.5 * scaleY))
-            path.addLine(to: CGPoint(x: 16.8 * scaleX, y: 17.5 * scaleY))
-            path.addLine(to: CGPoint(x: 14.5 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 9.5 * scaleX, y: 21 * scaleY))
-            path.addLine(to: CGPoint(x: 7.2 * scaleX, y: 17.5 * scaleY))
-            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 18.5 * scaleY))
-            path.addLine(to: CGPoint(x: 2.7 * scaleX, y: 14.5 * scaleY))
-            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 13 * scaleY))
-            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 11 * scaleY))
-            path.addLine(to: CGPoint(x: 2.7 * scaleX, y: 9.5 * scaleY))
-            path.addLine(to: CGPoint(x: 4.6 * scaleX, y: 5.5 * scaleY))
-            path.addLine(to: CGPoint(x: 7.2 * scaleX, y: 6.5 * scaleY))
-            path.addLine(to: CGPoint(x: 9.5 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 14.5 * scaleX, y: 3 * scaleY))
-            path.addLine(to: CGPoint(x: 16.8 * scaleX, y: 6.5 * scaleY))
-            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 5.5 * scaleY))
-            path.addLine(to: CGPoint(x: 21.3 * scaleX, y: 9.5 * scaleY))
-            path.addLine(to: CGPoint(x: 19.4 * scaleX, y: 11 * scaleY))
-            path.closeSubpath()
-        }
-        return path
     }
 }
