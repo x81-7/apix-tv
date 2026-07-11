@@ -108,7 +108,7 @@ final class NativePlayerCoordinator: ObservableObject {
     @Published var title = ""
     @Published var servers: [PlayerServer] = []
     @Published var currentServerIndex = 0
-    @Published var qualities: [PlayerQuality] = Self.defaultQualities
+    @Published var qualities: [PlayerQuality] = NativePlayerCoordinator.defaultQualities
     @Published var currentQualityIndex = 0
     @Published var subtitleTracks: [PlayerSubtitleTrack] = []
     @Published var currentSubtitleIndex = 0
@@ -143,12 +143,12 @@ final class NativePlayerCoordinator: ObservableObject {
 
         var list: [PlayerServer] = []
         if !primary.isEmpty {
-            list.append(PlayerServer(name: "السيرفر الأساسي", url: primary, headers: head, clearKey: clear, qualities: Self.defaultQualities, healthScore: 100))
+            list.append(PlayerServer(name: "السيرفر الأساسي", url: primary, headers: head, clearKey: clear, qualities: NativePlayerCoordinator.defaultQualities, healthScore: 100))
         }
         if !backup.isEmpty {
-            list.append(PlayerServer(name: "السيرفر الاحتياطي", url: backup, headers: head, clearKey: clear, qualities: Self.defaultQualities, healthScore: 60))
+            list.append(PlayerServer(name: "السيرفر الاحتياطي", url: backup, headers: head, clearKey: clear, qualities: NativePlayerCoordinator.defaultQualities, healthScore: 60))
         }
-        setup(title: channel.name, url: primary, headers: head, clearKey: clear, backupUrl: backup.isEmpty ? nil : backup, servers: list, qualities: Self.defaultQualities, subtitles: [], audioSources: [])
+        setup(title: channel.name, url: primary, headers: head, clearKey: clear, backupUrl: backup.isEmpty ? nil : backup, servers: list, qualities: NativePlayerCoordinator.defaultQualities, subtitles: [], audioSources: [])
     }
 
     func setup(title: String, url: String, headers: [String: String] = [:], clearKey: String? = nil, backupUrl: String? = nil, servers: [PlayerServer] = [], qualities: [PlayerQuality] = [], subtitles: [PlayerSubtitleTrack] = [], audioSources: [PlayerAudioSource] = []) {
@@ -161,7 +161,7 @@ final class NativePlayerCoordinator: ObservableObject {
         var finalServers = servers.filter { !$0.url.isEmpty }
         finalServers.sort { $0.healthScore == $1.healthScore ? $0.name < $1.name : $0.healthScore > $1.healthScore }
         if finalServers.isEmpty, !url.isEmpty {
-            let q = qualities.isEmpty ? Self.defaultQualities : qualities
+            let q = qualities.isEmpty ? NativePlayerCoordinator.defaultQualities : qualities
             finalServers = [PlayerServer(name: "السيرفر الأساسي", url: url, headers: headers, clearKey: clearKey, qualities: q, subtitles: subtitles.filter(\.isAllowed), audioSources: audioSources, healthScore: 100)]
             if let backupUrl, !backupUrl.isEmpty {
                 finalServers.append(PlayerServer(name: "السيرفر الاحتياطي", url: backupUrl, headers: headers, clearKey: clearKey, qualities: q, subtitles: subtitles.filter(\.isAllowed), audioSources: audioSources, healthScore: 60))
@@ -176,7 +176,7 @@ final class NativePlayerCoordinator: ObservableObject {
     private func applyMetadata(index: Int, fallbackQualities: [PlayerQuality], fallbackSubs: [PlayerSubtitleTrack], fallbackAudio: [PlayerAudioSource]) {
         guard servers.indices.contains(index) else { return }
         let s = servers[index]
-        let q = s.qualities.isEmpty ? (fallbackQualities.isEmpty ? Self.defaultQualities : fallbackQualities) : s.qualities
+        let q = s.qualities.isEmpty ? (fallbackQualities.isEmpty ? NativePlayerCoordinator.defaultQualities : fallbackQualities) : s.qualities
         qualities = q.sorted { $0.bitrate > $1.bitrate }
         if !qualities.contains(where: { $0.label == "تلقائي" }) {
             qualities.insert(PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0), at: 0)
@@ -209,7 +209,7 @@ final class NativePlayerCoordinator: ObservableObject {
         duration = 0
         guard let validUrl = URL(string: url) else { errorMessage = "Invalid stream URL"; isBuffering = false; return }
         var options: [String: Any] = [:]
-        if !headers.isEmpty { options[AVURLAssetHTTPHeaderFieldsKey] = headers }
+        if !headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = headers }
         let asset = AVURLAsset(url: validUrl, options: options.isEmpty ? nil : options)
         let item = AVPlayerItem(asset: asset)
         _ = clearKey
@@ -442,7 +442,13 @@ struct NativePlayerView: View {
         if ApixStreamResolverIOS.isApixStream(urlString) {
             isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
-                viewModel.setup(title: config.title ?? channel.name, url: config.url, headers: config.headers, clearKey: config.clearKey, backupUrl: config.backupUrl, servers: config.servers, qualities: config.qualities, subtitles: config.subtitles, audioSources: config.audioSources)
+                viewModel.setup(
+                    title: config.title ?? channel.name,
+                    url: config.url,
+                    headers: config.headers,
+                    clearKey: config.clearKey,
+                    backupUrl: config.backupUrl
+                )
             } else {
                 viewModel.setup(channel: channel)
             }
