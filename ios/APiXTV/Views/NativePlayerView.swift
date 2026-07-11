@@ -3,14 +3,11 @@ import AVKit
 import Combine
 import UIKit
 
-// MARK: - APiX palette (matches Android)
-let colorGold = Color(red: 212/255, green: 160/255, blue: 23/255)      // #D4A017
-let colorRed = Color(red: 229/255, green: 9/255, blue: 20/255)         // #E50914
-let colorBgDark = Color(red: 17/255, green: 17/255, blue: 17/255)      // #111111
-let colorRowSelected = Color(red: 42/255, green: 42/255, blue: 42/255)  // #2A2A2A
-let colorDivider = Color(red: 34/255, green: 34/255, blue: 34/255)      // #222222
-
-// MARK: - Playback Models
+private let colorGold = Color(red: 212/255, green: 160/255, blue: 23/255)
+private let colorRed = Color(red: 229/255, green: 9/255, blue: 20/255)
+private let colorBgDark = Color(red: 17/255, green: 17/255, blue: 17/255)
+private let colorRowSelected = Color(red: 42/255, green: 42/255, blue: 42/255)
+private let colorDivider = Color(red: 34/255, green: 34/255, blue: 34/255)
 
 struct PlayerServer: Identifiable, Equatable {
     let id = UUID()
@@ -18,29 +15,20 @@ struct PlayerServer: Identifiable, Equatable {
     let url: String
     let headers: [String: String]
     let clearKey: String?
-    let healthScore: Int
     let qualities: [PlayerQuality]
     let subtitles: [PlayerSubtitleTrack]
     let audioSources: [PlayerAudioSource]
+    let healthScore: Int
 
-    init(
-        name: String,
-        url: String,
-        headers: [String: String] = [:],
-        clearKey: String? = nil,
-        healthScore: Int = 0,
-        qualities: [PlayerQuality] = [],
-        subtitles: [PlayerSubtitleTrack] = [],
-        audioSources: [PlayerAudioSource] = []
-    ) {
+    init(name: String, url: String, headers: [String: String] = [:], clearKey: String? = nil, qualities: [PlayerQuality] = [], subtitles: [PlayerSubtitleTrack] = [], audioSources: [PlayerAudioSource] = [], healthScore: Int = 0) {
         self.name = name
         self.url = url
         self.headers = headers
         self.clearKey = clearKey
-        self.healthScore = healthScore
         self.qualities = qualities
         self.subtitles = subtitles
         self.audioSources = audioSources
+        self.healthScore = healthScore
     }
 }
 
@@ -52,18 +40,11 @@ struct PlayerQuality: Identifiable, Equatable {
     let requiredMbps: Double
 
     var detailText: String {
-        var parts: [String] = [label]
-        if let fps {
-            parts.append("\(fps)fps")
-        }
-        if bitrate > 0 {
-            let mbps = bitrate / 1_000_000.0
-            parts.append(String(format: "%.1f Mbps", mbps))
-        }
-        return parts.joined(separator: " • ")
+        var p = [label]
+        if let fps { p.append("\(fps)fps") }
+        if bitrate > 0 { p.append(String(format: "%.1f Mbps", bitrate / 1_000_000.0)) }
+        return p.joined(separator: " • ")
     }
-
-    var shortLabel: String { label }
 }
 
 struct PlayerAudioSource: Identifiable, Equatable {
@@ -71,12 +52,6 @@ struct PlayerAudioSource: Identifiable, Equatable {
     let name: String
     let url: String
     let languageCode: String?
-
-    init(name: String, url: String, languageCode: String? = nil) {
-        self.name = name
-        self.url = url
-        self.languageCode = languageCode
-    }
 }
 
 struct PlayerSubtitleTrack: Identifiable, Equatable {
@@ -84,31 +59,13 @@ struct PlayerSubtitleTrack: Identifiable, Equatable {
     let name: String
     let url: String
     let languageCode: String
-
-    var isAllowed: Bool {
-        let code = languageCode.lowercased()
-        return code == "ar" || code == "en"
-    }
+    var isAllowed: Bool { ["ar", "en"].contains(languageCode.lowercased()) }
 }
 
-enum PlayerIconType {
-    case play
-    case pause
-    case forward
-    case rewind
-    case back
-    case resize
-    case settings
-    case server
-    case pip
-}
+enum PlayerIconType { case play, pause, forward, rewind, back, resize, settings, server, pip }
 
 enum PlayerDisplayMode: CaseIterable, Equatable {
-    case fit
-    case fill
-    case stretch
-    case cinema
-
+    case fit, fill, stretch, cinema
     var title: String {
         switch self {
         case .fit: return "ملاءمة"
@@ -117,7 +74,6 @@ enum PlayerDisplayMode: CaseIterable, Equatable {
         case .cinema: return "سينما"
         }
     }
-
     var gravity: AVLayerVideoGravity {
         switch self {
         case .fit: return .resizeAspect
@@ -126,14 +82,7 @@ enum PlayerDisplayMode: CaseIterable, Equatable {
         case .cinema: return .resizeAspectFill
         }
     }
-
-    var zoom: CGFloat {
-        switch self {
-        case .cinema: return 1.06
-        default: return 1.0
-        }
-    }
-
+    var zoom: CGFloat { self == .cinema ? 1.06 : 1.0 }
     var iconName: String {
         switch self {
         case .fit: return "arrow.up.left.and.arrow.down.right"
@@ -142,42 +91,29 @@ enum PlayerDisplayMode: CaseIterable, Equatable {
         case .cinema: return "tv"
         }
     }
-
     mutating func cycle() {
-        let cases = Self.allCases
-        guard let idx = cases.firstIndex(of: self) else {
-            self = .fit
-            return
-        }
-        self = cases[(idx + 1) % cases.count]
+        let all = Self.allCases
+        self = all[(all.firstIndex(of: self) ?? 0 + 1) % all.count]
     }
 }
-
-// MARK: - Coordinator
 
 @MainActor
 final class NativePlayerCoordinator: ObservableObject {
     let player = AVPlayer()
-
     @Published var isPlaying = false
     @Published var isBuffering = true
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var errorMessage: String?
     @Published var title = ""
-
     @Published var servers: [PlayerServer] = []
     @Published var currentServerIndex = 0
-
     @Published var qualities: [PlayerQuality] = Self.defaultQualities
     @Published var currentQualityIndex = 0
-
     @Published var subtitleTracks: [PlayerSubtitleTrack] = []
     @Published var currentSubtitleIndex = 0
-
     @Published var audioSources: [PlayerAudioSource] = []
     @Published var currentAudioIndex = 0
-
     @Published var displayMode: PlayerDisplayMode = .fit
 
     private var timeObserver: Any?
@@ -194,214 +130,76 @@ final class NativePlayerCoordinator: ObservableObject {
 
     init() {
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback)
-            try session.setActive(true)
-        } catch {
-            print("AVAudioSession setup failed: \(error.localizedDescription)")
-        }
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch { print(error.localizedDescription) }
     }
-
-    // MARK: - Existing Channel-based flow
 
     func setup(channel: Channel) {
-        let primaryUrlString = channel.playbackURL ?? ""
-        let backupUrlString = channel.backupURL?.absoluteString
+        let primary = channel.playbackURL ?? ""
+        let backup = channel.backupURL?.absoluteString ?? ""
+        let head = channel.effectiveHeaders
+        let clear = channel.clearKeyCombined
 
-        let primary = PlayerServer(
-            name: "السيرفر الأساسي",
-            url: primaryUrlString,
-            headers: channel.effectiveHeaders,
-            clearKey: channel.clearKeyCombined,
-            healthScore: 100
-        )
-
-        var servers: [PlayerServer] = []
-        if !primaryUrlString.isEmpty { servers.append(primary) }
-
-        if let backupUrlString, !backupUrlString.isEmpty {
-            servers.append(PlayerServer(
-                name: "السيرفر الاحتياطي",
-                url: backupUrlString,
-                headers: channel.effectiveHeaders,
-                clearKey: channel.clearKeyCombined,
-                healthScore: 60
-            ))
+        var list: [PlayerServer] = []
+        if !primary.isEmpty {
+            list.append(PlayerServer(name: "السيرفر الأساسي", url: primary, headers: head, clearKey: clear, qualities: Self.defaultQualities, healthScore: 100))
         }
-
-        applyPlaybackConfiguration(
-            title: channel.name,
-            servers: servers,
-            fallbackUrl: primaryUrlString,
-            fallbackHeaders: channel.effectiveHeaders,
-            fallbackClearKey: channel.clearKeyCombined,
-            fallbackBackupUrl: backupUrlString,
-            qualities: Self.defaultQualities,
-            subtitles: [],
-            audioSources: []
-        )
+        if !backup.isEmpty {
+            list.append(PlayerServer(name: "السيرفر الاحتياطي", url: backup, headers: head, clearKey: clear, qualities: Self.defaultQualities, healthScore: 60))
+        }
+        setup(title: channel.name, url: primary, headers: head, clearKey: clear, backupUrl: backup.isEmpty ? nil : backup, servers: list, qualities: Self.defaultQualities, subtitles: [], audioSources: [])
     }
 
-    // MARK: - APiX resolved flow
-
-    func setup(
-        title: String,
-        url: String,
-        headers: [String: String] = [:],
-        clearKey: String? = nil,
-        backupUrl: String? = nil,
-        servers: [PlayerServer] = [],
-        qualities: [PlayerQuality] = [],
-        subtitles: [PlayerSubtitleTrack] = [],
-        audioSources: [PlayerAudioSource] = []
-    ) {
-        applyPlaybackConfiguration(
-            title: title,
-            servers: servers,
-            fallbackUrl: url,
-            fallbackHeaders: headers,
-            fallbackClearKey: clearKey,
-            fallbackBackupUrl: backupUrl,
-            qualities: qualities,
-            subtitles: subtitles,
-            audioSources: audioSources
-        )
-    }
-
-    private func applyPlaybackConfiguration(
-        title: String,
-        servers: [PlayerServer],
-        fallbackUrl: String,
-        fallbackHeaders: [String: String],
-        fallbackClearKey: String?,
-        fallbackBackupUrl: String?,
-        qualities: [PlayerQuality],
-        subtitles: [PlayerSubtitleTrack],
-        audioSources: [PlayerAudioSource]
-    ) {
+    func setup(title: String, url: String, headers: [String: String] = [:], clearKey: String? = nil, backupUrl: String? = nil, servers: [PlayerServer] = [], qualities: [PlayerQuality] = [], subtitles: [PlayerSubtitleTrack] = [], audioSources: [PlayerAudioSource] = []) {
         self.title = title
-        self.errorMessage = nil
-        self.isBuffering = true
-        self.currentTime = 0
-        self.duration = 0
+        errorMessage = nil
+        isBuffering = true
+        currentTime = 0
+        duration = 0
 
-        var finalServers = servers
-            .filter { !$0.url.isEmpty }
-            .sorted { lhs, rhs in
-                if lhs.healthScore == rhs.healthScore { return lhs.name < rhs.name }
-                return lhs.healthScore > rhs.healthScore
-            }
-
-        if finalServers.isEmpty, !fallbackUrl.isEmpty {
-            finalServers = [
-                PlayerServer(
-                    name: "السيرفر الأساسي",
-                    url: fallbackUrl,
-                    headers: fallbackHeaders,
-                    clearKey: fallbackClearKey,
-                    healthScore: 100,
-                    qualities: qualities.isEmpty ? Self.defaultQualities : qualities,
-                    subtitles: subtitles.filter(\.isAllowed),
-                    audioSources: audioSources
-                )
-            ]
-
-            if let fallbackBackupUrl, !fallbackBackupUrl.isEmpty {
-                finalServers.append(
-                    PlayerServer(
-                        name: "السيرفر الاحتياطي",
-                        url: fallbackBackupUrl,
-                        headers: fallbackHeaders,
-                        clearKey: fallbackClearKey,
-                        healthScore: 60,
-                        qualities: qualities.isEmpty ? Self.defaultQualities : qualities,
-                        subtitles: subtitles.filter(\.isAllowed),
-                        audioSources: audioSources
-                    )
-                )
-            }
-        } else if !qualities.isEmpty || !subtitles.isEmpty || !audioSources.isEmpty {
-            finalServers = finalServers.map { server in
-                PlayerServer(
-                    name: server.name,
-                    url: server.url,
-                    headers: server.headers,
-                    clearKey: server.clearKey,
-                    healthScore: server.healthScore,
-                    qualities: server.qualities.isEmpty ? (qualities.isEmpty ? Self.defaultQualities : qualities) : server.qualities,
-                    subtitles: server.subtitles.isEmpty ? subtitles.filter(\.isAllowed) : server.subtitles.filter(\.isAllowed),
-                    audioSources: server.audioSources.isEmpty ? audioSources : server.audioSources
-                )
+        var finalServers = servers.filter { !$0.url.isEmpty }
+        finalServers.sort { $0.healthScore == $1.healthScore ? $0.name < $1.name : $0.healthScore > $1.healthScore }
+        if finalServers.isEmpty, !url.isEmpty {
+            let q = qualities.isEmpty ? Self.defaultQualities : qualities
+            finalServers = [PlayerServer(name: "السيرفر الأساسي", url: url, headers: headers, clearKey: clearKey, qualities: q, subtitles: subtitles.filter(\.isAllowed), audioSources: audioSources, healthScore: 100)]
+            if let backupUrl, !backupUrl.isEmpty {
+                finalServers.append(PlayerServer(name: "السيرفر الاحتياطي", url: backupUrl, headers: headers, clearKey: clearKey, qualities: q, subtitles: subtitles.filter(\.isAllowed), audioSources: audioSources, healthScore: 60))
             }
         }
-
         self.servers = finalServers
         self.currentServerIndex = 0
+        applyMetadata(index: 0, fallbackQualities: qualities, fallbackSubs: subtitles, fallbackAudio: audioSources)
+        if !finalServers.isEmpty { loadServer(index: 0) } else { errorMessage = "No valid URLs found"; isBuffering = false }
+    }
 
-        let activeServer = finalServers.first
-        let activeQualities = (activeServer?.qualities.isEmpty == false ? activeServer!.qualities : (qualities.isEmpty ? Self.defaultQualities : qualities))
-            .sorted { $0.bitrate > $1.bitrate }
-
-        self.qualities = activeQualities.contains(where: { $0.label == "تلقائي" }) ? activeQualities : ([PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0)] + activeQualities)
-
-        self.subtitleTracks = (activeServer?.subtitles.isEmpty == false ? activeServer!.subtitles : subtitles)
-            .filter(\.isAllowed)
-        self.audioSources = activeServer?.audioSources.isEmpty == false ? activeServer!.audioSources : audioSources
-
-        self.currentQualityIndex = 0
-        self.currentSubtitleIndex = 0
-        self.currentAudioIndex = 0
-
-        if !self.servers.isEmpty {
-            loadServer(index: 0)
-        } else {
-            self.errorMessage = "No valid URLs found"
-            self.isBuffering = false
+    private func applyMetadata(index: Int, fallbackQualities: [PlayerQuality], fallbackSubs: [PlayerSubtitleTrack], fallbackAudio: [PlayerAudioSource]) {
+        guard servers.indices.contains(index) else { return }
+        let s = servers[index]
+        let q = s.qualities.isEmpty ? (fallbackQualities.isEmpty ? Self.defaultQualities : fallbackQualities) : s.qualities
+        qualities = q.sorted { $0.bitrate > $1.bitrate }
+        if !qualities.contains(where: { $0.label == "تلقائي" }) {
+            qualities.insert(PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0), at: 0)
         }
+        subtitleTracks = (s.subtitles.isEmpty ? fallbackSubs : s.subtitles).filter(\.isAllowed)
+        audioSources = s.audioSources.isEmpty ? fallbackAudio : s.audioSources
+        currentQualityIndex = 0
+        currentSubtitleIndex = 0
+        currentAudioIndex = 0
     }
 
     func loadServer(index: Int) {
         guard servers.indices.contains(index) else { return }
         currentServerIndex = index
-
-        let selectedServer = servers[index]
-        qualities = selectedServer.qualities.isEmpty ? Self.defaultQualities : selectedServer.qualities.sorted { $0.bitrate > $1.bitrate }
-        if !qualities.contains(where: { $0.label == "تلقائي" }) {
-            qualities.insert(PlayerQuality(label: "تلقائي", bitrate: 0, fps: nil, requiredMbps: 0), at: 0)
-        }
-
-        subtitleTracks = selectedServer.subtitles.filter(\.isAllowed)
-        audioSources = selectedServer.audioSources
-
-        currentQualityIndex = 0
-        currentSubtitleIndex = 0
-        currentAudioIndex = 0
-
-        load(url: selectedServer.url, headers: selectedServer.headers, clearKey: selectedServer.clearKey)
+        let s = servers[index]
+        applyMetadata(index: index, fallbackQualities: [], fallbackSubs: [], fallbackAudio: [])
+        load(url: s.url, headers: s.headers, clearKey: s.clearKey)
     }
 
-    func setQuality(index: Int) {
-        guard qualities.indices.contains(index) else { return }
-        currentQualityIndex = index
-        let selected = qualities[index]
-        player.currentItem?.preferredPeakBitRate = selected.bitrate
-    }
-
-    func setSubtitle(index: Int) {
-        guard subtitleTracks.indices.contains(index) else { return }
-        currentSubtitleIndex = index
-        // Hook point for subtitle renderer / AVMediaSelection logic
-    }
-
-    func setAudio(index: Int) {
-        guard audioSources.indices.contains(index) else { return }
-        currentAudioIndex = index
-        // Hook point for audio track selection logic
-    }
-
-    func cycleDisplayMode() {
-        displayMode.cycle()
-    }
+    func setQuality(index: Int) { guard qualities.indices.contains(index) else { return }; currentQualityIndex = index; player.currentItem?.preferredPeakBitRate = qualities[index].bitrate }
+    func setSubtitle(index: Int) { guard subtitleTracks.indices.contains(index) else { return }; currentSubtitleIndex = index }
+    func setAudio(index: Int) { guard audioSources.indices.contains(index) else { return }; currentAudioIndex = index }
+    func cycleDisplayMode() { displayMode.cycle() }
 
     func load(url: String, headers: [String: String], clearKey: String?) {
         cleanupPlaybackOnly()
@@ -409,278 +207,150 @@ final class NativePlayerCoordinator: ObservableObject {
         isBuffering = true
         currentTime = 0
         duration = 0
-
-        guard let validUrl = URL(string: url) else {
-            errorMessage = "Invalid stream URL"
-            isBuffering = false
-            return
-        }
-
+        guard let validUrl = URL(string: url) else { errorMessage = "Invalid stream URL"; isBuffering = false; return }
         var options: [String: Any] = [:]
-        if !headers.isEmpty {
-            options[AVURLAssetHTTPHeaderFieldsKey] = headers
-        }
-
+        if !headers.isEmpty { options[AVURLAssetHTTPHeaderFieldsKey] = headers }
         let asset = AVURLAsset(url: validUrl, options: options.isEmpty ? nil : options)
         let item = AVPlayerItem(asset: asset)
         _ = clearKey
-
         player.replaceCurrentItem(with: item)
         setupObservers(for: item)
         player.play()
     }
 
     private func setupObservers(for item: AVPlayerItem) {
-        item.publisher(for: \.status)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                guard let self else { return }
-                switch status {
-                case .readyToPlay:
-                    self.isBuffering = false
-                case .failed:
-                    self.errorMessage = item.error?.localizedDescription ?? "خطأ تقني في التشغيل"
-                    self.isBuffering = false
-                default:
-                    break
-                }
+        item.publisher(for: \.status).receive(on: RunLoop.main).sink { [weak self] status in
+            guard let self else { return }
+            switch status {
+            case .readyToPlay: self.isBuffering = false
+            case .failed: self.errorMessage = item.error?.localizedDescription ?? "خطأ تقني في التشغيل"; self.isBuffering = false
+            default: break
             }
-            .store(in: &cancellables)
+        }.store(in: &cancellables)
 
-        item.publisher(for: \.duration)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] dur in
-                let secs = dur.seconds
-                self?.duration = (secs.isNaN || secs.isInfinite) ? 0 : secs
-            }
-            .store(in: &cancellables)
+        item.publisher(for: \.duration).receive(on: RunLoop.main).sink { [weak self] d in
+            let s = d.seconds
+            self?.duration = (s.isNaN || s.isInfinite) ? 0 : s
+        }.store(in: &cancellables)
 
-        player.publisher(for: \.timeControlStatus)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                guard let self else { return }
-                self.isPlaying = (status == .playing)
-                if status == .playing {
-                    self.isBuffering = false
-                }
-                if status == .waitingToPlayAtSpecifiedRate {
-                    self.isBuffering = true
-                }
-            }
-            .store(in: &cancellables)
+        player.publisher(for: \.timeControlStatus).receive(on: RunLoop.main).sink { [weak self] status in
+            guard let self else { return }
+            self.isPlaying = (status == .playing)
+            self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
+        }.store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.isBuffering = true
-            }
-            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .AVPlayerItemPlaybackStalled, object: item).receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.isBuffering = true
+        }.store(in: &cancellables)
 
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            Task { @MainActor in
-                self?.currentTime = time.seconds
-            }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
+            Task { @MainActor in self?.currentTime = time.seconds }
         }
     }
 
-    func togglePlay() {
-        if player.timeControlStatus == .playing {
-            player.pause()
-        } else {
-            player.play()
-        }
-    }
-
-    func seek(by seconds: Double) {
-        let maxTime = duration > 0 ? duration : .infinity
-        let targetTime = max(0, min(currentTime + seconds, maxTime))
-        let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        player.seek(to: target)
-    }
-
-    func seekTo(fraction: Double) {
-        guard duration > 0 else { return }
-        let targetTime = duration * fraction
-        let target = CMTime(seconds: targetTime, preferredTimescale: 600)
-        player.seek(to: target) { [weak self] _ in
-            Task { @MainActor in
-                self?.currentTime = targetTime
-            }
-        }
-    }
+    func togglePlay() { player.timeControlStatus == .playing ? player.pause() : player.play() }
+    func seek(by seconds: Double) { let maxTime = duration > 0 ? duration : .infinity; let target = max(0, min(currentTime + seconds, maxTime)); player.seek(to: CMTime(seconds: target, preferredTimescale: 600)) }
+    func seekTo(fraction: Double) { guard duration > 0 else { return }; let target = duration * fraction; player.seek(to: CMTime(seconds: target, preferredTimescale: 600)) { [weak self] _ in Task { @MainActor in self?.currentTime = target } } }
 
     func cleanupPlaybackOnly() {
-        if let observer = timeObserver {
-            player.removeTimeObserver(observer)
-            timeObserver = nil
-        }
+        if let observer = timeObserver { player.removeTimeObserver(observer); timeObserver = nil }
         cancellables.removeAll()
         player.pause()
         player.replaceCurrentItem(with: nil)
     }
-
-    func cleanupAll() {
-        cleanupPlaybackOnly()
-    }
-
-    deinit {
-        if let observer = timeObserver {
-            player.removeTimeObserver(observer)
-        }
-    }
+    func cleanupAll() { cleanupPlaybackOnly() }
+    deinit { if let o = timeObserver { player.removeTimeObserver(o) } }
 }
 
-// MARK: - Video Layer
-
-class PlayerUIView: UIView {
-    var playerLayer: AVPlayerLayer {
-        layer as! AVPlayerLayer
-    }
-
-    override class var layerClass: AnyClass {
-        AVPlayerLayer.self
-    }
-}
+final class PlayerUIView: UIView { var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }; override class var layerClass: AnyClass { AVPlayerLayer.self } }
 
 struct PlayerVideoLayer: UIViewRepresentable {
     let player: AVPlayer
     let gravity: AVLayerVideoGravity
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        let view = PlayerUIView()
-        view.backgroundColor = .black
-        view.playerLayer.player = player
-        view.playerLayer.videoGravity = gravity
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        uiView.playerLayer.player = player
-        uiView.playerLayer.videoGravity = gravity
-    }
+    func makeUIView(context: Context) -> PlayerUIView { let v = PlayerUIView(); v.backgroundColor = .black; v.playerLayer.player = player; v.playerLayer.videoGravity = gravity; return v }
+    func updateUIView(_ uiView: PlayerUIView, context: Context) { uiView.playerLayer.player = player; uiView.playerLayer.videoGravity = gravity }
 }
-
-// MARK: - Main Player View
 
 struct NativePlayerView: View {
     let channel: Channel
-
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = NativePlayerCoordinator()
-
-    @State private var showControls: Bool = true
+    @State private var showControls = true
     @State private var hideTimer: Timer?
-    @State private var isResolving: Bool = false
-
-    @State private var showQualityDialog: Bool = false
-    @State private var showServerDialog: Bool = false
-    @State private var showSubtitleDialog: Bool = false
-    @State private var showAudioDialog: Bool = false
+    @State private var isResolving = false
+    @State private var showQualityDialog = false
+    @State private var showServerDialog = false
+    @State private var showSubtitleDialog = false
+    @State private var showAudioDialog = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-
             PlayerVideoLayer(player: viewModel.player, gravity: viewModel.displayMode.gravity)
                 .scaleEffect(viewModel.displayMode.zoom)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    toggleControls()
-                }
+                .onTapGesture { toggleControls() }
                 .zIndex(0)
 
             if viewModel.isBuffering && viewModel.errorMessage == nil && !isResolving {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(colorRed)
-                    .scaleEffect(1.6)
-                    .allowsHitTesting(false)
-                    .zIndex(1)
+                ProgressView().progressViewStyle(.circular).tint(colorRed).scaleEffect(1.6).allowsHitTesting(false).zIndex(1)
             }
-
             if isResolving {
                 Color.black.opacity(0.6).ignoresSafeArea().zIndex(1)
-                VStack(spacing: 16) {
-                    ProgressView().tint(colorRed).scaleEffect(1.6)
-                }
-                .zIndex(2)
+                ProgressView().tint(colorRed).scaleEffect(1.6).zIndex(2)
             }
-
             if let error = viewModel.errorMessage {
                 Color.black.opacity(0.9).ignoresSafeArea().zIndex(1)
                 VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 64))
-                        .foregroundColor(colorRed)
-
-                    Text(error)
-                        .foregroundColor(.white)
-                        .font(.system(size: 16, weight: .bold))
-                        .multilineTextAlignment(.center)
-                        .padding(32)
-
-                    PlayerIconButton(type: .back, size: 36) {
-                        viewModel.player.pause()
-                        dismiss()
-                    }
-                }
-                .zIndex(2)
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 64)).foregroundColor(colorRed)
+                    Text(error).foregroundColor(.white).font(.system(size: 16, weight: .bold)).multilineTextAlignment(.center).padding(32)
+                    PlayerIconButton(type: .back, size: 36) { viewModel.player.pause(); dismiss() }
+                }.zIndex(2)
             }
-
             if showControls && viewModel.errorMessage == nil && !isResolving {
-                controlsLayer
-                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                    .zIndex(2)
+                controlsLayer.transition(.opacity.animation(.easeInOut(duration: 0.2))).zIndex(2)
             }
+            dialogsLayer.zIndex(3)
+        }
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
+        .onAppear { forceLandscape(); resetTimer() }
+        .onDisappear { forcePortrait(); viewModel.cleanupAll(); hideTimer?.invalidate() }
+        .task { await resolveAndPlay() }
+    }
 
+    private var dialogsLayer: some View {
+        ZStack {
             if showQualityDialog {
                 APiXDialog(title: "الجودة", isPresented: $showQualityDialog) {
-                    ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, quality in
-                        APiXDialogRow(
-                            title: quality.detailText,
-                            isSelected: index == viewModel.currentQualityIndex
-                        ) {
+                    ForEach(Array(viewModel.qualities.enumerated()), id: \.offset) { index, q in
+                        APiXDialogRow(title: q.detailText, subtitle: q.requiredMbps > 0 ? "\(String(format: "%.1f", q.requiredMbps)) Mbps" : nil, isSelected: index == viewModel.currentQualityIndex) {
                             viewModel.setQuality(index: index)
                             showQualityDialog = false
                             resetTimer()
                         }
                     }
                 }
-                .zIndex(3)
             }
-
             if showServerDialog {
                 APiXDialog(title: "السيرفرات", isPresented: $showServerDialog) {
-                    ForEach(Array(viewModel.servers.enumerated()), id: \.offset) { index, server in
-                        APiXDialogRow(
-                            title: server.name,
-                            subtitle: server.qualities.first?.detailText,
-                            isSelected: index == viewModel.currentServerIndex
-                        ) {
+                    ForEach(Array(viewModel.servers.enumerated()), id: \.offset) { index, s in
+                        APiXDialogRow(title: s.name, subtitle: s.qualities.first?.detailText, isSelected: index == viewModel.currentServerIndex) {
                             viewModel.loadServer(index: index)
                             showServerDialog = false
                             resetTimer()
                         }
                     }
                 }
-                .zIndex(3)
             }
-
             if showSubtitleDialog {
                 APiXDialog(title: "الترجمات", isPresented: $showSubtitleDialog) {
                     if viewModel.subtitleTracks.isEmpty {
-                        APiXDialogRow(title: "لا توجد ترجمات", isSelected: false) {
-                            showSubtitleDialog = false
-                        }
+                        APiXDialogRow(title: "لا توجد ترجمات", isSelected: false) { showSubtitleDialog = false }
                     } else {
-                        ForEach(Array(viewModel.subtitleTracks.enumerated()), id: \.offset) { index, subtitle in
-                            APiXDialogRow(
-                                title: subtitle.name,
-                                subtitle: subtitle.languageCode.uppercased(),
-                                isSelected: index == viewModel.currentSubtitleIndex
-                            ) {
+                        ForEach(Array(viewModel.subtitleTracks.enumerated()), id: \.offset) { index, s in
+                            APiXDialogRow(title: s.name, subtitle: s.languageCode.uppercased(), isSelected: index == viewModel.currentSubtitleIndex) {
                                 viewModel.setSubtitle(index: index)
                                 showSubtitleDialog = false
                                 resetTimer()
@@ -688,22 +358,14 @@ struct NativePlayerView: View {
                         }
                     }
                 }
-                .zIndex(3)
             }
-
             if showAudioDialog {
                 APiXDialog(title: "الصوت", isPresented: $showAudioDialog) {
                     if viewModel.audioSources.isEmpty {
-                        APiXDialogRow(title: "لا توجد مسارات صوت", isSelected: false) {
-                            showAudioDialog = false
-                        }
+                        APiXDialogRow(title: "لا توجد مسارات صوت", isSelected: false) { showAudioDialog = false }
                     } else {
-                        ForEach(Array(viewModel.audioSources.enumerated()), id: \.offset) { index, audio in
-                            APiXDialogRow(
-                                title: audio.name,
-                                subtitle: audio.languageCode?.uppercased(),
-                                isSelected: index == viewModel.currentAudioIndex
-                            ) {
+                        ForEach(Array(viewModel.audioSources.enumerated()), id: \.offset) { index, a in
+                            APiXDialogRow(title: a.name, subtitle: a.languageCode?.uppercased(), isSelected: index == viewModel.currentAudioIndex) {
                                 viewModel.setAudio(index: index)
                                 showAudioDialog = false
                                 resetTimer()
@@ -711,172 +373,76 @@ struct NativePlayerView: View {
                         }
                     }
                 }
-                .zIndex(3)
             }
         }
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
-        .onAppear {
-            forceLandscape()
-            resetTimer()
-        }
-        .onDisappear {
-            forcePortrait()
-            viewModel.cleanupAll()
-            hideTimer?.invalidate()
-        }
-        .task {
-            await resolveAndPlay()
-        }
     }
-
-    // MARK: - Controls Layer
 
     private var controlsLayer: some View {
         ZStack {
             VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 100)
-                    .allowsHitTesting(false)
-
+                LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom).frame(height: 100).allowsHitTesting(false)
                 Spacer()
-
-                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 120)
-                    .allowsHitTesting(false)
-            }
-            .ignoresSafeArea()
+                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom).frame(height: 120).allowsHitTesting(false)
+            }.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
-                    PlayerIconButton(type: .back, size: 36) {
-                        viewModel.player.pause()
-                        dismiss()
-                    }
-
+                    PlayerIconButton(type: .back, size: 36) { viewModel.player.pause(); dismiss() }
                     Spacer()
-
-                    Text(viewModel.title)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .frame(maxWidth: 300, alignment: .trailing)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                    Text(viewModel.title).font(.system(size: 16, weight: .bold)).foregroundColor(.white).lineLimit(1).frame(maxWidth: 320, alignment: .trailing)
+                }.padding(.horizontal, 16).padding(.top, 12)
 
                 Spacer()
 
                 VStack(spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(formatTime(viewModel.currentTime))
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-
-                        let progressValue = viewModel.duration > 0 ? (viewModel.currentTime / viewModel.duration) : 0
-                        IOSProgressSlider(value: progressValue) { fraction in
-                            if viewModel.duration > 0 {
-                                viewModel.seekTo(fraction: fraction)
-                            }
+                        Text(viewModel.duration > 0 ? formatTime(viewModel.currentTime) : "LIVE")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(viewModel.duration > 0 ? .white : colorRed)
+                        IOSProgressSlider(value: viewModel.duration > 0 ? (viewModel.currentTime / viewModel.duration) : 0) { fraction in
+                            if viewModel.duration > 0 { viewModel.seekTo(fraction: fraction) }
                             resetTimer()
-                        }
-                        .frame(height: 16)
-
-                        Text(formatTime(viewModel.duration))
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 16)
+                        }.frame(height: 16).disabled(viewModel.duration <= 0)
+                        Text(viewModel.duration > 0 ? formatTime(viewModel.duration) : "LIVE")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(viewModel.duration > 0 ? .white : colorRed)
+                    }.padding(.horizontal, 16)
 
                     HStack {
                         HStack(spacing: 16) {
-                            PlayerIconButton(type: .rewind, size: 38) {
-                                viewModel.seek(by: -10)
-                                resetTimer()
-                            }
-
-                            PlayerIconButton(type: viewModel.isPlaying ? .pause : .play, size: 44) {
-                                viewModel.togglePlay()
-                                resetTimer()
-                            }
-
-                            PlayerIconButton(type: .forward, size: 38) {
-                                viewModel.seek(by: 10)
-                                resetTimer()
-                            }
+                            PlayerIconButton(type: .rewind, size: 38) { viewModel.seek(by: -10); resetTimer() }
+                            PlayerIconButton(type: viewModel.isPlaying ? .pause : .play, size: 44) { viewModel.togglePlay(); resetTimer() }
+                            PlayerIconButton(type: .forward, size: 38) { viewModel.seek(by: 10); resetTimer() }
                         }
-
                         Spacer()
-
                         HStack(spacing: 12) {
                             if !viewModel.audioSources.isEmpty {
-                                PlayerImageButton(systemName: "speaker.wave.2.fill", size: 32) {
-                                    showAudioDialog = true
-                                    hideTimer?.invalidate()
-                                }
+                                PlayerImageButton(systemName: "speaker.wave.2.fill", size: 32) { showAudioDialog = true; hideTimer?.invalidate() }
                             }
-
                             if !viewModel.subtitleTracks.isEmpty {
-                                PlayerImageButton(systemName: "captions.bubble.fill", size: 32) {
-                                    showSubtitleDialog = true
-                                    hideTimer?.invalidate()
-                                }
+                                PlayerImageButton(systemName: "captions.bubble.fill", size: 32) { showSubtitleDialog = true; hideTimer?.invalidate() }
                             }
-
                             if viewModel.servers.count > 1 {
-                                PlayerIconButton(type: .server, size: 32) {
-                                    showServerDialog = true
-                                    hideTimer?.invalidate()
-                                }
+                                PlayerIconButton(type: .server, size: 32) { showServerDialog = true; hideTimer?.invalidate() }
                             }
-
                             if viewModel.qualities.count > 1 {
-                                PlayerQualityButton(
-                                    quality: viewModel.qualities[viewModel.currentQualityIndex],
-                                    action: {
-                                        showQualityDialog = true
-                                        hideTimer?.invalidate()
-                                    }
-                                )
+                                PlayerQualityButton(quality: viewModel.qualities[viewModel.currentQualityIndex]) { showQualityDialog = true; hideTimer?.invalidate() }
                             }
-
-                            PlayerDisplayModeButton(
-                                mode: viewModel.displayMode,
-                                action: {
-                                    viewModel.cycleDisplayMode()
-                                    resetTimer()
-                                }
-                            )
-
-                            PlayerIconButton(type: .pip, size: 32) {
-                                // PiP hook
-                            }
+                            PlayerDisplayModeButton(mode: viewModel.displayMode) { viewModel.cycleDisplayMode(); resetTimer() }
+                            PlayerIconButton(type: .pip, size: 32) { }
                         }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    }.padding(.horizontal, 16).padding(.bottom, 8)
                 }
             }
         }
     }
 
-    // MARK: - Handlers
-
     private func resolveAndPlay() async {
         let urlString = channel.playbackURL ?? ""
-
         if ApixStreamResolverIOS.isApixStream(urlString) {
             isResolving = true
             if let config = await ApixStreamResolverIOS.resolve(urlString) {
-                viewModel.setup(
-                    title: config.title ?? channel.name,
-                    url: config.url,
-                    headers: config.headers,
-                    clearKey: config.clearKey,
-                    backupUrl: config.backupUrl
-                )
+                viewModel.setup(title: config.title ?? channel.name, url: config.url, headers: config.headers, clearKey: config.clearKey, backupUrl: config.backupUrl, servers: config.servers, qualities: config.qualities, subtitles: config.subtitles, audioSources: config.audioSources)
             } else {
                 viewModel.setup(channel: channel)
             }
@@ -887,20 +453,14 @@ struct NativePlayerView: View {
     }
 
     private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showControls.toggle()
-        }
-        if showControls {
-            resetTimer()
-        }
+        withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
+        if showControls { resetTimer() }
     }
 
     private func resetTimer() {
         hideTimer?.invalidate()
         hideTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showControls = false
-            }
+            withAnimation(.easeInOut(duration: 0.3)) { showControls = false }
         }
     }
 
@@ -909,11 +469,7 @@ struct NativePlayerView: View {
         let h = Int(seconds) / 3600
         let m = (Int(seconds) % 3600) / 60
         let s = Int(seconds) % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        } else {
-            return String(format: "%02d:%02d", m, s)
-        }
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
     }
 
     private func forceLandscape() {
@@ -932,5 +488,209 @@ struct NativePlayerView: View {
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
         }
+    }
+}
+
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed ? 1.18 : 1.0).animation(.easeOut(duration: 0.18), value: configuration.isPressed)
+    }
+}
+
+struct PlayerIconButton: View {
+    let type: PlayerIconType
+    let size: CGFloat
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().fill(Color.clear).frame(width: size, height: size)
+                PlayerIconPath(type: type).stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)).frame(width: size * 0.65, height: size * 0.65)
+            }.contentShape(Circle())
+        }.buttonStyle(ScaleButtonStyle())
+    }
+}
+
+struct PlayerImageButton: View {
+    let systemName: String
+    let size: CGFloat
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().fill(Color.clear).frame(width: size, height: size)
+                Image(systemName: systemName).font(.system(size: size * 0.55, weight: .semibold)).foregroundColor(.white)
+            }.contentShape(Circle())
+        }.buttonStyle(ScaleButtonStyle())
+    }
+}
+
+struct PlayerQualityButton: View {
+    let quality: PlayerQuality
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(quality.label).font(.system(size: 12, weight: .bold)).lineLimit(1)
+                if quality.bitrate > 0 {
+                    Text(String(format: "%.1f Mbps", quality.bitrate / 1_000_000.0)).font(.system(size: 9, weight: .medium)).opacity(0.8)
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(colorGold.opacity(0.8), lineWidth: 1))
+            )
+        }.buttonStyle(ScaleButtonStyle())
+    }
+}
+
+struct PlayerDisplayModeButton: View {
+    let mode: PlayerDisplayMode
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: mode.iconName).font(.system(size: 12, weight: .semibold))
+                Text(mode.title).font(.system(size: 9, weight: .bold)).lineLimit(1)
+            }
+            .foregroundColor(.white)
+            .frame(width: 56, height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(colorGold.opacity(0.8), lineWidth: 1))
+            )
+        }.buttonStyle(ScaleButtonStyle())
+    }
+}
+
+struct IOSProgressSlider: View {
+    let value: Double
+    let onEnd: (Double) -> Void
+    @State private var dragValue: Double?
+
+    var body: some View {
+        GeometryReader { geometry in
+            let displayValue = dragValue ?? value
+            let maxWidth = geometry.size.width
+            let sliderWidth = max(0, maxWidth * CGFloat(displayValue))
+            let circleOffset = max(0, min(maxWidth - 12, sliderWidth - 6))
+
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.26)).frame(height: 3)
+                Capsule().fill(colorRed).frame(width: sliderWidth, height: 3)
+                Circle().fill(Color.white).frame(width: 12, height: 12).offset(x: circleOffset)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        let fraction = min(max(0, gesture.location.x / maxWidth), 1)
+                        dragValue = fraction
+                    }
+                    .onEnded { gesture in
+                        let fraction = min(max(0, gesture.location.x / maxWidth), 1)
+                        onEnd(fraction)
+                        dragValue = nil
+                    }
+            )
+        }
+    }
+}
+
+struct APiXDialog<Content: View>: View {
+    let title: String
+    @Binding var isPresented: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea().onTapGesture { isPresented = false }
+            VStack(spacing: 0) {
+                Text(title).foregroundColor(colorGold).font(.system(size: 16, weight: .bold)).padding(16)
+                Divider().background(colorDivider)
+                ScrollView { VStack(spacing: 4) { content() }.padding(8) }
+                Divider().background(colorDivider)
+                Button { isPresented = false } label: {
+                    Text("إغلاق").foregroundColor(colorGold).font(.system(size: 14, weight: .bold)).frame(maxWidth: .infinity).padding(12)
+                }
+            }
+            .background(colorBgDark)
+            .cornerRadius(12)
+            .frame(width: min(UIScreen.main.bounds.width * 0.88, 420))
+            .frame(maxHeight: UIScreen.main.bounds.height * 0.85)
+            .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 8)
+        }
+        .transition(.opacity)
+    }
+}
+
+struct APiXDialogRow: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    let action: () -> Void
+
+    init(title: String, subtitle: String? = nil, isSelected: Bool, action: @escaping () -> Void) {
+        self.title = title
+        self.subtitle = subtitle
+        self.isSelected = isSelected
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundColor(isSelected ? colorGold : .white).font(.system(size: 13, weight: isSelected ? .bold : .regular)).lineLimit(1)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle).foregroundColor(.white.opacity(0.65)).font(.system(size: 11)).lineLimit(1)
+                    }
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(colorGold).font(.system(size: 18))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(isSelected ? colorRowSelected : Color.clear)
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct PlayerIconPath: Shape {
+    let type: PlayerIconType
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let sx = rect.width / 24.0
+        let sy = rect.height / 24.0
+        switch type {
+        case .play:
+            path.move(to: CGPoint(x: 8 * sx, y: 6 * sy)); path.addLine(to: CGPoint(x: 8 * sx, y: 18 * sy)); path.addLine(to: CGPoint(x: 18 * sx, y: 12 * sy)); path.closeSubpath()
+        case .pause:
+            path.move(to: CGPoint(x: 6 * sx, y: 7 * sy)); path.addArc(center: CGPoint(x: 8 * sx, y: 7 * sy), radius: 2 * sx, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false); path.addLine(to: CGPoint(x: 10 * sx, y: 17 * sy)); path.addArc(center: CGPoint(x: 8 * sx, y: 17 * sy), radius: 2 * sx, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false); path.closeSubpath(); path.move(to: CGPoint(x: 14 * sx, y: 7 * sy)); path.addArc(center: CGPoint(x: 16 * sx, y: 7 * sy), radius: 2 * sx, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false); path.addLine(to: CGPoint(x: 18 * sx, y: 17 * sy)); path.addArc(center: CGPoint(x: 16 * sx, y: 17 * sy), radius: 2 * sx, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false); path.closeSubpath()
+        case .forward:
+            path.move(to: CGPoint(x: 9 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 14 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 9 * sx, y: 17 * sy)); path.move(to: CGPoint(x: 15 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 20 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 15 * sx, y: 17 * sy))
+        case .rewind:
+            path.move(to: CGPoint(x: 15 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 10 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 15 * sx, y: 17 * sy)); path.move(to: CGPoint(x: 9 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 4 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 9 * sx, y: 17 * sy))
+        case .back:
+            path.move(to: CGPoint(x: 19 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 5 * sx, y: 12 * sy)); path.move(to: CGPoint(x: 12 * sx, y: 19 * sy)); path.addLine(to: CGPoint(x: 5 * sx, y: 12 * sy)); path.addLine(to: CGPoint(x: 12 * sx, y: 5 * sy))
+        case .resize:
+            path.move(to: CGPoint(x: 15 * sx, y: 3 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 3 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 9 * sy)); path.move(to: CGPoint(x: 9 * sx, y: 21 * sy)); path.addLine(to: CGPoint(x: 3 * sx, y: 21 * sy)); path.addLine(to: CGPoint(x: 3 * sx, y: 15 * sy)); path.move(to: CGPoint(x: 21 * sx, y: 3 * sy)); path.addLine(to: CGPoint(x: 14 * sx, y: 10 * sy)); path.move(to: CGPoint(x: 3 * sx, y: 21 * sy)); path.addLine(to: CGPoint(x: 10 * sx, y: 14 * sy))
+        case .server:
+            path.move(to: CGPoint(x: 2 * sx, y: 16.1 * sy)); path.addArc(center: CGPoint(x: 2 * sx, y: 20 * sy), radius: 5 * sx, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false); path.move(to: CGPoint(x: 2 * sx, y: 12.05 * sy)); path.addArc(center: CGPoint(x: 2 * sx, y: 20 * sy), radius: 9 * sx, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false); path.move(to: CGPoint(x: 2 * sx, y: 8 * sy)); path.addArc(center: CGPoint(x: 2 * sx, y: 20 * sy), radius: 13 * sx, startAngle: .degrees(270), endAngle: .degrees(360), clockwise: false); path.move(to: CGPoint(x: 20 * sx, y: 4 * sy)); path.addLine(to: CGPoint(x: 4 * sx, y: 4 * sy)); path.move(to: CGPoint(x: 20 * sx, y: 4 * sy)); path.addLine(to: CGPoint(x: 20 * sx, y: 20 * sy)); path.addLine(to: CGPoint(x: 14 * sx, y: 20 * sy))
+        case .pip:
+            path.move(to: CGPoint(x: 9 * sx, y: 19 * sy)); path.addLine(to: CGPoint(x: 5 * sx, y: 19 * sy)); path.addLine(to: CGPoint(x: 3 * sx, y: 17 * sy)); path.addLine(to: CGPoint(x: 3 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 5 * sx, y: 5 * sy)); path.addLine(to: CGPoint(x: 19 * sx, y: 5 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 7 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 10 * sy)); path.move(to: CGPoint(x: 13 * sx, y: 13 * sy)); path.addLine(to: CGPoint(x: 19 * sx, y: 13 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 15 * sy)); path.addLine(to: CGPoint(x: 21 * sx, y: 17 * sy)); path.addLine(to: CGPoint(x: 19 * sx, y: 19 * sy)); path.addLine(to: CGPoint(x: 13 * sx, y: 19 * sy)); path.addLine(to: CGPoint(x: 11 * sx, y: 17 * sy)); path.addLine(to: CGPoint(x: 11 * sx, y: 15 * sy)); path.addLine(to: CGPoint(x: 13 * sx, y: 13 * sy)); path.closeSubpath()
+        case .settings:
+            path.move(to: CGPoint(x: 12 * sx, y: 8 * sy)); path.addCurve(to: CGPoint(x: 16 * sx, y: 12 * sy), control1: CGPoint(x: 14.2 * sx, y: 8 * sy), control2: CGPoint(x: 16 * sx, y: 9.8 * sy)); path.addCurve(to: CGPoint(x: 12 * sx, y: 16 * sy), control1: CGPoint(x: 16 * sx, y: 14.2 * sy), control2: CGPoint(x: 14.2 * sx, y: 16 * sy)); path.addCurve(to: CGPoint(x: 8 * sx, y: 12 * sy), control1: CGPoint(x: 9.8 * sx, y: 16 * sy), control2: CGPoint(x: 8 * sx, y: 14.2 * sy)); path.addCurve(to: CGPoint(x: 12 * sx, y: 8 * sy), control1: CGPoint(x: 8 * sx, y: 9.8 * sy), control2: CGPoint(x: 9.8 * sx, y: 8 * sy)); path.move(to: CGPoint(x: 19.4 * sx, y: 13 * sy)); path.addLine(to: CGPoint(x: 21.3 * sx, y: 14.5 * sy)); path.addLine(to: CGPoint(x: 19.4 * sx, y: 18.5 * sy)); path.addLine(to: CGPoint(x: 16.8 * sx, y: 17.5 * sy)); path.addLine(to: CGPoint(x: 14.5 * sx, y: 21 * sy)); path.addLine(to: CGPoint(x: 9.5 * sx, y: 21 * sy)); path.addLine(to: CGPoint(x: 7.2 * sx, y: 17.5 * sy)); path.addLine(to: CGPoint(x: 4.6 * sx, y: 18.5 * sy)); path.addLine(to: CGPoint(x: 2.7 * sx, y: 14.5 * sy)); path.addLine(to: CGPoint(x: 4.6 * sx, y: 13 * sy)); path.addLine(to: CGPoint(x: 4.6 * sx, y: 11 * sy)); path.addLine(to: CGPoint(x: 2.7 * sx, y: 9.5 * sy)); path.addLine(to: CGPoint(x: 4.6 * sx, y: 5.5 * sy)); path.addLine(to: CGPoint(x: 7.2 * sx, y: 6.5 * sy)); path.addLine(to: CGPoint(x: 9.5 * sx, y: 3 * sy)); path.addLine(to: CGPoint(x: 14.5 * sx, y: 3 * sy)); path.addLine(to: CGPoint(x: 16.8 * sx, y: 6.5 * sy)); path.addLine(to: CGPoint(x: 19.4 * sx, y: 5.5 * sy)); path.addLine(to: CGPoint(x: 21.3 * sx, y: 9.5 * sy)); path.addLine(to: CGPoint(x: 19.4 * sx, y: 11 * sy)); path.closeSubpath()
+        }
+        return path
     }
 }
