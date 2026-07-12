@@ -1,161 +1,312 @@
 package com.apix.app
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import com.apix.app.data.PlayerConfig
-import com.apix.app.data.PlayerHeaders
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import android.webkit.*
+import android.widget.FrameLayout
+import kotlinx.coroutines.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
 
-object OkRuStreamHandler {
+// ═══════════════════════════════════════════════════════════════════════════
+// OkRuExtractor — مستقل تماماً عن كود apix.png ولا يمسّه أبداً
+// ═══════════════════════════════════════════════════════════════════════════
 
-    private const val T = "OkRu"
+object OkRuExtractor {
 
-    // 1. ذاكرة مؤقتة لحفظ الروابط بشكل مستقل لكل قناة (videoId)
-    private val linksCache = ConcurrentHashMap<String, String>()
+    private const val T = "OkRuExtractor"
+    private const val PREFS = "okru_cache"
+    private const val URL_TTL_MS = 3 * 60 * 60 * 1000L  // 3 ساعات
+    private const val COOKIE_TTL_MS = 6 * 60 * 60 * 1000L // 6 ساعات
 
-    fun isOkRuPayload(json: JSONObject): Boolean {
-        return json.optString("type", "") == "okru_extractor"
+    // ── معرّف الرابط ────────────────────────────────────────────────────
+    fun isOkRuUrl(url: String): Boolean {
+        val u = url.lowercase().trim()
+        return u.contains("ok.ru/video/") ||
+               u.contains("ok.ru/videoembed/") ||
+               u.contains("odnoklassniki.ru/video")
     }
 
-    // دالة تقوم باستدعائها من المشغل في حال فشل الرابط (Error Listener)
-    // لكي يتم مسح الرابط التالف وإجبار الملف على جلب رابط جديد في المحاولة القادمة
-    fun removeFailedLink(videoId: String) {
-        if (linksCache.containsKey(videoId)) {
-            linksCache.remove(videoId)
-            Log.d(T, "Removed failed link from cache for videoId: $videoId")
-        }
+    fun extractVideoId(url: String): String? {
+        return try {
+            val clean = url.replace("https://", "").replace("http://", "")
+            val parts = clean.split("/")
+            val idx = parts.indexOfFirst { it == "video" || it == "videoembed" }
+            if (idx >= 0 && idx + 1 < parts.size) {
+                parts[idx + 1].split("?").first().trim()
+            } else null
+        } catch (e: Exception) { null }
     }
 
-    suspend fun loadStream(
-        json: JSONObject,
-        baseConfig: PlayerConfig
-    ): PlayerConfig? = withContext(Dispatchers.IO) {
+    fun buildEmbedUrl(videoId: String) =
+        "http://ok.ru/videoembed/$videoId?nochat=1&autoplay=1"
 
-        val type = json.optString("type", "")
-        if (type != "okru_extractor") return@withContext null
+    // ── الدالة الرئيسية ────────────────────────────────────────────────
+    suspend fun resolve(
+        context: Context,
+        rawUrl: String,
+        onResult: (String?) -> Unit
+    ) = withContext(Dispatchers.Main) {
+        val videoId = extractVideoId(rawUrl)
+        if (videoId == null) { onResult(null); return@withContext }
 
-        val videoId   = json.optString("videoId",   "")
-        val cookie    = json.optString("cookie",    "")
-        val tkn       = json.optString("tkn",       "")
-        val userAgent = json.optString("userAgent", "Mozilla/5.0 (Linux; Android 12)")
-
-        if (videoId.isEmpty()) {
-            Log.w(T, "videoId missing")
-            return@withContext null
+        // 1. تحقق من الكاش أولاً
+        val cached = getCachedStream(context, videoId)
+        if (cached != null) {
+            Log.d(T, "Cache hit for $videoId")
+            onResult(cached)
+            return@withContext
         }
 
-        // 2. التحقق من الذاكرة المؤقتة أولاً
-        var finalUrl = linksCache[videoId]
-
-        // إذا لم يكن الرابط محفوظاً، نقوم بعملية الجلب
-        if (finalUrl == null) {
-            Log.d(T, "Fetching new link for videoId: $videoId")
-            finalUrl = extractFromOkRu(videoId, cookie, tkn, userAgent)
-            
-            // إذا نجح الجلب، نحفظ الرابط في الذاكرة المؤقتة
-            if (finalUrl != null) {
-                linksCache[videoId] = finalUrl
+        // 2. جلب جديد عبر WebView
+        Log.d(T, "Cache miss for $videoId — starting WebView extraction")
+        extractViaWebView(context, videoId) { streamUrl ->
+            if (streamUrl != null) {
+                saveToCache(context, videoId, streamUrl)
+                Log.d(T, "Extracted and cached: $videoId")
             }
-        } else {
-            Log.d(T, "Using cached link for videoId: $videoId")
+            onResult(streamUrl)
         }
-
-        // إذا فشل الاستخراج ولم يكن هناك رابط محفوظ
-        if (finalUrl == null) {
-            return@withContext null
-        }
-
-        // 3. تمرير الرابط النهائي مباشرة بدون بروكسي محلي وبدون أي هيدرات (Headers)
-        baseConfig.copy(
-            url = finalUrl,
-            headers = null, // تعطيل الهيدرات تماماً كما طلبت
-            customHeaders = null // تعطيل الهيدرات المخصصة
-        )
     }
 
-    private fun extractFromOkRu(
+    // ── إعادة المحاولة عند فشل المشغل ─────────────────────────────────
+    suspend fun retry(
+        context: Context,
         videoId: String,
-        cookie: String,
-        tkn: String,
+        onResult: (String?) -> Unit
+    ) = withContext(Dispatchers.Main) {
+        Log.d(T, "Retrying extraction for $videoId (clearing stale cache)")
+        clearCache(context, videoId)
+        extractViaWebView(context, videoId) { streamUrl ->
+            if (streamUrl != null) saveToCache(context, videoId, streamUrl)
+            onResult(streamUrl)
+        }
+    }
+
+    // ── استخراج عبر WebView مخفي ───────────────────────────────────────
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun extractViaWebView(
+        context: Context,
+        videoId: String,
+        timeout: Long = 25_000L,
+        callback: (String?) -> Unit
+    ) {
+        val handler = Handler(Looper.getMainLooper())
+        var done = false
+        var webView: WebView? = null
+
+        val finish: (String?) -> Unit = { result ->
+            if (!done) {
+                done = true
+                handler.post {
+                    try { webView?.destroy() } catch (_: Exception) {}
+                    callback(result)
+                }
+            }
+        }
+
+        // مهلة 25 ثانية
+        handler.postDelayed({ finish(null) }, timeout)
+
+        val embedUrl = buildEmbedUrl(videoId)
+        val ua = "Mozilla/5.0 (Linux; Android 12; Pixel 6) " +
+                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                 "Chrome/124.0.0.0 Mobile Safari/537.36"
+
+        webView = WebView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(1, 1)
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                userAgentString = ua
+                cacheMode = WebSettings.LOAD_DEFAULT
+                allowFileAccess = false
+                allowContentAccess = false
+            }
+
+            CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(this@apply, true)
+            }
+
+            // اعتراض طلبات الشبكة — البحث عن m3u8
+            webViewClient = object : WebViewClient() {
+
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): WebResourceResponse? {
+                    val reqUrl = request?.url?.toString() ?: return null
+
+                    // اصطياد m3u8 مباشرة
+                    if (reqUrl.contains(".m3u8") || reqUrl.contains("manifest.m3u8")) {
+                        Log.d(T, "Intercepted m3u8: $reqUrl")
+                        finish(reqUrl)
+                        return null
+                    }
+
+                    // اصطياد بيانات الـ metadata API
+                    if (reqUrl.contains("videoPlayerMetadata") || reqUrl.contains("videoPlayer")) {
+                        Log.d(T, "Intercepted player API call")
+                        // نجمع الكوكيز ونستدعي الـ API مباشرة
+                        val cookies = CookieManager.getInstance().getCookie("https://ok.ru") ?: ""
+                        if (cookies.isNotBlank()) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val result = fetchStreamWithCookies(videoId, cookies, ua)
+                                if (result != null) finish(result)
+                            }
+                        }
+                    }
+                    return null
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    if (done) return
+
+                    // جمع الكوكيز بعد تحميل الصفحة
+                    val cookies = CookieManager.getInstance().getCookie("https://ok.ru") ?: ""
+
+                    // ضغطة في منتصف الشاشة لتشغيل الفيديو
+                    val js = """
+                        (function() {
+                            try {
+                                // محاولة تشغيل الفيديو مباشرة
+                                var video = document.querySelector('video');
+                                if (video) {
+                                    video.muted = true;
+                                    video.play();
+                                }
+                                // ضغط على زر التشغيل
+                                var playBtn = document.querySelector('.vid-play-big') ||
+                                              document.querySelector('[data-action="play"]') ||
+                                              document.querySelector('.video-layer_play-btn');
+                                if (playBtn) playBtn.click();
+                                
+                                // محاكاة ضغطة في منتصف الشاشة
+                                var cx = window.innerWidth / 2;
+                                var cy = window.innerHeight / 2;
+                                var el = document.elementFromPoint(cx, cy);
+                                if (el) {
+                                    el.dispatchEvent(new MouseEvent('click', {
+                                        bubbles: true, clientX: cx, clientY: cy
+                                    }));
+                                }
+                            } catch(e) {}
+                        })();
+                    """.trimIndent()
+                    view?.evaluateJavascript(js, null)
+
+                    // إذا كان عندنا كوكيز نستخدم الـ API مباشرة
+                    if (cookies.isNotBlank()) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val result = fetchStreamWithCookies(videoId, cookies, ua)
+                            if (result != null) finish(result)
+                        }
+                    }
+                }
+            }
+
+            loadUrl(embedUrl)
+        }
+    }
+
+    // ── استدعاء API OK.ru مع الكوكيز ──────────────────────────────────
+    private fun fetchStreamWithCookies(
+        videoId: String,
+        cookies: String,
         userAgent: String
     ): String? {
         var conn: HttpURLConnection? = null
         return try {
-            val endpoint = URL("https://ok.ru/dk?cmd=videoPlayerMetadata")
-            conn = endpoint.openConnection() as HttpURLConnection
-            conn.requestMethod  = "POST"
-            conn.doOutput       = true
-            conn.connectTimeout = 12000
-            conn.readTimeout    = 15000
+            conn = URL("https://ok.ru/dk?cmd=videoPlayerMetadata&mid=$videoId")
+                .openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = 12000
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            conn.setRequestProperty("User-Agent", userAgent)
+            conn.setRequestProperty("Cookie", cookies)
+            conn.setRequestProperty("Referer", "https://ok.ru/video/$videoId")
+            conn.setRequestProperty("Origin", "https://ok.ru")
+            conn.setRequestProperty("Accept", "application/json, */*")
+            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest")
 
-            // هذه الهيدرات تستخدم فقط أثناء "عملية الجلب" وليس للمشغل
-            conn.setRequestProperty("Content-Type",  "application/x-www-form-urlencoded")
-            conn.setRequestProperty("User-Agent",    userAgent)
-            conn.setRequestProperty("Cookie",        cookie)
-            conn.setRequestProperty("tkn",           tkn) 
-            conn.setRequestProperty("Referer",       "https://ok.ru/video/$videoId")
-            conn.setRequestProperty("Origin",        "https://ok.ru")
-            conn.setRequestProperty("Accept",        "application/json, */*")
-            conn.setRequestProperty("Accept-Language", "ar,en;q=0.9")
-
-            val body = "mid=$videoId&is=on"
-            OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(body) }
-
-            if (conn.responseCode != 200) {
-                Log.w(T, "HTTP ${conn.responseCode}")
-                return null
+            OutputStreamWriter(conn.outputStream, "UTF-8").use {
+                it.write("gwt.requested=1")
             }
 
+            if (conn.responseCode != 200) return null
             val raw = conn.inputStream.bufferedReader().readText()
-            parseHighestQuality(raw)
-
+            parseStreamUrl(raw)
         } catch (e: Exception) {
-            Log.w(T, "extract failed: ${e.javaClass.simpleName}")
+            Log.w(T, "API call failed: ${e.message}")
             null
         } finally {
             conn?.disconnect()
         }
     }
 
-    private fun parseHighestQuality(responseBody: String): String? {
+    // ── تحليل الرابط من الرد ───────────────────────────────────────────
+    private fun parseStreamUrl(responseBody: String): String? {
         return try {
             val root = JSONObject(responseBody)
-            
-            // 1. فحص رابط البث المباشر HLS
-            var hlsUrl = root.optString("hlsMasterPlaylistUrl", "").replace("\\u0026", "&")
-            if (hlsUrl.isEmpty()) {
-                hlsUrl = root.optString("hlsManifestUrl", "").replace("\\u0026", "&")
-            }
-            if (hlsUrl.isNotEmpty()) return hlsUrl
 
-            // 2. خطة بديلة (Fallback) للفيديو المسجل
+            // أولوية: HLS manifest
+            val hls = root.optString("hlsMasterPlaylistUrl").ifEmpty { null }
+                ?: root.optString("hlsManifestUrl").ifEmpty { null }
+            if (hls != null) return hls
+
+            // ثانياً: أعلى جودة فيديو
             val videos = root.optJSONArray("videos") ?: return null
             val priority = listOf("1080", "720", "480", "360", "240")
             val map = mutableMapOf<String, String>()
-
             for (i in 0 until videos.length()) {
-                val v   = videos.getJSONObject(i)
-                val url = v.optString("url",  "")
-                val res = v.optString("name", "")
-                if (url.isNotEmpty() && res.isNotEmpty()) {
-                    map[res] = url
-                }
+                val v = videos.getJSONObject(i)
+                val u = v.optString("url", "").replace("\\u0026", "&")
+                val r = v.optString("name", "")
+                if (u.isNotEmpty() && r.isNotEmpty()) map[r] = u
             }
-
-            for (p in priority) {
-                map[p]?.let { return it }
-            }
-
+            for (p in priority) { map[p]?.let { return it } }
             map.values.firstOrNull()
-
         } catch (e: Exception) {
-            Log.w(T, "parse failed")
+            Log.w(T, "Parse failed: ${e.message}")
             null
         }
+    }
+
+    // ── كاش محلي ───────────────────────────────────────────────────────
+    private fun prefs(ctx: Context): SharedPreferences =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun getCachedStream(ctx: Context, videoId: String): String? {
+        val sp   = prefs(ctx)
+        val url  = sp.getString("url_$videoId", null) ?: return null
+        val time = sp.getLong("ts_$videoId", 0L)
+        return if (System.currentTimeMillis() - time < URL_TTL_MS) url else null
+    }
+
+    private fun saveToCache(ctx: Context, videoId: String, streamUrl: String) {
+        prefs(ctx).edit()
+            .putString("url_$videoId", streamUrl)
+            .putLong("ts_$videoId", System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun clearCache(ctx: Context, videoId: String) {
+        prefs(ctx).edit()
+            .remove("url_$videoId")
+            .remove("ts_$videoId")
+            .apply()
     }
 }
