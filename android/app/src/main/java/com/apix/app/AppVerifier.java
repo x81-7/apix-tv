@@ -38,9 +38,10 @@ public class AppVerifier {
     private String currentHash = null;
     private int expectedDexCount = -1;
 
+    // تم إضافة متغير الآيبيهات المسموحة من السيرفر هنا
     private volatile List<String> allowedHashes = new ArrayList<>();
     private volatile List<String> blockedHashes = new ArrayList<>();
-    private volatile List<String> allowedVpnIps = new ArrayList<>();
+    private volatile List<String> allowedVpnIps = new ArrayList<>(); 
     private volatile boolean hashesLoaded = false;
 
     private static final String PREFS_NAME = "app_vf";
@@ -79,6 +80,7 @@ public class AppVerifier {
     };
 
     private static final int[] FP = {27042, 27043};
+    // تم حذف المصفوفة الثابتة للـ VPN (VWP) بالكامل!
 
     public interface VerifyCallback {
         void onComplete(boolean passed, String failReason);
@@ -111,6 +113,7 @@ public class AppVerifier {
         new Thread(() -> {
             try { allowedHashes = SupabaseDataManager.fetchSignatures(context); } catch (Exception ignored) {}
             try { blockedHashes = SupabaseDataManager.fetchBlockedSignatures(context); } catch (Exception ignored) {}
+            // جلب قائمة آيبيهات الـ VPN من البانل
             try { allowedVpnIps = SupabaseDataManager.fetchAllowedVpnIps(context); } catch (Exception ignored) {}
             hashesLoaded = true;
         }).start();
@@ -121,10 +124,11 @@ public class AppVerifier {
     public String runCheck() {
         try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
         try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
+        
         if (detectUnauthorizedVPN())  return "E03";
-        if (detectProxy())            return "E04";
-        if (detectSniffers())         return "E05";
         if (detectBlockedHash())      return "E06";
+        if (detectSniffers())         return "E05";
+        if (detectProxy())            return "E04";
         if (detectSecondaryDisplay()) return "E07";
 
         if (!shouldRunCheck()) return null;
@@ -148,10 +152,11 @@ public class AppVerifier {
         new Thread(() -> {
             try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
             try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
+            
             if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
-            if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
-            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
             if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
+            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
+            if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
 
             if (!shouldRunCheck()) {
                 if (callback != null) callback.onComplete(true, null);
@@ -181,8 +186,8 @@ public class AppVerifier {
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     
                     if (detectUnauthorizedVPN())     { killApp(); return; }
-                    if (detectPrivateDNS())          { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
                     if (detectSniffers())            { killApp(); return; }
                     if (detectCloudPhone())          { killApp(); return; }
                     if (detectSecondaryDisplay())    { killApp(); return; }
@@ -193,6 +198,7 @@ public class AppVerifier {
                     if (detectFrida())               { killApp(); return; }
                     if (detectTampering())           { killApp(); return; }
 
+                    // وقت سريع جداً للاستجابة
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
@@ -213,10 +219,12 @@ public class AppVerifier {
     private void killApp() {
         running = false;
         
+        // انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             throw new RuntimeException("E00");
         });
 
+        // قتل الخلفية
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -231,6 +239,7 @@ public class AppVerifier {
             }
         } catch (Exception ignored) {}
         
+        // القتل القاسي
         android.os.Process.killProcess(android.os.Process.myPid());
         System.exit(1);
         Runtime.getRuntime().halt(1);
@@ -344,6 +353,13 @@ public class AppVerifier {
 
     private boolean detectUnauthorizedVPN() {
         try {
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            for (NetworkInterface ni : interfaces) {
+                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
+                    return !isWhitelistedVPN();
+                }
+            }
+
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
             if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Network activeNetwork = cm.getActiveNetwork();
@@ -354,17 +370,12 @@ public class AppVerifier {
                     }
                 }
             }
-            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-            for (NetworkInterface ni : interfaces) {
-                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
-                    return !isWhitelistedVPN();
-                }
-            }
         } catch (Exception ignored) {}
         return false;
     }
 
     private boolean isWhitelistedVPN() {
+        // يعتمد الآن بالكامل على البانل
         if (allowedVpnIps == null || allowedVpnIps.isEmpty()) return false;
         
         try {
