@@ -169,15 +169,48 @@ fun AppNavigation(
             else -> {
                 val config = viewModel.buildPlayerConfig(channel)
                 if (config != null) {
+                    val rawUrl = channel.androidStream?.url ?: channel.stream?.url ?: ""
+
+                    // ── OK.ru detection ───────────────────────────────
+                    if (OkRuExtractor.isOkRuUrl(rawUrl)) {
+                        val videoId = OkRuExtractor.extractVideoId(rawUrl)
+                        if (videoId != null) {
+                            val scope = kotlinx.coroutines.MainScope()
+                            scope.launch {
+                                val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                                    OkRuExtractor.resolve(context, rawUrl) { url ->
+                                        if (cont.isActive) cont.resume(url) {}
+                                    }
+                                }
+                                if (streamUrl != null) {
+                                    navigateTo(Screen.Player(config.copy(
+                                        url           = streamUrl,
+                                        drm           = null,
+                                        useLocalProxy = false,
+                                        headers       = com.apix.app.data.PlayerHeaders(
+                                            userAgent = "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36",
+                                            referer   = "https://ok.ru/"
+                                        )
+                                    )))
+                                } else {
+                                    // fallback: WebView مباشر
+                                    navigateTo(Screen.HybridPlayer(config.copy(
+                                        url = OkRuExtractor.buildEmbedUrl(videoId)
+                                    )))
+                                }
+                            }
+                        }
+                        return@openChannelAfterGate
+                    }
+
+                    // ── باقي أنواع القنوات كما هي ─────────────────────
                     when (channel.androidActionType ?: "native") {
                         "shaka_web", "jw_web" -> navigateTo(Screen.HybridPlayer(config))
                         "webview" -> {
-                            val url = channel.androidStream?.url ?: channel.stream?.url
-                            if (url != null) navigateTo(Screen.WebViewPlayer(url, channel.name, config.webViewOrientation))
+                            if (rawUrl.isNotBlank()) navigateTo(Screen.WebViewPlayer(rawUrl, channel.name, config.webViewOrientation))
                         }
                         "youtube" -> {
-                            val url = channel.androidStream?.url ?: channel.stream?.url
-                            if (url != null) navigateTo(Screen.YouTubeSniffer(url, config))
+                            if (rawUrl.isNotBlank()) navigateTo(Screen.YouTubeSniffer(rawUrl, config))
                         }
                         else -> navigateTo(Screen.Player(config))
                     }
