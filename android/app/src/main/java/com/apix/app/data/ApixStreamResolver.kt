@@ -54,12 +54,10 @@ object ApixStreamResolver {
         return try {
             val obj = JSONObject(json)
 
-            // ── OK.ru interceptor ─────────────────────────────────────
-            if (com.apix.app.OkRuStreamHandler.isOkRuPayload(obj)) {
-                return kotlinx.coroutines.runBlocking {
-                    com.apix.app.OkRuStreamHandler.loadStream(obj, base)
-                }
-            }
+            // ── OK.ru type: handled via OkRuExtractor in ComposeActivity ──
+            // apix.png okru_extractor type is NOT processed here anymore.
+            // OkRuExtractor (WebView-based) intercepts ok.ru URLs before this resolver.
+            if (obj.optString("type", "") == "okru_extractor") return null
 
             val config = base.copy()
 
