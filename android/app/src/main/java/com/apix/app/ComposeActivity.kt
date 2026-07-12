@@ -113,6 +113,8 @@ fun AppNavigation(
     var notificationHandled by remember { mutableStateOf(false) }
     var isNavigatingBack by remember { mutableStateOf(false) }
 
+    val scope = rememberCoroutineScope()
+
     val navigateTo: (Screen) -> Unit = { screen ->
         isNavigatingBack = false 
         navigationStack.add(currentScreen)
@@ -171,14 +173,12 @@ fun AppNavigation(
                 if (config != null) {
                     val rawUrl = channel.androidStream?.url ?: channel.stream?.url ?: ""
 
-                    // ── OK.ru detection ───────────────────────────────
-                    if (OkRuExtractor.isOkRuUrl(rawUrl)) {
-                        val videoId = OkRuExtractor.extractVideoId(rawUrl)
+                    if (com.apix.app.OkRuExtractor.isOkRuUrl(rawUrl)) {
+                        val videoId = com.apix.app.OkRuExtractor.extractVideoId(rawUrl)
                         if (videoId != null) {
-                            val scope = kotlinx.coroutines.MainScope()
                             scope.launch {
                                 val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                                    OkRuExtractor.resolve(context, rawUrl) { url ->
+                                    com.apix.app.OkRuExtractor.resolve(context, rawUrl) { url ->
                                         if (cont.isActive) cont.resume(url) {}
                                     }
                                 }
@@ -193,26 +193,23 @@ fun AppNavigation(
                                         )
                                     )))
                                 } else {
-                                    // fallback: WebView مباشر
                                     navigateTo(Screen.HybridPlayer(config.copy(
-                                        url = OkRuExtractor.buildEmbedUrl(videoId)
+                                        url = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId)
                                     )))
                                 }
                             }
                         }
-                        return@openChannelAfterGate
-                    }
-
-                    // ── باقي أنواع القنوات كما هي ─────────────────────
-                    when (channel.androidActionType ?: "native") {
-                        "shaka_web", "jw_web" -> navigateTo(Screen.HybridPlayer(config))
-                        "webview" -> {
-                            if (rawUrl.isNotBlank()) navigateTo(Screen.WebViewPlayer(rawUrl, channel.name, config.webViewOrientation))
+                    } else {
+                        when (channel.androidActionType ?: "native") {
+                            "shaka_web", "jw_web" -> navigateTo(Screen.HybridPlayer(config))
+                            "webview" -> {
+                                if (rawUrl.isNotBlank()) navigateTo(Screen.WebViewPlayer(rawUrl, channel.name, config.webViewOrientation))
+                            }
+                            "youtube" -> {
+                                if (rawUrl.isNotBlank()) navigateTo(Screen.YouTubeSniffer(rawUrl, config))
+                            }
+                            else -> navigateTo(Screen.Player(config))
                         }
-                        "youtube" -> {
-                            if (rawUrl.isNotBlank()) navigateTo(Screen.YouTubeSniffer(rawUrl, config))
-                        }
-                        else -> navigateTo(Screen.Player(config))
                     }
                 }
             }
