@@ -38,10 +38,8 @@ public class AppVerifier {
     private String currentHash = null;
     private int expectedDexCount = -1;
 
-    // تم إضافة متغير الآيبيهات المسموحة من السيرفر هنا
     private volatile List<String> allowedHashes = new ArrayList<>();
     private volatile List<String> blockedHashes = new ArrayList<>();
-    private volatile List<String> allowedVpnIps = new ArrayList<>(); 
     private volatile boolean hashesLoaded = false;
 
     private static final String PREFS_NAME = "app_vf";
@@ -80,7 +78,9 @@ public class AppVerifier {
     };
 
     private static final int[] FP = {27042, 27043};
-    // تم حذف المصفوفة الثابتة للـ VPN (VWP) بالكامل!
+    
+    // تم إرجاع الآيبيهات الثابتة كما كانت في كودك الأصلي
+    private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
     public interface VerifyCallback {
         void onComplete(boolean passed, String failReason);
@@ -113,8 +113,6 @@ public class AppVerifier {
         new Thread(() -> {
             try { allowedHashes = SupabaseDataManager.fetchSignatures(context); } catch (Exception ignored) {}
             try { blockedHashes = SupabaseDataManager.fetchBlockedSignatures(context); } catch (Exception ignored) {}
-            // جلب قائمة آيبيهات الـ VPN من البانل
-            try { allowedVpnIps = SupabaseDataManager.fetchAllowedVpnIps(context); } catch (Exception ignored) {}
             hashesLoaded = true;
         }).start();
     }
@@ -185,6 +183,7 @@ public class AppVerifier {
                     try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     
+                    // استدعاء منفصل لكل حماية
                     if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectPrivateDNS())          { killApp(); return; }
@@ -198,7 +197,7 @@ public class AppVerifier {
                     if (detectFrida())               { killApp(); return; }
                     if (detectTampering())           { killApp(); return; }
 
-                    // وقت سريع جداً للاستجابة
+                    // وقت الانتظار السريع جداً
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
@@ -219,12 +218,12 @@ public class AppVerifier {
     private void killApp() {
         running = false;
         
-        // انهيار الواجهة
+        // 1. انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             throw new RuntimeException("E00");
         });
 
-        // قتل الخلفية
+        // 2. قتل الخلفية
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -239,7 +238,7 @@ public class AppVerifier {
             }
         } catch (Exception ignored) {}
         
-        // القتل القاسي
+        // 3. القتل القاسي والنهائي
         android.os.Process.killProcess(android.os.Process.myPid());
         System.exit(1);
         Runtime.getRuntime().halt(1);
@@ -375,9 +374,6 @@ public class AppVerifier {
     }
 
     private boolean isWhitelistedVPN() {
-        // يعتمد الآن بالكامل على البانل
-        if (allowedVpnIps == null || allowedVpnIps.isEmpty()) return false;
-        
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
             for (NetworkInterface ni : interfaces) {
@@ -386,9 +382,9 @@ public class AppVerifier {
                     for (InetAddress addr : addresses) {
                         String ip = addr.getHostAddress();
                         if (ip != null) {
-                            for (String allowedIp : allowedVpnIps) {
-                                String cleanIp = allowedIp.trim();
-                                if (!cleanIp.isEmpty() && (ip.startsWith(cleanIp) || ip.equals(cleanIp))) return true;
+                            // مقارنة الـ IP مع المصفوفة المحلية الثابتة
+                            for (String allowedIp : VWP) {
+                                if (ip.startsWith(allowedIp) || ip.equals(allowedIp)) return true;
                             }
                         }
                     }
