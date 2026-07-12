@@ -127,6 +127,8 @@ public class AppVerifier {
         if (detectSecondaryDisplay()) return "E07";
 
         if (!shouldRunCheck()) return null;
+        
+        if (detectPrivateDNS()) return "E12";
         if (detectCloudPhone()) return "E08";
         if (detectTampering())  return "E09";
         if (detectDebugger())   return "E10";
@@ -156,7 +158,8 @@ public class AppVerifier {
             }
             
             String result = null;
-            if (detectCloudPhone())      result = "E08";
+            if (detectPrivateDNS())      result = "E12";
+            else if (detectCloudPhone()) result = "E08";
             else if (detectTampering())  result = "E09";
             else if (detectDebugger())   result = "E10";
             else if (detectFrida())      result = "E11";
@@ -175,7 +178,9 @@ public class AppVerifier {
                 try {
                     try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    
                     if (detectUnauthorizedVPN())     { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectSniffers())            { killApp(); return; }
                     if (detectCloudPhone())          { killApp(); return; }
@@ -183,12 +188,11 @@ public class AppVerifier {
                     if (detectProxy())               { killApp(); return; }
                     if (detectHostsMod())            { killApp(); return; }
                     if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectPrivateDNS())          { killApp(); return; }
                     if (detectDebugger())            { killApp(); return; }
                     if (detectFrida())               { killApp(); return; }
                     if (detectTampering())           { killApp(); return; }
 
-                    Thread.sleep(1500); 
+                    Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception ignored) {}
@@ -207,6 +211,11 @@ public class AppVerifier {
 
     private void killApp() {
         running = false;
+        
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            throw new RuntimeException("E00");
+        });
+
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -220,8 +229,10 @@ public class AppVerifier {
                 }
             }
         } catch (Exception ignored) {}
+        
         android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
+        System.exit(1);
+        Runtime.getRuntime().halt(1);
     }
 
     private boolean detectDynamicHashMismatch() {
