@@ -13,7 +13,6 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Debug;
-import android.util.Log;
 import android.view.Display;
 
 import java.io.BufferedReader;
@@ -41,6 +40,7 @@ public class AppVerifier {
 
     private volatile List<String> allowedHashes = new ArrayList<>();
     private volatile List<String> blockedHashes = new ArrayList<>();
+    private volatile List<String> allowedVpnIps = new ArrayList<>();
     private volatile boolean hashesLoaded = false;
 
     private static final String PREFS_NAME = "app_vf";
@@ -79,7 +79,6 @@ public class AppVerifier {
     };
 
     private static final int[] FP = {27042, 27043};
-    private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
     public interface VerifyCallback {
         void onComplete(boolean passed, String failReason);
@@ -93,9 +92,7 @@ public class AppVerifier {
     }
 
     public static synchronized AppVerifier getInstance(Context ctx) {
-        if (instance == null) {
-            instance = new AppVerifier(ctx);
-        }
+        if (instance == null) instance = new AppVerifier(ctx);
         return instance;
     }
 
@@ -107,47 +104,37 @@ public class AppVerifier {
 
     private void markCheckDone() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_LAST_CHECK, System.currentTimeMillis())
-            .apply();
+            .edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply();
     }
 
     private void fetchRemoteHashes() {
         new Thread(() -> {
-            try {
-                List<String> hashes = SupabaseDataManager.fetchSignatures(context);
-                allowedHashes = hashes;
-            } catch (Exception ignored) {}
-            try {
-                List<String> blocked = SupabaseDataManager.fetchBlockedSignatures(context);
-                blockedHashes = blocked;
-            } catch (Exception ignored) {}
+            try { allowedHashes = SupabaseDataManager.fetchSignatures(context); } catch (Exception ignored) {}
+            try { blockedHashes = SupabaseDataManager.fetchBlockedSignatures(context); } catch (Exception ignored) {}
+            try { allowedVpnIps = SupabaseDataManager.fetchAllowedVpnIps(context); } catch (Exception ignored) {}
             hashesLoaded = true;
         }).start();
     }
 
-    public String getCurrentAppHash() {
-        return currentHash;
-    }
+    public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
-        // تم إيقاف شرط الـ Debug مؤقتاً لتتمكن من الاختبار بنجاح
+        try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
+        if (detectUnauthorizedVPN())  return "E03";
+        if (detectProxy())            return "E04";
+        if (detectSniffers())         return "E05";
+        if (detectBlockedHash())      return "E06";
+        if (detectSecondaryDisplay()) return "E07";
 
-        if (detectBlockedHash()) return "Blocked version detected";
-        if (detectUnauthorizedVPN()) return "Unauthorized VPN detected";
-        if (detectProxy()) return "Proxy detected";
-        if (detectSniffers()) return "Network sniffer detected";
-        if (detectDebugger()) return "Debugger detected";
-        if (detectFrida()) return "Hacking tool detected";
-        if (detectSecondaryDisplay()) return "Secondary display not allowed";
-
-        if (!shouldRunCheck()) {
-            return null; 
-        }
-
-        if (detectCloudPhone()) return "Cloud phone not allowed";
-        if (detectTampering()) return "App files tampered";
-
+        if (!shouldRunCheck()) return null;
+        
+        if (detectPrivateDNS()) return "E12";
+        if (detectCloudPhone()) return "E08";
+        if (detectTampering())  return "E09";
+        if (detectDebugger())   return "E10";
+        if (detectFrida())      return "E11";
+        
         markCheckDone();
         return null;
     }
@@ -158,16 +145,28 @@ public class AppVerifier {
     }
 
     public void runCheckAsync(VerifyCallback callback) {
-        if (!shouldRunCheck()) {
-            if (callback != null) callback.onComplete(true, null);
-            return;
-        }
-
         new Thread(() -> {
-            String result = runCheck();
-            if (callback != null) {
-                callback.onComplete(result == null, result);
+            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
+            if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
+            if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
+            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
+            if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
+
+            if (!shouldRunCheck()) {
+                if (callback != null) callback.onComplete(true, null);
+                return;
             }
+            
+            String result = null;
+            if (detectPrivateDNS())      result = "E12";
+            else if (detectCloudPhone()) result = "E08";
+            else if (detectTampering())  result = "E09";
+            else if (detectDebugger())   result = "E10";
+            else if (detectFrida())      result = "E11";
+            
+            if (result == null) markCheckDone();
+            if (callback != null) callback.onComplete(result == null, result);
         }).start();
     }
 
@@ -178,27 +177,28 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    // الدالة عادت للاستدعاء المستقل لكل حماية
-                    if (detectBlockedHash()) { killApp(); return; }
-                    if (detectSniffers()) { killApp(); return; }
-                    if (detectCloudPhone()) { killApp(); return; }
-                    if (detectSecondaryDisplay()) { killApp(); return; }
-                    if (detectProxy()) { killApp(); return; }
-                    if (detectHostsMod()) { killApp(); return; }
-                    if (detectUnauthorizedVPN()) { killApp(); return; }
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
+                    if (detectBlockedHash())         { killApp(); return; }
+                    if (detectSniffers())            { killApp(); return; }
+                    if (detectCloudPhone())          { killApp(); return; }
+                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    if (detectProxy())               { killApp(); return; }
+                    if (detectHostsMod())            { killApp(); return; }
                     if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectPrivateDNS()) { killApp(); return; }
-                    if (detectDebugger()) { killApp(); return; }
-                    if (detectFrida()) { killApp(); return; }
-                    if (detectTampering()) { killApp(); return; }
+                    if (detectDebugger())            { killApp(); return; }
+                    if (detectFrida())               { killApp(); return; }
+                    if (detectTampering())           { killApp(); return; }
 
-                    // وقت سريع جداً للاستجابة بنصف ثانية فقط بدلاً من الانتظار
-                    Thread.sleep(500); 
+                    Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception ignored) {}
             }
-        }, "t1");
+        }, "m_sys_t");
 
         monitorThread.setDaemon(true);
         monitorThread.setPriority(Thread.MAX_PRIORITY);
@@ -207,14 +207,16 @@ public class AppVerifier {
 
     public void stopMonitor() {
         running = false;
-        if (monitorThread != null) {
-            monitorThread.interrupt();
-            monitorThread = null;
-        }
+        if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
 
     private void killApp() {
         running = false;
+        
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            throw new RuntimeException("E00");
+        });
+
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -228,8 +230,10 @@ public class AppVerifier {
                 }
             }
         } catch (Exception ignored) {}
+        
         android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
+        System.exit(1);
+        Runtime.getRuntime().halt(1);
     }
 
     private boolean detectDynamicHashMismatch() {
@@ -239,14 +243,14 @@ public class AppVerifier {
     }
 
     private boolean detectCloudPhone() {
-        String model = Build.MODEL.toLowerCase();
+        String model       = Build.MODEL.toLowerCase();
         String manufacturer = Build.MANUFACTURER.toLowerCase();
-        String brand = Build.BRAND.toLowerCase();
-        String product = Build.PRODUCT.toLowerCase();
-        String device = Build.DEVICE.toLowerCase();
-        String hardware = Build.HARDWARE.toLowerCase();
+        String brand       = Build.BRAND.toLowerCase();
+        String product     = Build.PRODUCT.toLowerCase();
+        String device      = Build.DEVICE.toLowerCase();
+        String hardware    = Build.HARDWARE.toLowerCase();
         String fingerprint = Build.FINGERPRINT.toLowerCase();
-        String board = Build.BOARD.toLowerCase();
+        String board       = Build.BOARD.toLowerCase();
 
         for (String indicator : CI) {
             if (model.contains(indicator) || manufacturer.contains(indicator) ||
@@ -259,20 +263,13 @@ public class AppVerifier {
 
         if (model.contains("vmos") || Build.DISPLAY.toLowerCase().contains("vmos") ||
             new File("/data/data/com.vmos.pro").exists() ||
-            new File("/data/data/com.vmos.app").exists()) {
-            return true;
-        }
+            new File("/data/data/com.vmos.app").exists()) return true;
 
         String[] cpf = {
-            "/data/data/com.redfinger.app",
-            "/data/data/com.redfinger.cloud",
-            "/data/data/com.nowgg.cloud",
-            "/system/app/VMOSFakeGps",
-            "/data/vmos",
+            "/data/data/com.redfinger.app", "/data/data/com.redfinger.cloud",
+            "/data/data/com.nowgg.cloud", "/system/app/VMOSFakeGps", "/data/vmos",
         };
-        for (String path : cpf) {
-            if (new File(path).exists()) return true;
-        }
+        for (String path : cpf) { if (new File(path).exists()) return true; }
 
         String[] propKeys = {
             "ro.product.model", "ro.product.brand", "ro.product.manufacturer",
@@ -284,11 +281,8 @@ public class AppVerifier {
         for (String key : propKeys) {
             String val = sysProp(key).toLowerCase();
             if (val.contains("vmos") || val.contains("cloud.phone") ||
-                val.contains("redfinger") || val.contains("virtual.device")) {
-                return true;
-            }
+                val.contains("redfinger") || val.contains("virtual.device")) return true;
         }
-
         return false;
     }
 
@@ -298,9 +292,7 @@ public class AppVerifier {
             java.lang.reflect.Method get = c.getMethod("get", String.class);
             Object val = get.invoke(null, key);
             return val != null ? val.toString() : "";
-        } catch (Exception e) {
-            return "";
-        }
+        } catch (Exception e) { return ""; }
     }
 
     private boolean detectSecondaryDisplay() {
@@ -312,9 +304,8 @@ public class AppVerifier {
                     for (Display display : displays) {
                         if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
                             int flags = display.getFlags();
-                            boolean isVirtual = (flags & Display.FLAG_PRESENTATION) != 0;
-                            boolean isPrivate = (flags & Display.FLAG_PRIVATE) != 0;
-                            if (isVirtual || isPrivate) return true;
+                            if ((flags & Display.FLAG_PRESENTATION) != 0 ||
+                                (flags & Display.FLAG_PRIVATE) != 0) return true;
                         }
                     }
                 }
@@ -326,10 +317,8 @@ public class AppVerifier {
     private boolean detectSniffers() {
         PackageManager pm = context.getPackageManager();
         for (String pkg : DP) {
-            try {
-                pm.getPackageInfo(pkg, 0);
-                return true;
-            } catch (PackageManager.NameNotFoundException ignored) {}
+            try { pm.getPackageInfo(pkg, 0); return true; }
+            catch (PackageManager.NameNotFoundException ignored) {}
         }
         return false;
     }
@@ -353,19 +342,8 @@ public class AppVerifier {
         return false;
     }
 
-    // ── هنا تم إجراء التعديل الوحيد والمطلوب لضمان قتل الـ VPN ────────────────
     private boolean detectUnauthorizedVPN() {
         try {
-            // فحص إجباري مباشر للشبكة دون الاعتماد فقط على ConnectivityManager
-            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-            for (NetworkInterface ni : interfaces) {
-                // إذا تم العثور على واجهة tun أو ppp (شائعة جداً في كل الـ VPN) وهي نشطة
-                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
-                    return !isWhitelistedVPN();
-                }
-            }
-
-            // الفحص التكميلي من خلال ConnectivityManager
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
             if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Network activeNetwork = cm.getActiveNetwork();
@@ -376,11 +354,19 @@ public class AppVerifier {
                     }
                 }
             }
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            for (NetworkInterface ni : interfaces) {
+                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
+                    return !isWhitelistedVPN();
+                }
+            }
         } catch (Exception ignored) {}
         return false;
     }
 
     private boolean isWhitelistedVPN() {
+        if (allowedVpnIps == null || allowedVpnIps.isEmpty()) return false;
+        
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
             for (NetworkInterface ni : interfaces) {
@@ -389,8 +375,9 @@ public class AppVerifier {
                     for (InetAddress addr : addresses) {
                         String ip = addr.getHostAddress();
                         if (ip != null) {
-                            for (String allowedIp : VWP) {
-                                if (ip.startsWith(allowedIp) || ip.equals(allowedIp)) return true;
+                            for (String allowedIp : allowedVpnIps) {
+                                String cleanIp = allowedIp.trim();
+                                if (!cleanIp.isEmpty() && (ip.startsWith(cleanIp) || ip.equals(cleanIp))) return true;
                             }
                         }
                     }
@@ -455,11 +442,8 @@ public class AppVerifier {
     private boolean detectDebugger() {
         try {
             ApplicationInfo appInfo = context.getApplicationInfo();
-            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
-                return false; 
-            }
+            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) return false;
         } catch (Exception ignored) {}
-        
         if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return true;
         try {
             BufferedReader reader = new BufferedReader(
@@ -479,11 +463,8 @@ public class AppVerifier {
 
     private boolean detectFrida() {
         for (int port : FP) {
-            try {
-                java.net.Socket socket = new java.net.Socket("127.0.0.1", port);
-                socket.close();
-                return true;
-            } catch (Exception ignored) {}
+            try { java.net.Socket s = new java.net.Socket("127.0.0.1", port); s.close(); return true; }
+            catch (Exception ignored) {}
         }
         try {
             BufferedReader reader = new BufferedReader(
@@ -494,9 +475,8 @@ public class AppVerifier {
             }
             reader.close();
         } catch (Exception ignored) {}
-        File fp1 = new File("/data/local/tmp/frida-server");
-        File fp2 = new File("/data/local/tmp/re.frida.server");
-        if (fp1.exists() || fp2.exists()) return true;
+        if (new File("/data/local/tmp/frida-server").exists() ||
+            new File("/data/local/tmp/re.frida.server").exists()) return true;
         return false;
     }
 
