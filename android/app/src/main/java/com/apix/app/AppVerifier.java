@@ -13,7 +13,6 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Debug;
-import android.util.Log;
 import android.view.Display;
 
 import java.io.BufferedReader;
@@ -118,24 +117,21 @@ public class AppVerifier {
 
     public String getCurrentAppHash() { return currentHash; }
 
-    // ── الفحص الأولي عند فتح التطبيق ────────────────────────────────
     public String runCheck() {
-        if (com.apix.app.BuildConfig.DEBUG) return null;
+        try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
+        if (detectUnauthorizedVPN())  return "E03";
+        if (detectProxy())            return "E04";
+        if (detectSniffers())         return "E05";
+        if (detectBlockedHash())      return "E06";
+        if (detectSecondaryDisplay()) return "E07";
 
-        // فحوصات فورية — تعمل في كل فتح بدون كاش
-        try { if (com.apix.app.x.vpnTunnelUp()) return "VPN_DETECTED";    } catch (Throwable ignored) {}
-        try { if (com.apix.app.x.hasDanger())   return "DANGER_DETECTED"; } catch (Throwable ignored) {}
-        if (detectProxy())            return "Proxy detected";
-        if (detectSniffers())         return "Sniffer detected";
-        if (detectBlockedHash())      return "Blocked version detected";
-        if (detectSecondaryDisplay()) return "Secondary display not allowed";
-
-        // فحوصات ثقيلة — كاش 24 ساعة
         if (!shouldRunCheck()) return null;
-        if (detectCloudPhone()) return "Cloud phone not allowed";
-        if (detectTampering())  return "App files tampered";
-        if (detectDebugger())   return "Debugger detected";
-        if (detectFrida())      return "Hacking tool detected";
+        if (detectCloudPhone()) return "E08";
+        if (detectTampering())  return "E09";
+        if (detectDebugger())   return "E10";
+        if (detectFrida())      return "E11";
+        
         markCheckDone();
         return null;
     }
@@ -145,38 +141,32 @@ public class AppVerifier {
         return blockedHashes.contains(currentHash.toLowerCase());
     }
 
-    // ── الفحص غير المتزامن عند فتح التطبيق ──────────────────────────
     public void runCheckAsync(VerifyCallback callback) {
-        if (com.apix.app.BuildConfig.DEBUG) {
-            if (callback != null) callback.onComplete(true, null);
-            return;
-        }
         new Thread(() -> {
-            // فحوصات فورية — قبل أي شيء، بدون كاش
-            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "VPN_DETECTED");    return; } } catch (Throwable ignored) {}
-            try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "DANGER_DETECTED"); return; } } catch (Throwable ignored) {}
-            if (detectProxy())    { if (callback != null) callback.onComplete(false, "Proxy detected");   return; }
-            if (detectSniffers()) { if (callback != null) callback.onComplete(false, "Sniffer detected"); return; }
-            if (detectBlockedHash()) { if (callback != null) callback.onComplete(false, "Blocked version"); return; }
+            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
+            if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
+            if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
+            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
+            if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
 
-            // فحوصات ثقيلة — كاش 24 ساعة
             if (!shouldRunCheck()) {
                 if (callback != null) callback.onComplete(true, null);
                 return;
             }
+            
             String result = null;
-            if (detectCloudPhone())      result = "Cloud phone not allowed";
-            else if (detectTampering())  result = "App files tampered";
-            else if (detectDebugger())   result = "Debugger detected";
-            else if (detectFrida())      result = "Hacking tool detected";
+            if (detectCloudPhone())      result = "E08";
+            else if (detectTampering())  result = "E09";
+            else if (detectDebugger())   result = "E10";
+            else if (detectFrida())      result = "E11";
+            
             if (result == null) markCheckDone();
             if (callback != null) callback.onComplete(result == null, result);
         }).start();
     }
 
-    // ── المراقبة المستمرة أثناء الجلسة ──────────────────────────────
     public void startMonitor() {
-        if (com.apix.app.BuildConfig.DEBUG) return;
         if (running) return;
         running = true;
 
@@ -185,25 +175,25 @@ public class AppVerifier {
                 try {
                     try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectSniffers())            { killApp(); return; }
                     if (detectCloudPhone())          { killApp(); return; }
                     if (detectSecondaryDisplay())    { killApp(); return; }
                     if (detectProxy())               { killApp(); return; }
                     if (detectHostsMod())            { killApp(); return; }
-                    if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectDynamicHashMismatch()) { killApp(); return; }
                     if (detectPrivateDNS())          { killApp(); return; }
                     if (detectDebugger())            { killApp(); return; }
                     if (detectFrida())               { killApp(); return; }
                     if (detectTampering())           { killApp(); return; }
 
-                    Thread.sleep(5 + (long)(Math.random() * 14));
+                    Thread.sleep(1500); 
                 } catch (InterruptedException e) {
                     break;
                 } catch (Exception ignored) {}
             }
-        }, "t1");
+        }, "m_sys_t");
 
         monitorThread.setDaemon(true);
         monitorThread.setPriority(Thread.MAX_PRIORITY);
@@ -234,15 +224,11 @@ public class AppVerifier {
         System.exit(0);
     }
 
-    // ======== DYNAMIC HASH VERIFICATION ========
-
     private boolean detectDynamicHashMismatch() {
         if (!hashesLoaded || allowedHashes.isEmpty()) return false;
         if (currentHash == null) return true;
         return !allowedHashes.contains(currentHash.toLowerCase());
     }
-
-    // ======== CLOUD PHONE DETECTION ========
 
     private boolean detectCloudPhone() {
         String model       = Build.MODEL.toLowerCase();
@@ -347,19 +333,19 @@ public class AppVerifier {
     private boolean detectUnauthorizedVPN() {
         try {
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm == null) return false;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Network activeNetwork = cm.getActiveNetwork();
                 if (activeNetwork != null) {
                     NetworkCapabilities caps = cm.getNetworkCapabilities(activeNetwork);
-                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
+                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                         return !isWhitelistedVPN();
+                    }
                 }
-            } else {
-                List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-                for (NetworkInterface ni : interfaces) {
-                    if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))
-                        return !isWhitelistedVPN();
+            }
+            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+            for (NetworkInterface ni : interfaces) {
+                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
+                    return !isWhitelistedVPN();
                 }
             }
         } catch (Exception ignored) {}
@@ -370,7 +356,7 @@ public class AppVerifier {
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
             for (NetworkInterface ni : interfaces) {
-                if (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp")) {
+                if (ni.isUp() && (ni.getName().startsWith("tun") || ni.getName().startsWith("ppp"))) {
                     List<InetAddress> addresses = Collections.list(ni.getInetAddresses());
                     for (InetAddress addr : addresses) {
                         String ip = addr.getHostAddress();
