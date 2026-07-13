@@ -603,6 +603,30 @@ fun PlayerScreen(
 
     LaunchedEffect(config) {
         try {
+            // معالجة OK.ru: إذا كان config يحمل okruVideoId نبدأ الاستخراج في الخلفية
+            val okruId = config.okruVideoId
+            if (!okruId.isNullOrBlank()) {
+                isBuffering = true
+                val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                    com.apix.app.OkRuExtractor.resolve(context, "https://ok.ru/video/$okruId", config.okruChannel ?: "") { url ->
+                        if (cont.isActive) cont.resume(url) {}
+                    }
+                }
+                if (streamUrl != null) {
+                    val finalConfig = config.copy(
+                        url           = streamUrl,
+                        useLocalProxy = false,
+                        drm           = null
+                    )
+                    resolvedConfig = finalConfig
+                    currentServerUrl = streamUrl
+                    loadStream(streamUrl, finalConfig)
+                } else {
+                    errorMessage = "تعذر استخراج رابط OK"
+                }
+                return@LaunchedEffect
+            }
+
             val apixResolved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 resolveApixIfNeeded(config)
             }
@@ -674,6 +698,29 @@ fun PlayerScreen(
                     kotlinx.coroutines.MainScope().launch { loadStream(backup, resolvedConfig) }
                     return
                 }
+                // إذا كان OK.ru — أعد الاستخراج تلقائياً
+                val okruId = resolvedConfig.okruVideoId
+                if (!okruId.isNullOrBlank()) {
+                    errorMessage = null
+                    isBuffering = true
+                    kotlinx.coroutines.MainScope().launch {
+                        val newUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                            com.apix.app.OkRuExtractor.retry(context, okruId, resolvedConfig.okruChannel ?: "") { url ->
+                                if (cont.isActive) cont.resume(url) {}
+                            }
+                        }
+                        if (newUrl != null) {
+                            val retryConfig = resolvedConfig.copy(url = newUrl)
+                            resolvedConfig = retryConfig
+                            currentServerUrl = newUrl
+                            loadStream(newUrl, retryConfig)
+                        } else {
+                            errorMessage = "خطأ تقني: ${error.errorCodeName}"
+                        }
+                    }
+                    return
+                }
+
                 val causeMsg = error.cause?.message ?: ""
                 errorMessage = "خطأ تقني: ${error.errorCodeName}\n$causeMsg"
                 latestPlaybackError = error.message
