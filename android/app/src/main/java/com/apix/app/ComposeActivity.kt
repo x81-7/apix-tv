@@ -178,7 +178,7 @@ fun AppNavigation(
                         if (videoId != null) {
                             scope.launch {
                                 val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                                    com.apix.app.OkRuExtractor.resolve(context, rawUrl) { url ->
+                                    com.apix.app.OkRuExtractor.resolve(context, rawUrl, channel.name) { url ->
                                         if (cont.isActive) cont.resume(url) {}
                                     }
                                 }
