@@ -47,26 +47,29 @@ object OkRuExtractor {
         "http://ok.ru/videoembed/$videoId?nochat=1&autoplay=1"
 
     // ── الدالة الرئيسية ─────────────────────────────────────────────────
+    // المفتاح هنا: cacheKey يجمع videoId + channelName لفصل كل قناة
     fun resolve(
         context: Context,
         rawUrl: String,
+        channelName: String = "",
         callback: (String?) -> Unit
     ) {
         val videoId = extractVideoId(rawUrl)
         if (videoId == null) { callback(null); return }
 
-        // تحقق من الكاش أولاً
-        val cached = getCachedStream(context, videoId)
+        // مفتاح الكاش = videoId + اسم القناة (لفصل كل قناة بمفردها)
+        val cacheKey = buildCacheKey(videoId, channelName)
+
+        val cached = getCachedStream(context, cacheKey)
         if (cached != null) {
-            Log.d(T, "Cache hit: $videoId")
+            Log.d(T, "Cache hit: $cacheKey")
             callback(cached)
             return
         }
 
-        // جلب جديد عبر WebView
-        Log.d(T, "Cache miss — starting WebView: $videoId")
-        extractViaWebView(context, videoId) { streamUrl ->
-            if (streamUrl != null) saveToCache(context, videoId, streamUrl)
+        Log.d(T, "Cache miss — starting WebView: $cacheKey")
+        extractViaWebView(context, videoId, cacheKey) { streamUrl ->
+            if (streamUrl != null) saveToCache(context, cacheKey, streamUrl)
             callback(streamUrl)
         }
     }
@@ -75,13 +78,24 @@ object OkRuExtractor {
     fun retry(
         context: Context,
         videoId: String,
+        channelName: String = "",
         callback: (String?) -> Unit
     ) {
-        clearCache(context, videoId)
-        extractViaWebView(context, videoId) { streamUrl ->
-            if (streamUrl != null) saveToCache(context, videoId, streamUrl)
+        val cacheKey = buildCacheKey(videoId, channelName)
+        clearCache(context, cacheKey)
+        extractViaWebView(context, videoId, cacheKey) { streamUrl ->
+            if (streamUrl != null) saveToCache(context, cacheKey, streamUrl)
             callback(streamUrl)
         }
+    }
+
+    // ── بناء مفتاح الكاش (videoId + اسم القناة) ─────────────────────────
+    private fun buildCacheKey(videoId: String, channelName: String): String {
+        val safeName = channelName.trim()
+            .replace(" ", "_")
+            .replace(Regex("[^A-Za-z0-9_\\u0600-\\u06FF]"), "")
+            .take(40)
+        return if (safeName.isNotEmpty()) "${videoId}_${safeName}" else videoId
     }
 
     // ── WebView مخفي ────────────────────────────────────────────────────
@@ -89,6 +103,7 @@ object OkRuExtractor {
     private fun extractViaWebView(
         context: Context,
         videoId: String,
+        cacheKey: String,
         callback: (String?) -> Unit
     ) {
         val handler = Handler(Looper.getMainLooper())
@@ -106,7 +121,6 @@ object OkRuExtractor {
             }
         }
 
-        // مهلة 25 ثانية
         handler.postDelayed({ finish(null) }, 25_000L)
 
         val embedUrl = buildEmbedUrl(videoId)
@@ -136,13 +150,24 @@ object OkRuExtractor {
                         request: WebResourceRequest?
                     ): WebResourceResponse? {
                         val reqUrl = request?.url?.toString() ?: return null
+                        if (done) return null
 
-                        // اصطياد m3u8 مباشرة
-                        if ((reqUrl.contains(".m3u8") || reqUrl.contains("manifest.m3u8"))
-                            && !done) {
-                            Log.d(T, "Intercepted m3u8")
+                        // البث المباشر: m3u8
+                        if (reqUrl.contains(".m3u8") ||
+                            reqUrl.contains("manifest.m3u8")) {
+                            Log.d(T, "Intercepted HLS m3u8")
                             finish(reqUrl)
+                            return null
                         }
+
+                        // الفيديو المسجل: okcdn.ru مع sig=
+                        if (reqUrl.contains("okcdn.ru") &&
+                            reqUrl.contains("sig=")) {
+                            Log.d(T, "Intercepted CDN video")
+                            finish(reqUrl)
+                            return null
+                        }
+
                         return null
                     }
 
@@ -150,21 +175,19 @@ object OkRuExtractor {
                         super.onPageFinished(view, url)
                         if (done) return
 
-                        // جمع الكوكيز بعد تحميل الصفحة
                         val cookies = CookieManager.getInstance()
                             .getCookie("https://ok.ru") ?: ""
 
-                        // تشغيل الفيديو بـ JavaScript
                         val js = """
                             (function() {
                                 try {
                                     var v = document.querySelector('video');
                                     if (v) { v.muted = true; v.play(); }
-                                    var btns = [
+                                    var sels = [
                                         '.vid-play-big', '[data-action="play"]',
                                         '.video-layer_play-btn', '.vid-controls_play'
                                     ];
-                                    btns.forEach(function(sel) {
+                                    sels.forEach(function(sel) {
                                         var b = document.querySelector(sel);
                                         if (b) b.click();
                                     });
@@ -176,7 +199,6 @@ object OkRuExtractor {
                         """.trimIndent()
                         view?.evaluateJavascript(js, null)
 
-                        // استخدام الكوكيز لاستدعاء API مباشرة
                         if (cookies.isNotBlank()) {
                             CoroutineScope(Dispatchers.IO).launch {
                                 val result = fetchWithCookies(videoId, cookies, ua)
@@ -229,12 +251,15 @@ object OkRuExtractor {
     private fun parseStreamUrl(body: String): String? {
         return try {
             val root = JSONObject(body)
+
+            // أولوية: HLS
             val hls = root.optString("hlsMasterPlaylistUrl", "")
                 .replace("\\u0026", "&").ifEmpty { null }
                 ?: root.optString("hlsManifestUrl", "")
                     .replace("\\u0026", "&").ifEmpty { null }
             if (hls != null) return hls
 
+            // ثانياً: أعلى جودة فيديو مسجل
             val videos = root.optJSONArray("videos") ?: return null
             val map = mutableMapOf<String, String>()
             for (i in 0 until videos.length()) {
@@ -257,24 +282,24 @@ object OkRuExtractor {
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun getCachedStream(ctx: Context, videoId: String): String? {
+    private fun getCachedStream(ctx: Context, key: String): String? {
         val sp = prefs(ctx)
-        val url = sp.getString("url_$videoId", null) ?: return null
-        val ts = sp.getLong("ts_$videoId", 0L)
+        val url = sp.getString("url_$key", null) ?: return null
+        val ts = sp.getLong("ts_$key", 0L)
         return if (System.currentTimeMillis() - ts < URL_TTL_MS) url else null
     }
 
-    private fun saveToCache(ctx: Context, videoId: String, url: String) {
+    private fun saveToCache(ctx: Context, key: String, url: String) {
         prefs(ctx).edit()
-            .putString("url_$videoId", url)
-            .putLong("ts_$videoId", System.currentTimeMillis())
+            .putString("url_$key", url)
+            .putLong("ts_$key", System.currentTimeMillis())
             .apply()
     }
 
-    private fun clearCache(ctx: Context, videoId: String) {
+    private fun clearCache(ctx: Context, key: String) {
         prefs(ctx).edit()
-            .remove("url_$videoId")
-            .remove("ts_$videoId")
+            .remove("url_$key")
+            .remove("ts_$key")
             .apply()
     }
 }
