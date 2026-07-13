@@ -500,9 +500,21 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
-    suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
-        try {
-            latestPlaybackError = null
+    latestPlaybackError = null
+
+            // روابط okcdn.ru هي MP4 مباشر — نُعرّف النوع صراحة لـ ExoPlayer
+            if (streamUrl.contains("okcdn.ru") && streamUrl.contains("sig=")) {
+                val mediaItem = MediaItem.Builder()
+                    .setUri(streamUrl)
+                    .setMimeType(MimeTypes.VIDEO_MP4)
+                    .build()
+                player.stop()
+                player.clearMediaItems()
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.playWhenReady = true
+                return
+            }
 
             if (streamUrl.lowercase().contains(".json")) {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
