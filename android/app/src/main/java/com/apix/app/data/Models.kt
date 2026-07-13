@@ -178,7 +178,9 @@ data class PlayerConfig(
     var forcedAspectRatio: String? = null,
     var lockAspectRatio: Boolean = false,
     var useLocalProxy: Boolean = false,
-    var logoOverlay: LogoOverlay? = null
+    var logoOverlay: LogoOverlay? = null,
+    var okruVideoId: String? = null,
+    var okruChannel: String? = null
 )
 
 data class PlayerHeaders(
