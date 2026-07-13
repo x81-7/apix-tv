@@ -176,28 +176,20 @@ fun AppNavigation(
                     if (com.apix.app.OkRuExtractor.isOkRuUrl(rawUrl)) {
                         val videoId = com.apix.app.OkRuExtractor.extractVideoId(rawUrl)
                         if (videoId != null) {
-                            scope.launch {
-                                val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                                    com.apix.app.OkRuExtractor.resolve(context, rawUrl, channel.name) { url ->
-                                        if (cont.isActive) cont.resume(url) {}
-                                    }
-                                }
-                                if (streamUrl != null) {
-                                    navigateTo(Screen.Player(config.copy(
-                                        url           = streamUrl,
-                                        drm           = null,
-                                        useLocalProxy = false,
-                                        headers       = com.apix.app.data.PlayerHeaders(
-                                            userAgent = "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36",
-                                            referer   = "https://ok.ru/"
-                                        )
-                                    )))
-                                } else {
-                                    navigateTo(Screen.HybridPlayer(config.copy(
-                                        url = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId)
-                                    )))
-                                }
-                            }
+                            // نفتح المشغل فوراً برابط مؤقت وندع الاستخراج يحدث في الخلفية
+                            val embedUrl = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId)
+                            val initialConfig = config.copy(
+                                url           = embedUrl,
+                                drm           = null,
+                                useLocalProxy = false,
+                                customHeaders = mapOf(
+                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36",
+                                    "Referer" to "https://ok.ru/"
+                                ),
+                                okruVideoId   = videoId,
+                                okruChannel   = channel.name
+                            )
+                            navigateTo(Screen.Player(initialConfig))
                         }
                     } else {
                         when (channel.androidActionType ?: "native") {
