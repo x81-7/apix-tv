@@ -57,7 +57,11 @@ object ApixStreamResolver {
             // ── OK.ru type: handled via OkRuExtractor in ComposeActivity ──
             // apix.png okru_extractor type is NOT processed here anymore.
             // OkRuExtractor (WebView-based) intercepts ok.ru URLs before this resolver.
-            if (obj.optString("type", "") == "okru_extractor") return null
+            if (obj.optString("type", "") == "okru_extractor") {
+                return kotlinx.coroutines.runBlocking {
+                    com.apix.app.OkRuStreamHandler.loadStream(obj, base)
+                }
+            }
 
             val config = base.copy()
 
