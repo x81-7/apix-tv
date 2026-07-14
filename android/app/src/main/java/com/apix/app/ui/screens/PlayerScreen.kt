@@ -499,10 +499,7 @@ fun PlayerScreen(
     }
 
     var resolvedConfig by remember { mutableStateOf(config) }
-
-    latestPlaybackError = null
-
-            // روابط okcdn.ru هي MP4 مباشر — نُعرّف النوع صراحة لـ ExoPlayer
+// روابط okcdn.ru هي MP4 مباشر
             if (streamUrl.contains("okcdn.ru") && streamUrl.contains("sig=")) {
                 val mediaItem = MediaItem.Builder()
                     .setUri(streamUrl)
@@ -513,10 +510,12 @@ fun PlayerScreen(
                 player.setMediaItem(mediaItem)
                 player.prepare()
                 player.playWhenReady = true
-                return
+                return@launch
             }
 
+            
             if (streamUrl.lowercase().contains(".json")) {
+            
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
                     var success = false
                     var attempts = 0
