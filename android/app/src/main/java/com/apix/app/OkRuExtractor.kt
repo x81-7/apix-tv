@@ -114,7 +114,12 @@ object OkRuExtractor {
             if (!done) {
                 done = true
                 handler.post {
-                    try { webView?.stopLoading(); webView?.destroy() } catch (_: Exception) {}
+                    try {
+                        webView?.stopLoading()
+                        val parent = webView?.parent as? android.view.ViewGroup
+                        parent?.removeView(webView)
+                        webView?.destroy()
+                    } catch (_: Exception) {}
                     webView = null
                     callback(result)
                 }
@@ -129,8 +134,17 @@ object OkRuExtractor {
                  "Chrome/124.0.0.0 Mobile Safari/537.36"
 
         handler.post {
+            // نحتاج ViewGroup حقيقي لأن OK.ru يتحقق من حجم الـ WebView
+            val container = try {
+                val activity = context as? android.app.Activity
+                activity?.window?.decorView?.rootView as? android.view.ViewGroup
+            } catch (_: Exception) { null }
+
             webView = WebView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(1, 1)
+                layoutParams = android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 CookieManager.getInstance().setAcceptCookie(true)
 
@@ -210,6 +224,14 @@ object OkRuExtractor {
 
                 webChromeClient = WebChromeClient()
                 loadUrl(embedUrl)
+            }
+
+            // إضافة WebView بشكل مخفي لكن بحجم حقيقي
+            try {
+                webView?.visibility = android.view.View.INVISIBLE
+                container?.addView(webView)
+            } catch (_: Exception) {
+                // إذا فشل إضافته للـ container يبقى مستقلاً
             }
         }
     }
