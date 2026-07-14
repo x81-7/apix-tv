@@ -500,7 +500,9 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
-            if ((streamUrl.contains("okcdn.ru") || streamUrl.contains("vkuser.net")) && streamUrl.contains("sig=")) {
+            // CDN فيديو مسجل (okcdn/vkuser) — MP4 مباشر بدون امتداد
+            if ((streamUrl.contains("okcdn.ru") || streamUrl.contains("vkuser.net")) &&
+                streamUrl.contains("sig=")) {
                 val mediaItem = MediaItem.Builder()
                     .setUri(streamUrl)
                     .setMimeType(MimeTypes.VIDEO_MP4)
