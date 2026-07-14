@@ -499,8 +499,8 @@ fun PlayerScreen(
     }
 
     var resolvedConfig by remember { mutableStateOf(config) }
-// روابط okcdn.ru هي MP4 مباشر
-            if (streamUrl.contains("okcdn.ru") && streamUrl.contains("sig=")) {
+
+            if ((streamUrl.contains("okcdn.ru") || streamUrl.contains("vkuser.net")) && streamUrl.contains("sig=")) {
                 val mediaItem = MediaItem.Builder()
                     .setUri(streamUrl)
                     .setMimeType(MimeTypes.VIDEO_MP4)
@@ -513,7 +513,6 @@ fun PlayerScreen(
                 return@launch
             }
 
-            
             if (streamUrl.lowercase().contains(".json")) {
             
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
