@@ -63,6 +63,21 @@ object ApixStreamResolver {
                 }
             }
 
+            // رابط ok.ru مباشر داخل JSON — يُحوَّل لـ OkRuExtractor تلقائياً
+            val directUrl = obj.optString("url", "")
+            if (com.apix.app.OkRuExtractor.isOkRuUrl(directUrl)) {
+                val videoId = com.apix.app.OkRuExtractor.extractVideoId(directUrl)
+                if (videoId != null) {
+                    return base.copy(
+                        url           = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId),
+                        okruVideoId   = videoId,
+                        okruChannel   = obj.optString("name", ""),
+                        drm           = null,
+                        useLocalProxy = false
+                    )
+                }
+            }
+
             val config = base.copy()
 
             // الرابط الأساسي — إلزامي
