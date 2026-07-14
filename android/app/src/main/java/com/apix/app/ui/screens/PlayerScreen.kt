@@ -500,7 +500,7 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
-    fun loadStream(streamUrl: String, cfg: PlayerConfig) {
+    suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
         try {
             // CDN فيديو مسجل (okcdn/vkuser) — MP4 مباشر بدون امتداد
             if ((streamUrl.contains("okcdn.ru") || streamUrl.contains("vkuser.net")) &&
