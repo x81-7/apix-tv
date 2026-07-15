@@ -173,23 +173,29 @@ fun AppNavigation(
                 if (config != null) {
                     val rawUrl = channel.androidStream?.url ?: channel.stream?.url ?: ""
 
-                    if (com.apix.app.OkRuExtractor.isOkRuUrl(rawUrl)) {
-                        val videoId = com.apix.app.OkRuExtractor.extractVideoId(rawUrl)
+                    if (com.apix.app.OkVideoex.isVideoUrl(rawUrl)) {
+                        // فيديو مسجل — رابط ينتهي بـ .mp4
+                        val videoId = com.apix.app.OkVideoex.extractVideoId(rawUrl)
                         if (videoId != null) {
-                            // نفتح المشغل فوراً برابط مؤقت وندع الاستخراج يحدث في الخلفية
-                            val embedUrl = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId)
-                            val initialConfig = config.copy(
-                                url           = embedUrl,
+                            navigateTo(Screen.Player(config.copy(
+                                url           = com.apix.app.OkVideoex.buildEmbedUrl(videoId),
                                 drm           = null,
                                 useLocalProxy = false,
-                                customHeaders = mapOf(
-                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36",
-                                    "Referer" to "https://ok.ru/"
-                                ),
+                                okruVideoId   = videoId,
+                                okruChannel   = "video"
+                            )))
+                        }
+                    } else if (com.apix.app.OkRuExtractor.isLiveUrl(rawUrl)) {
+                        // بث مباشر — رابط بدون .mp4
+                        val videoId = com.apix.app.OkRuExtractor.extractVideoId(rawUrl)
+                        if (videoId != null) {
+                            navigateTo(Screen.Player(config.copy(
+                                url           = com.apix.app.OkRuExtractor.buildEmbedUrl(videoId),
+                                drm           = null,
+                                useLocalProxy = false,
                                 okruVideoId   = videoId,
                                 okruChannel   = channel.name
-                            )
-                            navigateTo(Screen.Player(initialConfig))
+                            )))
                         }
                     } else {
                         when (channel.androidActionType ?: "native") {
