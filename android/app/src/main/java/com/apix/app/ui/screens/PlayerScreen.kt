@@ -500,6 +500,20 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
+    private fun loadStreamAsMp4(url: String) {
+        try {
+            val mediaItem = androidx.media3.common.MediaItem.Builder()
+                .setUri(url)
+                .setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP4)
+                .build()
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.playWhenReady = true
+        } catch (_: Exception) {}
+    }
+
     suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
         try {
             // CDN فيديو مسجل (okcdn/vkuser) — MP4 مباشر بدون امتداد
@@ -621,20 +635,29 @@ fun PlayerScreen(
             val okruId = config.okruVideoId
             if (!okruId.isNullOrBlank()) {
                 isBuffering = true
-                val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                    com.apix.app.OkRuExtractor.resolve(context, "https://ok.ru/video/$okruId", config.okruChannel ?: "") { url ->
-                        if (cont.isActive) cont.resume(url) {}
+                data class OkResult(val url: String, val type: String?)
+                val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
+                    com.apix.app.OkRuExtractor.resolve(
+                        context,
+                        "https://ok.ru/video/$okruId",
+                        config.okruChannel ?: ""
+                    ) { url, type ->
+                        if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
                     }
                 }
-                if (streamUrl != null) {
+                if (okResult != null) {
                     val finalConfig = config.copy(
-                        url           = streamUrl,
+                        url           = okResult.url,
                         useLocalProxy = false,
                         drm           = null
                     )
                     resolvedConfig = finalConfig
-                    currentServerUrl = streamUrl
-                    loadStream(streamUrl, finalConfig)
+                    currentServerUrl = okResult.url
+                    if (okResult.type == "mp4") {
+                        loadStreamAsMp4(okResult.url)
+                    } else {
+                        loadStream(okResult.url, finalConfig)
+                    }
                 } else {
                     errorMessage = "تعذر استخراج رابط OK"
                 }
@@ -718,16 +741,23 @@ fun PlayerScreen(
                     errorMessage = null
                     isBuffering = true
                     kotlinx.coroutines.MainScope().launch {
-                        val newUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                            com.apix.app.OkRuExtractor.retry(context, okruId, resolvedConfig.okruChannel ?: "") { url ->
-                                if (cont.isActive) cont.resume(url) {}
+                        data class OkResult(val url: String, val type: String?)
+                        val okRetry = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
+                            com.apix.app.OkRuExtractor.retry(
+                                context, okruId, resolvedConfig.okruChannel ?: ""
+                            ) { url, type ->
+                                if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
                             }
                         }
-                        if (newUrl != null) {
-                            val retryConfig = resolvedConfig.copy(url = newUrl)
+                        if (okRetry != null) {
+                            val retryConfig = resolvedConfig.copy(url = okRetry.url)
                             resolvedConfig = retryConfig
-                            currentServerUrl = newUrl
-                            loadStream(newUrl, retryConfig)
+                            currentServerUrl = okRetry.url
+                            if (okRetry.type == "mp4") {
+                                loadStreamAsMp4(okRetry.url)
+                            } else {
+                                loadStream(okRetry.url, retryConfig)
+                            }
                         } else {
                             errorMessage = "خطأ تقني: ${error.errorCodeName}"
                         }
