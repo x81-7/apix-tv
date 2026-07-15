@@ -645,19 +645,39 @@ fun PlayerScreen(
                         if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
                     }
                 }
-                if (okResult != null) {
-                    val finalConfig = config.copy(
-                        url           = okResult.url,
-                        useLocalProxy = false,
-                        drm           = null
-                    )
-                    resolvedConfig = finalConfig
-                    currentServerUrl = okResult.url
-                    if (okResult.type == "mp4") {
-                        loadStreamAsMp4(okResult.url)
-                    } else {
-                        loadStream(okResult.url, finalConfig)
+                // هل هو فيديو مسجل؟ (channel = "video" يعني OkVideoex)
+                val isVideo = config.okruChannel == "video"
+
+                if (isVideo) {
+                    // فيديو مسجل — OkVideoex
+                    val videoUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                        com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { url ->
+                            if (cont.isActive) cont.resume(url) {}
+                        }
                     }
+                    if (videoUrl != null) {
+                        resolvedConfig = config.copy(url = videoUrl, drm = null)
+                        currentServerUrl = videoUrl
+                        loadStreamAsMp4(videoUrl)
+                    } else {
+                        errorMessage = "تعذر تحميل الفيديو"
+                    }
+                } else {
+                    // بث مباشر — OkRuExtractor
+                    val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                        com.apix.app.OkRuExtractor.resolve(
+                            context, "https://ok.ru/video/$okruId", config.okruChannel ?: ""
+                        ) { url -> if (cont.isActive) cont.resume(url) {} }
+                    }
+                    if (streamUrl != null) {
+                        val finalConfig = config.copy(url = streamUrl, useLocalProxy = false, drm = null)
+                        resolvedConfig = finalConfig
+                        currentServerUrl = streamUrl
+                        loadStream(streamUrl, finalConfig)
+                    } else {
+                        errorMessage = "تعذر استخراج رابط البث"
+                    }
+                }
                 } else {
                     errorMessage = "تعذر استخراج رابط OK"
                 }
