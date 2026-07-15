@@ -500,7 +500,7 @@ fun PlayerScreen(
 
     var resolvedConfig by remember { mutableStateOf(config) }
 
-    private fun loadStreamAsMp4(url: String) {
+    fun loadStreamAsMp4(url: String) {
         try {
             val mediaItem = androidx.media3.common.MediaItem.Builder()
                 .setUri(url)
