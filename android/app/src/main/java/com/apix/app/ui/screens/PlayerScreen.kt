@@ -749,25 +749,37 @@ fun PlayerScreen(
                     errorMessage = null
                     isBuffering = true
                     kotlinx.coroutines.MainScope().launch {
-                        data class OkResult(val url: String, val type: String?)
-                        val okRetry = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
-                            com.apix.app.OkRuExtractor.retry(
-                                context, okruId, resolvedConfig.okruChannel ?: ""
-                            ) { url, type ->
-                                if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
+                        val isVideo = resolvedConfig.okruChannel == "video"
+                        
+                        if (isVideo) {
+                            // إعادة محاولة للفيديو المسجل
+                            val videoUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                                com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { url ->
+                                    if (cont.isActive) cont.resume(url) {}
+                                }
                             }
-                        }
-                        if (okRetry != null) {
-                            val retryConfig = resolvedConfig.copy(url = okRetry.url)
-                            resolvedConfig = retryConfig
-                            currentServerUrl = okRetry.url
-                            if (okRetry.type == "mp4") {
-                                loadStreamAsMp4(okRetry.url)
+                            if (videoUrl != null) {
+                                resolvedConfig = resolvedConfig.copy(url = videoUrl, drm = null)
+                                currentServerUrl = videoUrl
+                                loadStreamAsMp4(videoUrl)
                             } else {
-                                loadStream(okRetry.url, retryConfig)
+                                errorMessage = "خطأ تقني: ${error.errorCodeName}"
                             }
                         } else {
-                            errorMessage = "خطأ تقني: ${error.errorCodeName}"
+                            // إعادة محاولة للبث المباشر
+                            val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                                com.apix.app.OkRuExtractor.retry(
+                                    context, okruId, resolvedConfig.okruChannel ?: ""
+                                ) { url -> if (cont.isActive) cont.resume(url) {} }
+                            }
+                            if (streamUrl != null) {
+                                val retryConfig = resolvedConfig.copy(url = streamUrl, useLocalProxy = false, drm = null)
+                                resolvedConfig = retryConfig
+                                currentServerUrl = streamUrl
+                                loadStream(streamUrl, retryConfig)
+                            } else {
+                                errorMessage = "خطأ تقني: ${error.errorCodeName}"
+                            }
                         }
                     }
                     return
