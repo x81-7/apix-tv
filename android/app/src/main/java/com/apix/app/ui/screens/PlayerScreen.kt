@@ -649,7 +649,7 @@ fun PlayerScreen(
                     if (videoUrl != null) {
                         resolvedConfig = config.copy(url = videoUrl, drm = null)
                         currentServerUrl = videoUrl
-                        loadStreamAsMp4(videoUrl)
+                        loadStream(videoUrl, resolvedConfig)
                     } else {
                         errorMessage = "تعذر تحميل الفيديو"
                     }
@@ -761,7 +761,7 @@ fun PlayerScreen(
                             if (videoUrl != null) {
                                 resolvedConfig = resolvedConfig.copy(url = videoUrl, drm = null)
                                 currentServerUrl = videoUrl
-                                loadStreamAsMp4(videoUrl)
+                                loadStream(videoUrl, resolvedConfig)
                             } else {
                                 errorMessage = "خطأ تقني: ${error.errorCodeName}"
                             }
