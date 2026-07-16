@@ -317,8 +317,8 @@ fun AppNavigation(
                 val serversArr = obj.optJSONArray("servers")
                 val fallbackServers = mutableListOf<FallbackServer>()
 
-                // backupUrl يصبح أول fallback تلقائياً
-                if (backupUrl != null) {
+                // backupUrl يصبح أول fallback تلقائياً — بشرط أن يختلف عن الرابط الأساسي
+                if (backupUrl != null && backupUrl != url) {
                     fallbackServers.add(
                         FallbackServer(
                             name      = "احتياطي",
@@ -340,6 +340,8 @@ fun AppNavigation(
                     for (i in 0 until serversArr.length()) {
                         val s    = serversArr.optJSONObject(i) ?: continue
                         val sUrl = s.optString("url").takeIf { it.isNotBlank() } ?: continue
+                        // تجنب تكرار الرابط الأساسي في قائمة السيرفرات
+                        if (sUrl == url) continue
                         val sName = s.optString("name", "سيرفر ${fallbackServers.size + 1}")
 
                         // headers خاصة بهذا السيرفر
