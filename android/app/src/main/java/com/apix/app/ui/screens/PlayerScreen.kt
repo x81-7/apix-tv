@@ -679,8 +679,6 @@ fun PlayerScreen(
                         resolvedConfig = finalConfig
                         currentServerUrl = streamUrl
                         loadStream(streamUrl, finalConfig)
-                            loadStream(okResult.url, finalConfig)
-                        }
                     } else {
                         errorMessage = "تعذر استخراج رابط البث"
                     }
