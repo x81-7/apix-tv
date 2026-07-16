@@ -635,17 +635,6 @@ fun PlayerScreen(
             val okruId = config.okruVideoId
             if (!okruId.isNullOrBlank()) {
                 isBuffering = true
-                data class OkResult(val url: String, val type: String?)
-                val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
-                    com.apix.app.OkRuExtractor.resolve(
-                        context,
-                        "https://ok.ru/video/$okruId",
-                        config.okruChannel ?: ""
-                    ) { url, type ->
-                        if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
-                    }
-                }
-                // هل هو فيديو مسجل؟ (channel = "video" يعني OkVideoex)
                 val isVideo = config.okruChannel == "video"
 
                 if (isVideo) {
@@ -664,22 +653,26 @@ fun PlayerScreen(
                     }
                 } else {
                     // بث مباشر — OkRuExtractor
-                    val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                    data class OkResult(val url: String, val type: String?)
+                    val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
                         com.apix.app.OkRuExtractor.resolve(
                             context, "https://ok.ru/video/$okruId", config.okruChannel ?: ""
-                        ) { url -> if (cont.isActive) cont.resume(url) {} }
+                        ) { url, type ->
+                            if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
+                        }
                     }
-                    if (streamUrl != null) {
-                        val finalConfig = config.copy(url = streamUrl, useLocalProxy = false, drm = null)
+                    if (okResult != null) {
+                        val finalConfig = config.copy(url = okResult.url, useLocalProxy = false, drm = null)
                         resolvedConfig = finalConfig
-                        currentServerUrl = streamUrl
-                        loadStream(streamUrl, finalConfig)
+                        currentServerUrl = okResult.url
+                        if (okResult.type == "mp4") {
+                            loadStreamAsMp4(okResult.url)
+                        } else {
+                            loadStream(okResult.url, finalConfig)
+                        }
                     } else {
                         errorMessage = "تعذر استخراج رابط البث"
                     }
-                }
-                } else {
-                    errorMessage = "تعذر استخراج رابط OK"
                 }
                 return@LaunchedEffect
             }
