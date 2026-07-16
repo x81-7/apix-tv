@@ -14,12 +14,11 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * OkVideoex — فيديو مسجل فقط (MP4/CDN)
- * يُفعَّل عندما الرابط ok.ru ينتهي بـ .mp4
- * لا يُخزَّن الرابط (يُجلَب من جديد في كل مرة)
- * الناتج: رابط okcdn.ru/vkuser.net يُمرَّر للمشغل كـ MP4 صريح
- */
+data class OkVideoQuality(
+    val name: String,    // "1080", "720", "480", "360", "240"
+    val url: String      // رابط okcdn.ru المباشر
+)
+
 object OkVideoex {
 
     private const val T  = "OkVideoex"
@@ -28,7 +27,6 @@ object OkVideoex {
                      "AppleWebKit/537.36 (KHTML, like Gecko) " +
                      "Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    // ── كشف رابط الفيديو ───────────────────────────────────────────────
     fun isVideoUrl(url: String): Boolean {
         val u = url.lowercase().trim()
         return (u.contains("ok.ru/video/") ||
@@ -39,12 +37,10 @@ object OkVideoex {
 
     fun extractVideoId(url: String): String? {
         return try {
-            val clean = url.replace("https://","").replace("http://","")
-                          .removeSuffix(".mp4")
+            val clean = url.replace("https://","").replace("http://","").removeSuffix(".mp4")
             val parts = clean.split("/")
             val idx = parts.indexOfFirst { it == "video" || it == "videoembed" }
-            if (idx >= 0 && idx + 1 < parts.size)
-                parts[idx + 1].split("?").first().trim()
+            if (idx >= 0 && idx + 1 < parts.size) parts[idx + 1].split("?").first().trim()
             else null
         } catch (_: Exception) { null }
     }
@@ -52,40 +48,42 @@ object OkVideoex {
     fun buildEmbedUrl(videoId: String) =
         "https://ok.ru/videoembed/$videoId?nochat=1&autoplay=1"
 
-    // ── الدخول الرئيسي (بدون كاش) ──────────────────────────────────────
+    /**
+     * يُعيد قائمة بجميع الدقات المتاحة
+     * callback: List<OkVideoQuality> — مرتبة من الأعلى للأسفل
+     */
     fun resolve(
         context: Context,
         rawUrl: String,
-        callback: (url: String?) -> Unit
+        callback: (List<OkVideoQuality>) -> Unit
     ) {
-        val videoId = extractVideoId(rawUrl) ?: run { callback(null); return }
-        Log.d(T, "Fetching video (no cache): $videoId")
+        val videoId = extractVideoId(rawUrl) ?: run { callback(emptyList()); return }
+        Log.d(T, "Fetching all qualities: $videoId")
         fetchViaWebView(context, videoId, callback)
     }
 
-    // ── WebView يصطاد رابط CDN ──────────────────────────────────────────
     @SuppressLint("SetJavaScriptEnabled")
     private fun fetchViaWebView(
         context: Context,
         videoId: String,
-        callback: (String?) -> Unit
+        callback: (List<OkVideoQuality>) -> Unit
     ) {
         val handler = Handler(Looper.getMainLooper())
         var done = false
         var webView: WebView? = null
 
-        val finish: (String?) -> Unit = { url ->
+        val finish: (List<OkVideoQuality>) -> Unit = { qualities ->
             if (!done) {
                 done = true
                 handler.post {
                     try { webView?.stopLoading(); webView?.destroy() } catch (_:Exception) {}
                     webView = null
-                    callback(url)
+                    callback(qualities)
                 }
             }
         }
 
-        handler.postDelayed({ finish(null) }, 20_000L)
+        handler.postDelayed({ finish(emptyList()) }, 20_000L)
 
         handler.post {
             webView = WebView(context).apply {
@@ -102,21 +100,6 @@ object OkVideoex {
 
                 webViewClient = object : WebViewClient() {
 
-                    override fun shouldInterceptRequest(
-                        view: WebView?, request: WebResourceRequest?
-                    ): WebResourceResponse? {
-                        val reqUrl = request?.url?.toString() ?: return null
-                        if (done) return null
-                        // نصطاد رابط CDN فقط
-                        if ((reqUrl.contains("okcdn.ru") ||
-                             reqUrl.contains("vkuser.net")) &&
-                            reqUrl.contains("sig=")) {
-                            Log.d(T, "Intercepted CDN video")
-                            finish(reqUrl)
-                        }
-                        return null
-                    }
-
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         if (done) return
@@ -128,21 +111,17 @@ object OkVideoex {
                                 try{
                                     var v=document.querySelector('video');
                                     if(v){v.muted=true;v.play();}
-                                    ['[data-action=play]','.vid-play-big',
-                                     '.vid-controls_play'].forEach(function(s){
+                                    ['[data-action=play]','.vid-play-big','.vid-controls_play'].forEach(function(s){
                                         var b=document.querySelector(s);if(b)b.click();
                                     });
-                                    var el=document.elementFromPoint(
-                                        window.innerWidth/2,window.innerHeight/2);
-                                    if(el)el.click();
-                                }catch(e){}
+                                } catch(e){}
                             })();
                         """.trimIndent(), null)
 
                         if (cookies.isNotBlank()) {
                             CoroutineScope(Dispatchers.IO).launch {
-                                val result = apiPost(videoId, cookies)
-                                if (result != null) finish(result)
+                                val qualities = apiPostAllQualities(videoId, cookies)
+                                if (qualities.isNotEmpty()) finish(qualities)
                             }
                         }
                     }
@@ -153,8 +132,8 @@ object OkVideoex {
         }
     }
 
-    // ── API للحصول على أعلى جودة ───────────────────────────────────────
-    private fun apiPost(videoId: String, cookies: String): String? {
+    // يجلب جميع الدقات ويرتبها من الأعلى للأسفل
+    private fun apiPostAllQualities(videoId: String, cookies: String): List<OkVideoQuality> {
         var conn: HttpURLConnection? = null
         return try {
             conn = URL("https://ok.ru/dk?cmd=videoPlayerMetadata&mid=$videoId")
@@ -169,20 +148,29 @@ object OkVideoex {
             conn.setRequestProperty("Accept","application/json, */*")
             conn.setRequestProperty("X-Requested-With","XMLHttpRequest")
             OutputStreamWriter(conn.outputStream,"UTF-8").use{it.write("gwt.requested=1")}
-            if (conn.responseCode != 200) return null
+            if (conn.responseCode != 200) return emptyList()
+
             val root   = JSONObject(conn.inputStream.bufferedReader().readText())
-            val videos = root.optJSONArray("videos") ?: return null
-            val map    = mutableMapOf<String, String>()
+            val videos = root.optJSONArray("videos") ?: return emptyList()
+
+            val map = mutableMapOf<String, String>()
             for (i in 0 until videos.length()) {
                 val v = videos.getJSONObject(i)
                 val u = v.optString("url","").replace("\\u0026","&")
                 val r = v.optString("name","")
                 if (u.isNotEmpty() && r.isNotEmpty()) map[r] = u
             }
-            listOf("1080","720","480","360","240").forEach { p ->
-                map[p]?.let { return it }
-            }
-            map.values.firstOrNull()
-        } catch (_:Exception){ null } finally { conn?.disconnect() }
+
+            // ترتيب من الأعلى للأسفل
+            val order = listOf("1080","720","480","360","240")
+            val result = mutableListOf<OkVideoQuality>()
+            order.forEach { q -> map[q]?.let { result.add(OkVideoQuality(q+"p", it)) } }
+            // إضافة أي دقات أخرى غير مذكورة في القائمة
+            map.entries
+                .filter { e -> order.none { q -> e.key == q } }
+                .forEach { e -> result.add(OkVideoQuality(e.key, e.value)) }
+            result
+
+        } catch (_:Exception){ emptyList() } finally { conn?.disconnect() }
     }
 }
