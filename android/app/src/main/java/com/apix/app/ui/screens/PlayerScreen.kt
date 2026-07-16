@@ -638,16 +638,30 @@ fun PlayerScreen(
                 val isVideo = config.okruChannel == "video"
 
                 if (isVideo) {
-                    // فيديو مسجل — OkVideoex
-                    val videoUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                        com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { url ->
-                            if (cont.isActive) cont.resume(url) {}
+                    // فيديو مسجل — OkVideoex (جميع الدقات)
+                    val qualities = kotlinx.coroutines.suspendCancellableCoroutine<List<com.apix.app.OkVideoQuality>> { cont ->
+                        com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { list ->
+                            if (cont.isActive) cont.resume(list) {}
                         }
                     }
-                    if (videoUrl != null) {
-                        resolvedConfig = config.copy(url = videoUrl, drm = null)
-                        currentServerUrl = videoUrl
-                        loadStreamAsMp4(videoUrl)
+                    if (qualities.isNotEmpty()) {
+                        // السيرفر الأول = أعلى جودة
+                        val primary = qualities.first()
+                        val fallbacks = qualities.drop(1).map { q ->
+                            com.apix.app.data.FallbackServer(
+                                name = q.name,
+                                url  = q.url
+                            )
+                        }
+                        val finalConfig = config.copy(
+                            url             = primary.url,
+                            drm             = null,
+                            useLocalProxy   = false,
+                            fallbackServers = fallbacks
+                        )
+                        resolvedConfig   = finalConfig
+                        currentServerUrl = primary.url
+                        loadStreamAsMp4(primary.url)
                     } else {
                         errorMessage = "تعذر تحميل الفيديو"
                     }
