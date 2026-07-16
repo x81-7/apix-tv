@@ -653,21 +653,18 @@ fun PlayerScreen(
                     }
                 } else {
                     // بث مباشر — OkRuExtractor
-                    data class OkResult(val url: String, val type: String?)
-                    val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
+                    val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
                         com.apix.app.OkRuExtractor.resolve(
                             context, "https://ok.ru/video/$okruId", config.okruChannel ?: ""
-                        ) { url, type ->
-                            if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
+                        ) { url ->
+                            if (cont.isActive) cont.resume(url) {}
                         }
                     }
-                    if (okResult != null) {
-                        val finalConfig = config.copy(url = okResult.url, useLocalProxy = false, drm = null)
+                    if (streamUrl != null) {
+                        val finalConfig = config.copy(url = streamUrl, useLocalProxy = false, drm = null)
                         resolvedConfig = finalConfig
-                        currentServerUrl = okResult.url
-                        if (okResult.type == "mp4") {
-                            loadStreamAsMp4(okResult.url)
-                        } else {
+                        currentServerUrl = streamUrl
+                        loadStream(streamUrl, finalConfig)
                             loadStream(okResult.url, finalConfig)
                         }
                     } else {
