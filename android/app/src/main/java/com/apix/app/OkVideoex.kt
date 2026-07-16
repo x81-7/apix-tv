@@ -105,16 +105,8 @@ object OkVideoex {
                     override fun shouldInterceptRequest(
                         view: WebView?, request: WebResourceRequest?
                     ): WebResourceResponse? {
-                        val reqUrl = request?.url?.toString() ?: return null
-                        if (done) return null
-                        // نصطاد رابط CDN فقط
-                        if ((reqUrl.contains("okcdn.ru") ||
-                             reqUrl.contains("vkuser.net")) &&
-                            reqUrl.contains("sig=")) {
-                            Log.d(T, "Intercepted CDN video")
-                            finish(reqUrl)
-                        }
-                        return null
+                     
+                        return super.shouldInterceptRequest(view, request)
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -153,7 +145,7 @@ object OkVideoex {
         }
     }
 
-    // ── API للحصول على أعلى جودة ───────────────────────────────────────
+    // ── API لجمع كل الجودات وتوليد M3U8 ───────────────────────────────────────
     private fun apiPost(videoId: String, cookies: String): String? {
         var conn: HttpURLConnection? = null
         return try {
@@ -169,20 +161,48 @@ object OkVideoex {
             conn.setRequestProperty("Accept","application/json, */*")
             conn.setRequestProperty("X-Requested-With","XMLHttpRequest")
             OutputStreamWriter(conn.outputStream,"UTF-8").use{it.write("gwt.requested=1")}
+            
             if (conn.responseCode != 200) return null
-            val root   = JSONObject(conn.inputStream.bufferedReader().readText())
+            
+            val root = JSONObject(conn.inputStream.bufferedReader().readText())
             val videos = root.optJSONArray("videos") ?: return null
-            val map    = mutableMapOf<String, String>()
+            
+            val sb = java.lang.StringBuilder()
+            sb.append("#EXTM3U\n")
+            var hasValidTracks = false
+
             for (i in 0 until videos.length()) {
                 val v = videos.getJSONObject(i)
-                val u = v.optString("url","").replace("\\u0026","&")
-                val r = v.optString("name","")
-                if (u.isNotEmpty() && r.isNotEmpty()) map[r] = u
+                val url = v.optString("url", "").replace("\\u0026", "&")
+                val name = v.optString("name", "").lowercase()
+
+                if (url.isNotEmpty() && name.isNotEmpty()) {
+                    hasValidTracks = true
+                    val height = when (name) {
+                        "mobile" -> 144
+                        "lowest" -> 240
+                        "sd" -> 480
+                        "hd" -> 720
+                        "full" -> 1080
+                        "quad" -> 1440
+                        "ultra" -> 2160
+                        else -> name.filter { it.isDigit() }.toIntOrNull() ?: 360
+                    }
+                    val bandwidth = height * 1000 * 2
+                    val width = (height * 16) / 9
+                    
+                    sb.append("#EXT-X-STREAM-INF:BANDWIDTH=$bandwidth,RESOLUTION=${width}x$height,NAME=\"$name\"\n")
+                    sb.append(url).append("\n")
+                }
             }
-            listOf("1080","720","480","360","240").forEach { p ->
-                map[p]?.let { return it }
+
+            if (hasValidTracks) {
+                val m3u8String = sb.toString()
+                val encoded = android.util.Base64.encodeToString(m3u8String.toByteArray(), android.util.Base64.NO_WRAP)
+                "data:application/x-mpegURL;format=m3u8;base64,$encoded"
+            } else {
+                null
             }
-            map.values.firstOrNull()
         } catch (_:Exception){ null } finally { conn?.disconnect() }
     }
 }
