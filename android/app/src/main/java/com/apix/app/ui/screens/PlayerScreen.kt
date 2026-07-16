@@ -1731,7 +1731,8 @@ private fun getTrackLabel(format: Format): String {
 
 @OptIn(UnstableApi::class)
 private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, streamUrl: String): MediaSource {
-    val dataSourceFactory = buildDataSourceFactory(config)
+    val httpDataSourceFactory = buildDataSourceFactory(config)
+    val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
     val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
     
     val jsonKeys = resolveClearKeySync(config)
