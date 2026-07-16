@@ -767,15 +767,16 @@ fun PlayerScreen(
                         
                         if (isVideo) {
                             // إعادة محاولة للفيديو المسجل
-                            val videoUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                                com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { url ->
-                                    if (cont.isActive) cont.resume(url) {}
+                            val qualities = kotlinx.coroutines.suspendCancellableCoroutine<List<com.apix.app.OkVideoQuality>> { cont ->
+                                com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$okruId.mp4") { list ->
+                                    if (cont.isActive) cont.resume(list) {}
                                 }
                             }
-                            if (videoUrl != null) {
-                                resolvedConfig = resolvedConfig.copy(url = videoUrl, drm = null)
-                                currentServerUrl = videoUrl
-                                loadStreamAsMp4(videoUrl)
+                            if (qualities.isNotEmpty()) {
+                                val primary = qualities.first()
+                                resolvedConfig = resolvedConfig.copy(url = primary.url, drm = null)
+                                currentServerUrl = primary.url
+                                loadStreamAsMp4(primary.url)
                             } else {
                                 errorMessage = "خطأ تقني: ${error.errorCodeName}"
                             }
