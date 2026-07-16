@@ -63,9 +63,21 @@ object ApixStreamResolver {
                 }
             }
 
-            // رابط ok.ru مباشر داخل JSON — يُحوَّل لـ OkRuExtractor تلقائياً
             val directUrl = obj.optString("url", "")
-            if (com.apix.app.OkRuExtractor.isOkRuUrl(directUrl)) {
+            if (com.apix.app.OkVideoex.isVideoUrl(directUrl)) {
+                // رابط ينتهي بـ .mp4 → فيديو مسجل
+                val videoId = com.apix.app.OkVideoex.extractVideoId(directUrl)
+                if (videoId != null) {
+                    return base.copy(
+                        url           = com.apix.app.OkVideoex.buildEmbedUrl(videoId),
+                        okruVideoId   = videoId,
+                        okruChannel   = "video",
+                        drm           = null,
+                        useLocalProxy = false
+                    )
+                }
+            } else if (com.apix.app.OkRuExtractor.isLiveUrl(directUrl)) {
+                // رابط بدون .mp4 → بث مباشر
                 val videoId = com.apix.app.OkRuExtractor.extractVideoId(directUrl)
                 if (videoId != null) {
                     return base.copy(
