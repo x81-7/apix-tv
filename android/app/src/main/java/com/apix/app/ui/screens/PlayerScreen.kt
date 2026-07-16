@@ -635,7 +635,16 @@ fun PlayerScreen(
             val okruId = config.okruVideoId
             if (!okruId.isNullOrBlank()) {
                 isBuffering = true
-                
+                data class OkResult(val url: String, val type: String?)
+                val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
+                    com.apix.app.OkRuExtractor.resolve(
+                        context,
+                        "https://ok.ru/video/$okruId",
+                        config.okruChannel ?: ""
+                    ) { url, type ->
+                        if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
+                    }
+                }
                 // هل هو فيديو مسجل؟ (channel = "video" يعني OkVideoex)
                 val isVideo = config.okruChannel == "video"
 
@@ -649,7 +658,7 @@ fun PlayerScreen(
                     if (videoUrl != null) {
                         resolvedConfig = config.copy(url = videoUrl, drm = null)
                         currentServerUrl = videoUrl
-                        loadStream(videoUrl, resolvedConfig)
+                        loadStreamAsMp4(videoUrl)
                     } else {
                         errorMessage = "تعذر تحميل الفيديو"
                     }
@@ -668,6 +677,9 @@ fun PlayerScreen(
                     } else {
                         errorMessage = "تعذر استخراج رابط البث"
                     }
+                }
+                } else {
+                    errorMessage = "تعذر استخراج رابط OK"
                 }
                 return@LaunchedEffect
             }
@@ -761,7 +773,7 @@ fun PlayerScreen(
                             if (videoUrl != null) {
                                 resolvedConfig = resolvedConfig.copy(url = videoUrl, drm = null)
                                 currentServerUrl = videoUrl
-                                loadStream(videoUrl, resolvedConfig)
+                                loadStreamAsMp4(videoUrl)
                             } else {
                                 errorMessage = "خطأ تقني: ${error.errorCodeName}"
                             }
@@ -1731,8 +1743,7 @@ private fun getTrackLabel(format: Format): String {
 
 @OptIn(UnstableApi::class)
 private fun buildMediaSourceWithDrm(context: Context, config: PlayerConfig, streamUrl: String): MediaSource {
-    val httpDataSourceFactory = buildDataSourceFactory(config)
-    val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
+    val dataSourceFactory = buildDataSourceFactory(config)
     val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
     
     val jsonKeys = resolveClearKeySync(config)
