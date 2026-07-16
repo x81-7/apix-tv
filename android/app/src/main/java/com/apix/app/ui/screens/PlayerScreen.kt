@@ -414,7 +414,9 @@ fun PlayerScreen(
     var currentFallbackIndex by remember { mutableStateOf(-1) }
     var retryCountSameServer by remember { mutableStateOf(0) }
     var showServersButtonEnabled by remember { mutableStateOf(false) }
-
+    var okVideoQualities by remember { mutableStateOf<List<com.apix.app.OkVideoQuality>>(emptyList()) }
+    var currentOkQualityIndex by remember { mutableStateOf(0) }
+    
     LaunchedEffect(Unit) {
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -645,19 +647,14 @@ fun PlayerScreen(
                         }
                     }
                     if (qualities.isNotEmpty()) {
-                        // السيرفر الأول = أعلى جودة
+                        okVideoQualities = qualities
+                        currentOkQualityIndex = 0
                         val primary = qualities.first()
-                        val fallbacks = qualities.drop(1).map { q ->
-                            com.apix.app.data.FallbackServer(
-                                name = q.name,
-                                url  = q.url
-                            )
-                        }
                         val finalConfig = config.copy(
-                            url             = primary.url,
-                            drm             = null,
-                            useLocalProxy   = false,
-                            fallbackServers = fallbacks
+                            url           = primary.url,
+                            drm           = null,
+                            useLocalProxy = false,
+                            fallbackServers = emptyList()
                         )
                         resolvedConfig   = finalConfig
                         currentServerUrl = primary.url
@@ -1022,7 +1019,26 @@ fun PlayerScreen(
                 }
             }
 
-            if (showTrackDialog) TrackSelectionDialog(player = player, trackSelector = trackSelector, onDismiss = { showTrackDialog = false })
+            if (showTrackDialog) {
+                if (okVideoQualities.isNotEmpty()) {
+                    OkVideoQualityDialog(
+                        qualities = okVideoQualities,
+                        selectedIndex = currentOkQualityIndex,
+                        onSelect = { idx ->
+                            currentOkQualityIndex = idx
+                            showTrackDialog = false
+                            val q = okVideoQualities[idx]
+                            val cfg = resolvedConfig.copy(url = q.url, drm = null, useLocalProxy = false)
+                            resolvedConfig = cfg
+                            currentServerUrl = q.url
+                            loadStreamAsMp4(q.url)
+                        },
+                        onDismiss = { showTrackDialog = false }
+                    )
+                } else {
+                    TrackSelectionDialog(player = player, trackSelector = trackSelector, onDismiss = { showTrackDialog = false })
+                }
+            }
             if (showServerDialog && !resolvedConfig.servers.isNullOrEmpty()) {
                 ServerSelectionDialog(
                     servers = resolvedConfig.servers!!,
@@ -1919,6 +1935,67 @@ private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
         Log.e("PlayerScreen", "Dynamic API fetch failed", e)
     } finally { conn?.disconnect() }
     return null
+    @Composable
+fun OkVideoQualityDialog(
+    qualities: List<com.apix.app.OkVideoQuality>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isTv = isSystemInTvMode()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(modifier = Modifier
+            .fillMaxWidth(0.5f)
+            .fillMaxHeight(if (isTv) 0.6f else 0.75f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111111))
+            .border(if (isTv) 2.dp else 0.dp, Color.White.copy(0.2f), RoundedCornerShape(12.dp))
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Text("الجودة", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp))
+                HorizontalDivider(color = Color(0xFF222222))
+                LazyColumn(Modifier.weight(1f).padding(8.dp)) {
+                    itemsIndexed(qualities) { idx, q ->
+                        val isSelected = idx == selectedIndex
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    when { isSelected -> Color(0xFF2A2A2A)
+                                        isTv && isFocused -> Color.White.copy(0.1f)
+                                        else -> Color.Transparent }
+                                )
+                                .then(if (isTv && isFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+                                .clickable(interactionSource = interactionSource, indication = null) { onSelect(idx) }
+                                .focusable(interactionSource = interactionSource)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(q.name,
+                                color = if (isSelected || (isTv && isFocused)) Gold else Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                            if (isSelected) Icon(Icons.Default.CheckCircle, null, tint = Gold, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+                HorizontalDivider(color = Color(0xFF222222))
+                Box(Modifier.fillMaxWidth().clickable { onDismiss() }.padding(12.dp),
+                    contentAlignment = Alignment.Center) {
+                    Text("إغلاق", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 
