@@ -1935,7 +1935,9 @@ private fun fetchDynamicStreamConfig(config: PlayerConfig): PlayerConfig? {
         Log.e("PlayerScreen", "Dynamic API fetch failed", e)
     } finally { conn?.disconnect() }
     return null
-    @Composable
+}
+
+@Composable
 fun OkVideoQualityDialog(
     qualities: List<com.apix.app.OkVideoQuality>,
     selectedIndex: Int,
