@@ -635,16 +635,7 @@ fun PlayerScreen(
             val okruId = config.okruVideoId
             if (!okruId.isNullOrBlank()) {
                 isBuffering = true
-                data class OkResult(val url: String, val type: String?)
-                val okResult = kotlinx.coroutines.suspendCancellableCoroutine<OkResult?> { cont ->
-                    com.apix.app.OkRuExtractor.resolve(
-                        context,
-                        "https://ok.ru/video/$okruId",
-                        config.okruChannel ?: ""
-                    ) { url, type ->
-                        if (cont.isActive) cont.resume(if (url != null) OkResult(url, type) else null) {}
-                    }
-                }
+                
                 // هل هو فيديو مسجل؟ (channel = "video" يعني OkVideoex)
                 val isVideo = config.okruChannel == "video"
 
@@ -677,9 +668,6 @@ fun PlayerScreen(
                     } else {
                         errorMessage = "تعذر استخراج رابط البث"
                     }
-                }
-                } else {
-                    errorMessage = "تعذر استخراج رابط OK"
                 }
                 return@LaunchedEffect
             }
