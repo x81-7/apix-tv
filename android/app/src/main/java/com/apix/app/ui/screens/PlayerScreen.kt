@@ -687,6 +687,47 @@ fun PlayerScreen(
                 resolveApixIfNeeded(config)
             }
 
+            // إذا كان apixResolved يحمل okruVideoId (جاء من JSON خارجي)
+            // نعيد توجيهه لنفس مسار OK.ru
+            val resolvedOkruId = apixResolved.okruVideoId
+            if (!resolvedOkruId.isNullOrBlank()) {
+                isBuffering = true
+                val isVideo = apixResolved.okruChannel == "video"
+                if (isVideo) {
+                    val qualities = kotlinx.coroutines.suspendCancellableCoroutine<List<com.apix.app.OkVideoQuality>> { cont ->
+                        com.apix.app.OkVideoex.resolve(context, "https://ok.ru/video/$resolvedOkruId.mp4") { list ->
+                            if (cont.isActive) cont.resume(list) {}
+                        }
+                    }
+                    if (qualities.isNotEmpty()) {
+                        okVideoQualities = qualities
+                        currentOkQualityIndex = 0
+                        val primary = qualities.first()
+                        val finalConfig = apixResolved.copy(url = primary.url, drm = null, useLocalProxy = false, fallbackServers = emptyList())
+                        resolvedConfig = finalConfig
+                        currentServerUrl = primary.url
+                        loadStreamAsMp4(primary.url)
+                    } else {
+                        errorMessage = "تعذر تحميل الفيديو"
+                    }
+                } else {
+                    val streamUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                        com.apix.app.OkRuExtractor.resolve(
+                            context, "https://ok.ru/video/$resolvedOkruId", apixResolved.okruChannel ?: ""
+                        ) { url -> if (cont.isActive) cont.resume(url) {} }
+                    }
+                    if (streamUrl != null) {
+                        val finalConfig = apixResolved.copy(url = streamUrl, useLocalProxy = false, drm = null)
+                        resolvedConfig = finalConfig
+                        currentServerUrl = streamUrl
+                        loadStream(streamUrl, finalConfig)
+                    } else {
+                        errorMessage = "تعذر استخراج رابط البث"
+                    }
+                }
+                return@LaunchedEffect
+            }
+
             if (apixResolved.dynamicApi?.enabled == true && !apixResolved.dynamicApi?.endpoint.isNullOrEmpty()) {
                 val apiConfig = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     fetchDynamicStreamConfig(apixResolved)
