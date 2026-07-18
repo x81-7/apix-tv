@@ -518,6 +518,58 @@ fun PlayerScreen(
 
     suspend fun loadStream(streamUrl: String, cfg: PlayerConfig) {
         try {
+            // ── كشف OK.ru في أي سيرفر ─────────────────────────────────────
+            if (com.apix.app.OkVideoex.isVideoUrl(streamUrl)) {
+                val videoId = com.apix.app.OkVideoex.extractVideoId(streamUrl)
+                if (videoId != null) {
+                    isBuffering = true
+                    val qualities = kotlinx.coroutines.suspendCancellableCoroutine<List<com.apix.app.OkVideoQuality>> { cont ->
+                        com.apix.app.OkVideoex.resolve(context, streamUrl) { list ->
+                            if (cont.isActive) cont.resume(list) {}
+                        }
+                    }
+                    if (qualities.isNotEmpty()) {
+                        okVideoQualities = qualities
+                        currentOkQualityIndex = 0
+                        val primary = qualities.first()
+                        val finalCfg = cfg.copy(url = primary.url, drm = null, useLocalProxy = false, fallbackServers = emptyList())
+                        resolvedConfig = finalCfg
+                        currentServerUrl = primary.url
+                        loadStreamAsMp4(primary.url)
+                    } else {
+                        errorMessage = "تعذر تحميل الفيديو"
+                    }
+                }
+                return
+            }
+            if (com.apix.app.OkRuExtractor.isLiveUrl(streamUrl)) {
+                val videoId = com.apix.app.OkRuExtractor.extractVideoId(streamUrl)
+                if (videoId != null) {
+                    val svrKey = "${videoId}_${cfg.title.take(20)}"
+                    isBuffering = true
+                    val liveUrl = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                        com.apix.app.OkRuExtractor.resolve(context, streamUrl, svrKey) { url ->
+                            if (cont.isActive) cont.resume(url) {}
+                        }
+                    }
+                    if (liveUrl != null) {
+                        val finalCfg = cfg.copy(
+                            url           = liveUrl,
+                            okruVideoId   = videoId,
+                            okruChannel   = svrKey,
+                            drm           = null,
+                            useLocalProxy = false
+                        )
+                        resolvedConfig   = finalCfg
+                        currentServerUrl = liveUrl
+                        loadStream(liveUrl, finalCfg)
+                    } else {
+                        errorMessage = "تعذر استخراج رابط البث"
+                    }
+                }
+                return
+            }
+
             // CDN فيديو مسجل (okcdn/vkuser) — MP4 مباشر بدون امتداد
             if ((streamUrl.contains("okcdn.ru") || streamUrl.contains("vkuser.net")) &&
                 streamUrl.contains("sig=")) {
