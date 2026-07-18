@@ -416,15 +416,6 @@ fun PlayerScreen(
     var showServersButtonEnabled by remember { mutableStateOf(false) }
     var okVideoQualities by remember { mutableStateOf<List<com.apix.app.OkVideoQuality>>(emptyList()) }
 
-    // يُحسب تلقائياً: الزر يظهر إذا كان السيرفر أو السيرفرات متاحة بغض النظر عن إعداد السيرفر
-    val hasMultipleServers by remember {
-        derivedStateOf {
-            val fb = resolvedConfig.fallbackServers
-            val hasBackup = !resolvedConfig.backupUrl.isNullOrEmpty()
-            val hasFb = !fb.isNullOrEmpty()
-            showServersButtonEnabled || hasBackup || hasFb
-        }
-    }
     var currentOkQualityIndex by remember { mutableStateOf(0) }
     
     LaunchedEffect(Unit) {
@@ -511,6 +502,13 @@ fun PlayerScreen(
     }
 
     var resolvedConfig by remember { mutableStateOf(config) }
+    val hasMultipleServers by remember {
+        derivedStateOf {
+            val fb = resolvedConfig.fallbackServers
+            val hasFb = !fb.isNullOrEmpty()
+            showServersButtonEnabled || hasFb
+        }
+    }
 
     fun loadStreamAsMp4(url: String) {
         try {
