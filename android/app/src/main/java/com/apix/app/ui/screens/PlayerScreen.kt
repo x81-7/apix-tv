@@ -415,6 +415,16 @@ fun PlayerScreen(
     var retryCountSameServer by remember { mutableStateOf(0) }
     var showServersButtonEnabled by remember { mutableStateOf(false) }
     var okVideoQualities by remember { mutableStateOf<List<com.apix.app.OkVideoQuality>>(emptyList()) }
+
+    // يُحسب تلقائياً: الزر يظهر إذا كان السيرفر أو السيرفرات متاحة بغض النظر عن إعداد السيرفر
+    val hasMultipleServers by remember {
+        derivedStateOf {
+            val fb = resolvedConfig.fallbackServers
+            val hasBackup = !resolvedConfig.backupUrl.isNullOrEmpty()
+            val hasFb = !fb.isNullOrEmpty()
+            showServersButtonEnabled || hasBackup || hasFb
+        }
+    }
     var currentOkQualityIndex by remember { mutableStateOf(0) }
     
     LaunchedEffect(Unit) {
@@ -1091,7 +1101,9 @@ fun PlayerScreen(
                                     PlayerControlButton(icon = CastOutlineIcon, contentDescription = "Server", size = 32) { showServerDialog = true }
                                 }
 
-                                if (showServersButtonEnabled && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+                                val hasFallbacks = !config.fallbackServers.isNullOrEmpty() ||
+                                                   !resolvedConfig.fallbackServers.isNullOrEmpty()
+                                if (showServersButtonEnabled && hasFallbacks || hasFallbacks) {
                                     PlayerControlButton(icon = CellTowerOutlineIcon, contentDescription = "Fallback Servers", size = 32) { showFallbackServerDialog = true }
                                 }
 
@@ -1180,9 +1192,11 @@ fun PlayerScreen(
                     onDismiss = { showAudioSpeedDialog = false }
                 )
             }
-            if (showFallbackServerDialog && !resolvedConfig.fallbackServers.isNullOrEmpty()) {
+            val fallbackList = resolvedConfig.fallbackServers?.takeIf { it.isNotEmpty() }
+                ?: config.fallbackServers?.takeIf { it.isNotEmpty() }
+            if (showFallbackServerDialog && fallbackList != null) {
                 FallbackServerSelectionDialog(
-                    servers = resolvedConfig.fallbackServers!!,
+                    servers = fallbackList,
                     currentUrl = currentServerUrl,
                     primaryUrl = config.url,
                     onSelectPrimary = {
