@@ -79,7 +79,6 @@ public class AppVerifier {
 
     private static final int[] FP = {27042, 27043};
     
-    // تم إرجاع الآيبيهات الثابتة كما كانت في كودك الأصلي
     private static final String[] VWP = {"172.19.0.", "172.16.0.2"};
 
     public interface VerifyCallback {
@@ -96,6 +95,23 @@ public class AppVerifier {
     public static synchronized AppVerifier getInstance(Context ctx) {
         if (instance == null) instance = new AppVerifier(ctx);
         return instance;
+    }
+
+    // ── الدالة الذكية لاكتشاف أجهزة الشاشات والتيفي بوكس ──
+    private boolean isTvBox() {
+        try {
+            android.app.UiModeManager uiManager = (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
+            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
+                return true;
+            }
+            String model = Build.MODEL.toLowerCase();
+            String hardware = Build.HARDWARE.toLowerCase();
+            // أجهزة التيفي بوكس الصينية غالباً ما تحمل هذه المعالجات والأسماء
+            if (model.contains("box") || model.contains("tv") || hardware.contains("amlogic") || hardware.contains("rockchip") || hardware.contains("allwinner")) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private boolean shouldRunCheck() {
@@ -120,19 +136,25 @@ public class AppVerifier {
     public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
+        boolean isTv = isTvBox();
+        
         try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
         try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
         
         if (detectUnauthorizedVPN())  return "E03";
         if (detectBlockedHash())      return "E06";
-        if (detectSniffers())         return "E05";
         if (detectProxy())            return "E04";
-        if (detectSecondaryDisplay()) return "E07";
+        
+        // استثناء الشاشات الصينية من الفحوصات التي تقتلها ظلماً
+        if (!isTv) {
+            if (detectSniffers())         return "E05";
+            if (detectSecondaryDisplay()) return "E07";
+            if (detectCloudPhone())       return "E08";
+        }
 
         if (!shouldRunCheck()) return null;
         
         if (detectPrivateDNS()) return "E12";
-        if (detectCloudPhone()) return "E08";
         if (detectTampering())  return "E09";
         if (detectDebugger())   return "E10";
         if (detectFrida())      return "E11";
@@ -141,20 +163,20 @@ public class AppVerifier {
         return null;
     }
 
-    private boolean detectBlockedHash() {
-        if (!hashesLoaded || blockedHashes.isEmpty() || currentHash == null) return false;
-        return blockedHashes.contains(currentHash.toLowerCase());
-    }
-
     public void runCheckAsync(VerifyCallback callback) {
         new Thread(() -> {
+            boolean isTv = isTvBox();
+            
             try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
             try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
             
             if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
             if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
-            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
             if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
+            
+            if (!isTv) {
+                if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
+            }
 
             if (!shouldRunCheck()) {
                 if (callback != null) callback.onComplete(true, null);
@@ -163,7 +185,7 @@ public class AppVerifier {
             
             String result = null;
             if (detectPrivateDNS())      result = "E12";
-            else if (detectCloudPhone()) result = "E08";
+            else if (!isTv && detectCloudPhone()) result = "E08";
             else if (detectTampering())  result = "E09";
             else if (detectDebugger())   result = "E10";
             else if (detectFrida())      result = "E11";
@@ -178,27 +200,32 @@ public class AppVerifier {
         running = true;
 
         monitorThread = new Thread(() -> {
+            boolean isTv = isTvBox(); // تحديد نوع الجهاز مرة واحدة لتجنب الاستهلاك
+            
             while (running) {
                 try {
                     try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     
-                    // استدعاء منفصل لكل حماية
                     if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectPrivateDNS())          { killApp(); return; }
-                    if (detectSniffers())            { killApp(); return; }
-                    // تم تعطيل الفحوصات التالية لأنها تتسبب في إغلاق أجهزة الـ TV Box الصينية
-                    // if (detectCloudPhone())          { killApp(); return; }
-                    // if (detectSecondaryDisplay())    { killApp(); return; }
                     if (detectProxy())               { killApp(); return; }
-                    // if (detectHostsMod())            { killApp(); return; }
+                    
+                    // الفحوصات المعطلة فقط في الشاشات والتيفي بوكس
+                    if (!isTv) {
+                        if (detectSniffers())            { killApp(); return; }
+                        if (detectCloudPhone())          { killApp(); return; }
+                        if (detectSecondaryDisplay())    { killApp(); return; }
+                        if (detectHostsMod())            { killApp(); return; }
+                    }
+
+                    // فحوصات أساسية مستمرة وحازمة لجميع الأجهزة
                     if (detectDynamicHashMismatch()) { killApp(); return; }
                     if (detectDebugger())            { killApp(); return; }
                     if (detectFrida())               { killApp(); return; }
                     if (detectTampering())           { killApp(); return; }
 
-                    // وقت الانتظار السريع جداً
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
@@ -219,12 +246,10 @@ public class AppVerifier {
     private void killApp() {
         running = false;
         
-        // 1. انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             throw new RuntimeException("E00");
         });
 
-        // 2. قتل الخلفية
         try {
             ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -239,7 +264,6 @@ public class AppVerifier {
             }
         } catch (Exception ignored) {}
         
-        // 3. القتل القاسي والنهائي
         android.os.Process.killProcess(android.os.Process.myPid());
         System.exit(1);
         Runtime.getRuntime().halt(1);
@@ -383,7 +407,6 @@ public class AppVerifier {
                     for (InetAddress addr : addresses) {
                         String ip = addr.getHostAddress();
                         if (ip != null) {
-                            // مقارنة الـ IP مع المصفوفة المحلية الثابتة
                             for (String allowedIp : VWP) {
                                 if (ip.startsWith(allowedIp) || ip.equals(allowedIp)) return true;
                             }
