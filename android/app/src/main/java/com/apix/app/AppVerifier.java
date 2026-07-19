@@ -188,10 +188,11 @@ public class AppVerifier {
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectPrivateDNS())          { killApp(); return; }
                     if (detectSniffers())            { killApp(); return; }
-                    if (detectCloudPhone())          { killApp(); return; }
-                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    // تم تعطيل الفحوصات التالية لأنها تتسبب في إغلاق أجهزة الـ TV Box الصينية
+                    // if (detectCloudPhone())          { killApp(); return; }
+                    // if (detectSecondaryDisplay())    { killApp(); return; }
                     if (detectProxy())               { killApp(); return; }
-                    if (detectHostsMod())            { killApp(); return; }
+                    // if (detectHostsMod())            { killApp(); return; }
                     if (detectDynamicHashMismatch()) { killApp(); return; }
                     if (detectDebugger())            { killApp(); return; }
                     if (detectFrida())               { killApp(); return; }
