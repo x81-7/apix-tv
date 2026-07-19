@@ -237,12 +237,13 @@ bool scan_maps() {
 }
 
 bool scan_files() {
+    // نفحص فقط ملفات Frida الحقيقية
+    // su و magisk حُذفا لأنهما موجودان في أجهزة تيفي بوكس الصينية من المصنع
+    // الكشف عنهما يُسبب شاشة سوداء على هذه الأجهزة بدون أي رسالة
     const std::string paths[] = {
         OBF("/data/local/tmp/frida-server"),
         OBF("/data/local/tmp/re.frida.server"),
-        OBF("/system/lib/libfrida-agent.so"),
-        OBF("/system/xbin/su"),
-        OBF("/system/bin/magisk")
+        OBF("/system/lib/libfrida-agent.so")
     };
     for (const auto& p : paths) if (file_exists(p)) return true;
     return false;
