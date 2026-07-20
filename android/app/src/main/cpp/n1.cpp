@@ -68,7 +68,7 @@ extern "C" {
 // يُعيد 1 "فقط" إذا تم اكتشاف أداة التقاط/بروكسي محلية
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_nv(JNIEnv*, jobject) {
-    return (n1_has_sniffer_proxy() || n1_has_sniffer_proxy6()) ? 1 : 0;
+    return 0; // تم تعطيل الفحص
 }
 
 } // extern "C"
