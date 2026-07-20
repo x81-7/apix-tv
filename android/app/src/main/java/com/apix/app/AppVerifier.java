@@ -98,18 +98,32 @@ public class AppVerifier {
         return instance;
     }
 
-    // ── الدالة الذكية لاكتشاف أجهزة الشاشات والتيفي بوكس ──
+    // ── الدالة الذكية لاكتشاف التيفي بوكس ومنافذ HDMI ──
     private boolean isTvBox() {
         try {
+            // 1. فحص واجهة التلفاز الرسمية
             android.app.UiModeManager uiManager = (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
             if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
                 return true;
             }
-            String model = Build.MODEL.toLowerCase();
-            String hardware = Build.HARDWARE.toLowerCase();
-          
-            if (model.contains("box") || model.contains("tv") || hardware.contains("amlogic") || hardware.contains("rockchip") || hardware.contains("allwinner")) {
+            
+            // 2. فحص المعالجات والأسماء (تيفي بوكس صيني)
+            String combined = (Build.MODEL + " " + Build.HARDWARE + " " + Build.DEVICE + " " + Build.PRODUCT + " " + Build.MANUFACTURER).toLowerCase();
+            if (combined.contains("box") || combined.contains("tv") || 
+                combined.contains("amlogic") || combined.contains("rockchip") || 
+                combined.contains("allwinner") || combined.contains("stb") || 
+                combined.contains("player") || combined.contains("stick")) {
                 return true;
+            }
+            
+            // 3. فحص وجود شاشة متصلة عبر منفذ HDMI
+            DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+            if (dm != null) {
+                for (Display display : dm.getDisplays()) {
+                    if (display.getName().toLowerCase().contains("hdmi")) {
+                        return true;
+                    }
+                }
             }
         } catch (Exception ignored) {}
         return false;
@@ -145,7 +159,7 @@ public class AppVerifier {
         if (detectBlockedHash())      return "E06";
         if (detectProxy())            return "E04";
         
-        
+        // استثناء الشاشات من فحوصات البرامج المدمجة (الروت) والشاشة الثانوية
         if (!isTv) {
             if (detectSniffers())         return "E05";
             if (detectSecondaryDisplay()) return "E07";
@@ -199,25 +213,24 @@ public class AppVerifier {
         }).start();
     }
 
+
     public void startMonitor() {
         if (running) return;
         running = true;
 
         monitorThread = new Thread(() -> {
-            boolean isTv = isTvBox(); 
-            
+            boolean isTv = isTvBox();
             while (running) {
                 try {
                     try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     
-                    /
                     if (detectUnauthorizedVPN())     { killApp(); return; }
                     if (detectBlockedHash())         { killApp(); return; }
                     if (detectPrivateDNS())          { killApp(); return; }
                     if (detectProxy())               { killApp(); return; }
                     
-
+                    // فحوصات يتم تعطيلها في أجهزة التيفي بوكس والشاشات الصينية
                     if (!isTv) {
                         if (detectSniffers())            { killApp(); return; }
                         if (detectCloudPhone())          { killApp(); return; }
@@ -225,6 +238,7 @@ public class AppVerifier {
                         if (detectHostsMod())            { killApp(); return; }
                     }
 
+                    // حمايات أساسية صارمة للجميع (بما فيها التيفي بوكس)
                     if (detectDynamicHashMismatch()) { killApp(); return; }
                     if (detectDebugger())            { killApp(); return; }
                     if (detectFrida())               { killApp(); return; }
