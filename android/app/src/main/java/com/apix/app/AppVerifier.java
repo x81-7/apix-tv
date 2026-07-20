@@ -98,37 +98,6 @@ public class AppVerifier {
         return instance;
     }
 
-    // ── الدالة الذكية لاكتشاف التيفي بوكس ومنافذ HDMI ──
-    private boolean isTvBox() {
-        try {
-            // 1. فحص واجهة التلفاز الرسمية
-            android.app.UiModeManager uiManager = (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
-            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
-                return true;
-            }
-            
-            // 2. فحص المعالجات والأسماء (تيفي بوكس صيني)
-            String combined = (Build.MODEL + " " + Build.HARDWARE + " " + Build.DEVICE + " " + Build.PRODUCT + " " + Build.MANUFACTURER).toLowerCase();
-            if (combined.contains("box") || combined.contains("tv") || 
-                combined.contains("amlogic") || combined.contains("rockchip") || 
-                combined.contains("allwinner") || combined.contains("stb") || 
-                combined.contains("player") || combined.contains("stick")) {
-                return true;
-            }
-            
-            // 3. فحص وجود شاشة متصلة عبر منفذ HDMI
-            DisplayManager dm = (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
-            if (dm != null) {
-                for (Display display : dm.getDisplays()) {
-                    if (display.getName().toLowerCase().contains("hdmi")) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-        return false;
-    }
-
     private boolean shouldRunCheck() {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long lastCheck = prefs.getLong(KEY_LAST_CHECK, 0);
@@ -151,24 +120,19 @@ public class AppVerifier {
     public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
-        boolean isTv = isTvBox();
         try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
         try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
         
         if (detectUnauthorizedVPN())  return "E03";
         if (detectBlockedHash())      return "E06";
+        if (detectSniffers())         return "E05";
         if (detectProxy())            return "E04";
-        
-        // استثناء الشاشات من فحوصات البرامج المدمجة (الروت) والشاشة الثانوية
-        if (!isTv) {
-            if (detectSniffers())         return "E05";
-            if (detectSecondaryDisplay()) return "E07";
-        }
+        if (detectSecondaryDisplay()) return "E07";
 
         if (!shouldRunCheck()) return null;
         
         if (detectPrivateDNS()) return "E12";
-        if (!isTv && detectCloudPhone()) return "E08";
+        if (detectCloudPhone()) return "E08";
         if (detectTampering())  return "E09";
         if (detectDebugger())   return "E10";
         if (detectFrida())      return "E11";
@@ -184,17 +148,13 @@ public class AppVerifier {
 
     public void runCheckAsync(VerifyCallback callback) {
         new Thread(() -> {
-            boolean isTv = isTvBox();
             try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
             try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
             
             if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
             if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
+            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
             if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
-            
-            if (!isTv) {
-                if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
-            }
 
             if (!shouldRunCheck()) {
                 if (callback != null) callback.onComplete(true, null);
@@ -203,7 +163,7 @@ public class AppVerifier {
             
             String result = null;
             if (detectPrivateDNS())      result = "E12";
-            else if (!isTv && detectCloudPhone()) result = "E08";
+            else if (detectCloudPhone()) result = "E08";
             else if (detectTampering())  result = "E09";
             else if (detectDebugger())   result = "E10";
             else if (detectFrida())      result = "E11";
@@ -213,35 +173,31 @@ public class AppVerifier {
         }).start();
     }
 
-
     public void startMonitor() {
         if (running) return;
         running = true;
 
         monitorThread = new Thread(() -> {
-            boolean isTv = isTvBox();
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp("vpnTunnelUp (C++)"); return; } } catch (Throwable ignored) {}
-                    try { if (com.apix.app.x.hasDanger())   { killApp("hasDanger (C++)"); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
                     
-                    if (detectUnauthorizedVPN())     { killApp("detectUnauthorizedVPN"); return; }
-                    if (detectBlockedHash())         { killApp("detectBlockedHash"); return; }
-                    if (detectPrivateDNS())          { killApp("detectPrivateDNS"); return; }
-                    if (detectProxy())               { killApp("detectProxy"); return; }
-                    
-                    if (!isTv) {
-                        if (detectSniffers())            { killApp("detectSniffers"); return; }
-                        if (detectCloudPhone())          { killApp("detectCloudPhone"); return; }
-                        if (detectSecondaryDisplay())    { killApp("detectSecondaryDisplay"); return; }
-                        if (detectHostsMod())            { killApp("detectHostsMod"); return; }
-                    }
+                    // استدعاء منفصل لكل حماية
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
+                    if (detectBlockedHash())         { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
+                    if (detectSniffers())            { killApp(); return; }
+                    if (detectCloudPhone())          { killApp(); return; }
+                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    if (detectProxy())               { killApp(); return; }
+                    if (detectHostsMod())            { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp(); return; }
+                    if (detectDebugger())            { killApp(); return; }
+                    if (detectFrida())               { killApp(); return; }
+                    if (detectTampering())           { killApp(); return; }
 
-                    if (detectDynamicHashMismatch()) { killApp("detectDynamicHashMismatch"); return; }
-                    if (detectDebugger())            { killApp("detectDebugger"); return; }
-                    if (detectFrida())               { killApp("detectFrida"); return; }
-                    if (detectTampering())           { killApp("detectTampering"); return; }
-
+                    // وقت الانتظار السريع جداً
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
                     break;
@@ -259,36 +215,33 @@ public class AppVerifier {
         if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
 
-    private void killApp(String reason) {
-        if (!running) return;
+    private void killApp() {
         running = false;
         
+        // 1. انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            // عرض السبب لمدة طويلة نسبياً (5 ثوانٍ تقريباً عبر تكرار التوست)
-            android.widget.Toast.makeText(context, "سيتم الإغلاق بسبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
-            android.widget.Toast.makeText(context, "السبب الدقيق: " + reason, android.widget.Toast.LENGTH_LONG).show();
-            
-            // تأخير عملية القتل لمدة 5 ثوانٍ
-            new android.os.Handler().postDelayed(() -> {
-                try {
-                    ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-                    if (am != null) {
-                        List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-                        if (processes != null) {
-                            for (ActivityManager.RunningAppProcessInfo proc : processes) {
-                                if (proc.processName.contains(context.getPackageName())) {
-                                    android.os.Process.killProcess(proc.pid);
-                                }
-                            }
+            throw new RuntimeException("E00");
+        });
+
+        // 2. قتل الخلفية
+        try {
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+                if (processes != null) {
+                    for (ActivityManager.RunningAppProcessInfo proc : processes) {
+                        if (proc.processName.contains(context.getPackageName())) {
+                            android.os.Process.killProcess(proc.pid);
                         }
                     }
-                } catch (Exception ignored) {}
-                
-                android.os.Process.killProcess(android.os.Process.myPid());
-                System.exit(1);
-                Runtime.getRuntime().halt(1);
-            }, 5000);
-        });
+                }
+            }
+        } catch (Exception ignored) {}
+        
+        // 3. القتل القاسي والنهائي
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(1);
+        Runtime.getRuntime().halt(1);
     }
 
     private boolean detectDynamicHashMismatch() {
