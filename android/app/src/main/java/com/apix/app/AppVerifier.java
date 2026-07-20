@@ -222,27 +222,25 @@ public class AppVerifier {
             boolean isTv = isTvBox();
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
-                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp("vpnTunnelUp (C++)"); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp("hasDanger (C++)"); return; } } catch (Throwable ignored) {}
                     
-                    if (detectUnauthorizedVPN())     { killApp(); return; }
-                    if (detectBlockedHash())         { killApp(); return; }
-                    if (detectPrivateDNS())          { killApp(); return; }
-                    if (detectProxy())               { killApp(); return; }
+                    if (detectUnauthorizedVPN())     { killApp("detectUnauthorizedVPN"); return; }
+                    if (detectBlockedHash())         { killApp("detectBlockedHash"); return; }
+                    if (detectPrivateDNS())          { killApp("detectPrivateDNS"); return; }
+                    if (detectProxy())               { killApp("detectProxy"); return; }
                     
-                    // فحوصات يتم تعطيلها في أجهزة التيفي بوكس والشاشات الصينية
                     if (!isTv) {
-                        if (detectSniffers())            { killApp(); return; }
-                        if (detectCloudPhone())          { killApp(); return; }
-                        if (detectSecondaryDisplay())    { killApp(); return; }
-                        if (detectHostsMod())            { killApp(); return; }
+                        if (detectSniffers())            { killApp("detectSniffers"); return; }
+                        if (detectCloudPhone())          { killApp("detectCloudPhone"); return; }
+                        if (detectSecondaryDisplay())    { killApp("detectSecondaryDisplay"); return; }
+                        if (detectHostsMod())            { killApp("detectHostsMod"); return; }
                     }
 
-                    // حمايات أساسية صارمة للجميع (بما فيها التيفي بوكس)
-                    if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectDebugger())            { killApp(); return; }
-                    if (detectFrida())               { killApp(); return; }
-                    if (detectTampering())           { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp("detectDynamicHashMismatch"); return; }
+                    if (detectDebugger())            { killApp("detectDebugger"); return; }
+                    if (detectFrida())               { killApp("detectFrida"); return; }
+                    if (detectTampering())           { killApp("detectTampering"); return; }
 
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
                 } catch (InterruptedException e) {
@@ -261,33 +259,36 @@ public class AppVerifier {
         if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
 
-    private void killApp() {
+    private void killApp(String reason) {
+        if (!running) return;
         running = false;
         
-        // 1. انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            throw new RuntimeException("E00");
-        });
-
-        // 2. قتل الخلفية
-        try {
-            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-                if (processes != null) {
-                    for (ActivityManager.RunningAppProcessInfo proc : processes) {
-                        if (proc.processName.contains(context.getPackageName())) {
-                            android.os.Process.killProcess(proc.pid);
+            // عرض السبب لمدة طويلة نسبياً (5 ثوانٍ تقريباً عبر تكرار التوست)
+            android.widget.Toast.makeText(context, "سيتم الإغلاق بسبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            android.widget.Toast.makeText(context, "السبب الدقيق: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            
+            // تأخير عملية القتل لمدة 5 ثوانٍ
+            new android.os.Handler().postDelayed(() -> {
+                try {
+                    ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                    if (am != null) {
+                        List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+                        if (processes != null) {
+                            for (ActivityManager.RunningAppProcessInfo proc : processes) {
+                                if (proc.processName.contains(context.getPackageName())) {
+                                    android.os.Process.killProcess(proc.pid);
+                                }
+                            }
                         }
                     }
-                }
-            }
-        } catch (Exception ignored) {}
-        
-        // 3. القتل القاسي والنهائي
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(1);
-        Runtime.getRuntime().halt(1);
+                } catch (Exception ignored) {}
+                
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(1);
+                Runtime.getRuntime().halt(1);
+            }, 5000);
+        });
     }
 
     private boolean detectDynamicHashMismatch() {
