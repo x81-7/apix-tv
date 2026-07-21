@@ -25,7 +25,13 @@ import com.apix.app.BuildConfig;
 /**
  * Splash screen with security check, update check via Supabase, and notification permission.
  */
-public class SplashActivity extends AppCompatActivity {
+                    if ("VPN_BLOCK".equals(fv.status)) {
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        // إذا لم يكن تيفي بوكس، قم بالقتل الصامت (لحماية الهواتف فقط)
+                        if (!isTvBox()) {
+                            runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
+                        }
+                    } else if ("MESSAGE".equals(fv.mode)) {
 
     private static final String TAG = "SplashActivity";
     private TextView statusText;
@@ -334,9 +340,11 @@ public class SplashActivity extends AppCompatActivity {
                     android.content.SharedPreferences vp =
                             getSharedPreferences("vpn_cache", MODE_PRIVATE);
                     if (vp.getBoolean("vpn_block_enabled", false)) {
-                        // SILENT force close — no dialog.
-                        runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
-                        return;
+                        // إذا لم يكن تيفي بوكس، قم بالقتل الصامت (لحماية الهواتف فقط)
+                        if (!isTvBox()) {
+                            runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
+                            return;
+                        }
                     }
                 }
             } catch (Throwable ignored) {}
