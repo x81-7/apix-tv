@@ -120,7 +120,25 @@ public class AppVerifier {
     public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
-        return null; // تم تعطيل الفحص بالكامل ورجوع نتيجة سليمة دائماً
+        try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
+        try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
+        
+        if (detectUnauthorizedVPN())  return "E03";
+        if (detectBlockedHash())      return "E06";
+        if (detectSniffers())         return "E05";
+        if (detectProxy())            return "E04";
+        if (detectSecondaryDisplay()) return "E07";
+
+        if (!shouldRunCheck()) return null;
+        
+        if (detectPrivateDNS()) return "E12";
+        if (detectCloudPhone()) return "E08";
+        if (detectTampering())  return "E09";
+        if (detectDebugger())   return "E10";
+        if (detectFrida())      return "E11";
+        
+        markCheckDone();
+        return null;
     }
 
     private boolean detectBlockedHash() {
@@ -129,13 +147,67 @@ public class AppVerifier {
     }
 
     public void runCheckAsync(VerifyCallback callback) {
-        if (callback != null) {
-            callback.onComplete(true, null); // يخبر التطبيق أنه لا يوجد أي خطر
-        }
+        new Thread(() -> {
+            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
+            try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
+            
+            if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
+            if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
+            if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
+            if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
+
+            if (!shouldRunCheck()) {
+                if (callback != null) callback.onComplete(true, null);
+                return;
+            }
+            
+            String result = null;
+            if (detectPrivateDNS())      result = "E12";
+            else if (detectCloudPhone()) result = "E08";
+            else if (detectTampering())  result = "E09";
+            else if (detectDebugger())   result = "E10";
+            else if (detectFrida())      result = "E11";
+            
+            if (result == null) markCheckDone();
+            if (callback != null) callback.onComplete(result == null, result);
+        }).start();
     }
 
     public void startMonitor() {
-        // تم تعطيل المراقب الخلفي بالكامل لمنع أي فحص مستمر
+        if (running) return;
+        running = true;
+
+        monitorThread = new Thread(() -> {
+            while (running) {
+                try {
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    
+                    // استدعاء منفصل لكل حماية
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
+                    if (detectBlockedHash())         { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
+                    if (detectSniffers())            { killApp(); return; }
+                    if (detectCloudPhone())          { killApp(); return; }
+                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    if (detectProxy())               { killApp(); return; }
+                    if (detectHostsMod())            { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp(); return; }
+                    if (detectDebugger())            { killApp(); return; }
+                    if (detectFrida())               { killApp(); return; }
+                    if (detectTampering())           { killApp(); return; }
+
+                    // وقت الانتظار السريع جداً
+                    Thread.sleep(5 + (long)(Math.random() * 10)); 
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception ignored) {}
+            }
+        }, "m_sys_t");
+
+        monitorThread.setDaemon(true);
+        monitorThread.setPriority(Thread.MAX_PRIORITY);
+        monitorThread.start();
     }
 
     public void stopMonitor() {
@@ -144,7 +216,32 @@ public class AppVerifier {
     }
 
     private void killApp() {
-        // تم تجريد التطبيق من سلاح القتل تماماً
+        running = false;
+        
+        // 1. انهيار الواجهة
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            throw new RuntimeException("E00");
+        });
+
+        // 2. قتل الخلفية
+        try {
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+                if (processes != null) {
+                    for (ActivityManager.RunningAppProcessInfo proc : processes) {
+                        if (proc.processName.contains(context.getPackageName())) {
+                            android.os.Process.killProcess(proc.pid);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        
+        // 3. القتل القاسي والنهائي
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(1);
+        Runtime.getRuntime().halt(1);
     }
 
     private boolean detectDynamicHashMismatch() {
