@@ -25,13 +25,25 @@ import com.apix.app.BuildConfig;
 /**
  * Splash screen with security check, update check via Supabase, and notification permission.
  */
-                    if ("VPN_BLOCK".equals(fv.status)) {
-                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        // إذا لم يكن تيفي بوكس، قم بالقتل الصامت (لحماية الهواتف فقط)
-                        if (!isTvBox()) {
-                            runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
-                        }
-                    } else if ("MESSAGE".equals(fv.mode)) {
+public class SplashActivity extends AppCompatActivity {
+
+    // ── الدالة الذكية لاكتشاف التيفي بوكس والشاشات الصينية ──
+    private boolean isTvBox() {
+        try {
+            android.app.UiModeManager uiManager = (android.app.UiModeManager) getSystemService(android.content.Context.UI_MODE_SERVICE);
+            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
+                return true;
+            }
+            String combined = (android.os.Build.MODEL + " " + android.os.Build.HARDWARE + " " + android.os.Build.DEVICE + " " + android.os.Build.PRODUCT + " " + android.os.Build.MANUFACTURER).toLowerCase();
+            if (combined.contains("box") || combined.contains("tv") || 
+                combined.contains("amlogic") || combined.contains("rockchip") || 
+                combined.contains("allwinner") || combined.contains("stb") || 
+                combined.contains("player") || combined.contains("stick")) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
 
     private static final String TAG = "SplashActivity";
     private TextView statusText;
