@@ -30,7 +30,7 @@ public class SplashActivity extends AppCompatActivity {
     private static final String TAG = "SplashActivity";
 
     // ── دالة فضح سبب القتل وتأخيره 5 ثواني ──
-    private void delayedKill(String reason) {
+    private void delayedKill(final String reason) {
         runOnUiThread(() -> {
             android.widget.Toast.makeText(SplashActivity.this, "سيتم الإغلاق بعد 5 ثواني بسبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -40,7 +40,6 @@ public class SplashActivity extends AppCompatActivity {
             }, 5000);
         });
     }
-
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
@@ -63,15 +62,7 @@ public class SplashActivity extends AppCompatActivity {
 
         // === STRICT EMULATOR BAN (per project policy) ===
         if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
-            try {
-                android.widget.Toast.makeText(this,
-                        "تشغيل التطبيق على المحاكيات غير مسموح",
-                        android.widget.Toast.LENGTH_LONG).show();
-            } catch (Throwable ignored) {}
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                System.exit(0);
-            }, 1500);
+            delayedKill("Strict Emulator Ban (اكتشاف محاكي)");
             setContentView(R.layout.activity_splash);
             return;
         }
@@ -132,7 +123,6 @@ public class SplashActivity extends AppCompatActivity {
             if (passed) {
                 new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
             } else {
-                // فضح سبب القتل من AppVerifier
                 delayedKill("AppVerifier Error: " + failReason);
             }
         });
@@ -289,10 +279,7 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
-            // Native consolidated guard — obfuscated sniffing/instrumentation
-            // sweep. Silently terminates the process from native code on any
-            // live threat (no boolean returned to Java to patch).
-            // تم التعطيل لمنع C++ من القتل الفوري قبل ظهور رسالتنا
+            // تم التعطيل مؤقتاً لكي لا يسبق C++ رسالتنا ويقتل التطبيق من الجذور
             // try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
 
             // Run extra guards (DNS / sniffers / signature)
@@ -335,18 +322,16 @@ public class SplashActivity extends AppCompatActivity {
             // active while the panel has VPN-blocking enabled, we must not fall
             // open into the app — force close. This closes the "VPN enabled
             // before launch" hole where the server round-trip may not complete.
-            try {
-                boolean confirmedActive = "ACTIVE".equals(verdictStatus);
-                if (!confirmedActive
-                        && com.apix.app.security.DeviceIntegrity.isVpnActive(SplashActivity.this)) {
-                    android.content.SharedPreferences vp =
-                            getSharedPreferences("vpn_cache", MODE_PRIVATE);
-                    if (vp.getBoolean("vpn_block_enabled", false)) {
-                        delayedKill("Local VPN Gate: تم اكتشاف شبكة VPN محلية");
-                        return;
+                    if ("VPN_BLOCK".equals(fv.status)) {
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        delayedKill("Server Handshake: VPN_BLOCK");
+                    } else if ("MESSAGE".equals(fv.mode)) {
+                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
+                        if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
+                        runOnUiThread(() -> showBanMessage(fv.message));
+                    } else {
+                        delayedKill("Server Handshake: Security Ban (Enforce)");
                     }
-                }
-            } catch (Throwable ignored) {}
 
 
             boolean gateEnabled = false;
