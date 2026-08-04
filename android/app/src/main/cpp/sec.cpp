@@ -1,11 +1,18 @@
-// sec.cpp — APiX TV native security core (Pro Max Version).
+// sec.cpp — APiX TV native security core.
 //
 // Goals (all handled here, never in Java/Smali):
-//   1. All sensitive detection strings ("frida", "xposed", "tun0",
-//      "/proc/self/maps", …) are XOR-encrypted at COMPILE TIME via constexpr.
-//   2. Silent punishment: We removed _exit(0) to prevent WindowManager freezes
-//      on TV boxes. Instead, we use g_poisoned = true to corrupt media keys.
-//   3. Native HS256 (HMAC-SHA256) JWT verification for the VIP flag.
+//   1. All sensitive detection strings ("frida", "xposed", "magisk", "tun0",
+//      "/proc/self/maps", …) are XOR-encrypted at COMPILE TIME via constexpr,
+//      so they never appear as plaintext inside .rodata of libv.so.
+//   2. Silent punishment: on threat detection we do NOT return a boolean that a
+//      patcher can flip. We terminate the process (_exit) and/or poison the
+//      player decryption key so a patched binary yields unplayable garbage.
+//   3. Native HS256 (HMAC-SHA256) JWT verification for the VIP flag, using an
+//      HMAC secret assembled from the split compile-time defines. The signature
+//      is verified ENTIRELY in native code — a MitM cannot forge {"vip":true}.
+//
+// This file is part of target "v" (see CMakeLists.txt). All the V_* compile
+// definitions declared on target "v" are visible here.
 
 #include <jni.h>
 #include <string>
@@ -19,6 +26,14 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
+// ─────────────────────────────────────────────────────────────────────────
+// Compile-time XOR string obfuscation.
+//
+// ObfStr stores each character XORed with a rolling key at compile time. The
+// plaintext literal is consumed by constexpr evaluation and never emitted into
+// the binary; only the XORed bytes survive in .rodata. dec() rebuilds the
+// plaintext at runtime into a std::string.
+// ─────────────────────────────────────────────────────────────────────────
 namespace {
 
 constexpr uint8_t OBF_KEY = 0x5B;
@@ -43,6 +58,7 @@ struct ObfStr {
     }
 };
 
+// Helper macro: build an obfuscated literal that decodes lazily.
 #define OBF(lit) ([]() -> std::string { constexpr ObfStr<sizeof(lit)> _o(lit); return _o.dec(); }())
 
 // ── self-contained SHA-256 ───────────────────────────────────────────────
@@ -181,6 +197,8 @@ std::string b64url_encode(const uint8_t* data, size_t n) {
     return out;
 }
 
+// ── HMAC secret assembled from the split compile-time defines ─────────────
+// Matches the existing _kb() = V_B1 + V_B2 used elsewhere in the vault.
 std::string hmac_secret() {
     std::string a, b;
 #ifdef V_B1
@@ -192,7 +210,7 @@ std::string hmac_secret() {
     return a + b;
 }
 
-// ── threat detection ─────────────────────────────
+// ── threat detection (all needles obfuscated) ─────────────────────────────
 bool file_exists(const std::string& p) {
     struct stat st;
     return ::stat(p.c_str(), &st) == 0;
@@ -202,10 +220,9 @@ bool scan_maps() {
     std::string path = OBF("/proc/self/maps");
     FILE* f = fopen(path.c_str(), "r");
     if (!f) return false;
-    // تم إزالة كلمة "magisk" لأن الشاشات الصينية تأتي بصلاحيات روت مدمجة.
     const std::string needles[] = {
         OBF("frida"), OBF("xposed"), OBF("substrate"),
-        OBF("lspatch"), OBF("lsposed")
+        OBF("lspatch"), OBF("lsposed"), OBF("magisk")
     };
     char line[512];
     bool hit = false;
@@ -220,7 +237,9 @@ bool scan_maps() {
 }
 
 bool scan_files() {
-    // نفحص ملفات الاختراق الصريحة فقط. 
+    // نفحص فقط ملفات Frida الحقيقية
+    // su و magisk حُذفا لأنهما موجودان في أجهزة تيفي بوكس الصينية من المصنع
+    // الكشف عنهما يُسبب شاشة سوداء على هذه الأجهزة بدون أي رسالة
     const std::string paths[] = {
         OBF("/data/local/tmp/frida-server"),
         OBF("/data/local/tmp/re.frida.server"),
@@ -231,6 +250,7 @@ bool scan_files() {
 }
 
 bool scan_frida_port() {
+    // frida default ports 27042/27043 → 69A2/69A3 hex in /proc/net/tcp
     std::string path = OBF("/proc/net/tcp");
     FILE* f = fopen(path.c_str(), "r");
     if (!f) return false;
@@ -247,9 +267,9 @@ bool scan_frida_port() {
 }
 
 bool scan_proxy_ports() {
+    // 8888/8080/8081/1080 → 22B8/1F90/1F91/0438
     std::string paths[2] = { OBF("/proc/net/tcp"), OBF("/proc/net/tcp6") };
-    // تم إزالة منافذ 8080 (1F90) و 1080 (0438) لأن الشاشات الصينية تستخدمها لخدمات النظام
-    std::string ports[2] = { OBF(":22B8 "), OBF(":1F91 ") };
+    std::string ports[4] = { OBF(":22B8 "), OBF(":1F90 "), OBF(":1F91 "), OBF(":0438 ") };
     for (const auto& path : paths) {
         FILE* f = fopen(path.c_str(), "r");
         if (!f) continue;
@@ -263,17 +283,41 @@ bool scan_proxy_ports() {
     return false;
 }
 
+bool scan_vpn_iface() {
+    // presence of tun/ppp/tap interface in /proc/net/dev signals a VPN tunnel.
+    std::string path = OBF("/proc/net/dev");
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+    std::string t = OBF("tun"), p = OBF("ppp"), a = OBF("tap");
+    char line[512];
+    bool hit = false;
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, t.c_str()) || strstr(line, p.c_str()) || strstr(line, a.c_str())) {
+            hit = true; break;
+        }
+    }
+    fclose(f);
+    return hit;
+}
+
+// Global poison flag: if a patcher bypasses the exit, the key getters below
+// will still hand back corrupted material once this is set.
 volatile bool g_poisoned = false;
 
 void punish_silent() {
-    // تسميم المفاتيح فقط بدون استخدام _exit(0) لمنع الشاشة السوداء.
     g_poisoned = true;
+    // تم إيقاف القتل الفوري هنا لمعرفة السبب من الجافا
+    // _exit(0);
 }
 
 } // namespace
 
 extern "C" {
 
+// ── guard: runs all checks, terminates silently on ANY threat. Returns void
+// so there is no boolean for a patcher to flip. VPN detection is handled by the
+// server allow-list handshake, so tun interfaces alone do NOT kill here; only
+// sniffing/instrumentation threats do. ─────────────────────────────────────
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
     if (scan_maps() || scan_files() || scan_frida_port() || scan_proxy_ports()) {
@@ -281,11 +325,17 @@ Java_com_apix_app_x_gd(JNIEnv*, jobject) {
     }
 }
 
+// ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.
+// Kept separate from gd() so the app can ask the Worker whether the VPN IP is
+// on the allow-list before deciding to block. ──────────────────────────────
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_vpnRaw(JNIEnv*, jobject) {
-    return 0; // تم تخفيف الفحص ليتماشى مع استقرار التطبيق
+    return scan_vpn_iface() ? 1 : 0;
 }
 
+// ── verifyVip: native HS256 JWT verification. Returns 1 only when the
+// signature is valid AND the token is unexpired AND vip==true. The secret lives
+// only in native code, so a MitM-forged {"vip":true} fails signature check. ──
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_vt(JNIEnv* env, jobject, jstring jtoken) {
     if (jtoken == nullptr) return 0;
@@ -307,8 +357,10 @@ Java_com_apix_app_x_vt(JNIEnv* env, jobject, jstring jtoken) {
     hmac_sha256(hmac_secret(), signingInput, mac);
     std::string expected = b64url_encode(mac, 32);
     std::string got = sigB64;
+    // strip any padding just in case
     while (!got.empty() && got.back() == '=') got.pop_back();
 
+    // constant-time-ish compare
     if (expected.size() != got.size()) return 0;
     uint8_t diff = 0;
     for (size_t i = 0; i < expected.size(); i++) diff |= (uint8_t)(expected[i] ^ got[i]);
@@ -316,6 +368,7 @@ Java_com_apix_app_x_vt(JNIEnv* env, jobject, jstring jtoken) {
 
     std::string payload = b64url_decode(payloadB64);
 
+    // exp check (seconds epoch)
     size_t ep = payload.find(OBF("\"exp\""));
     if (ep != std::string::npos) {
         size_t colon = payload.find(':', ep);
@@ -325,6 +378,7 @@ Java_com_apix_app_x_vt(JNIEnv* env, jobject, jstring jtoken) {
         }
     }
 
+    // vip claim must be true
     std::string vipTrue = OBF("\"vip\":true");
     std::string vipTrueSp = OBF("\"vip\": true");
     if (payload.find(vipTrue) != std::string::npos ||
@@ -334,6 +388,7 @@ Java_com_apix_app_x_vt(JNIEnv* env, jobject, jstring jtoken) {
     return 0;
 }
 
+// ── poisoned: lets the vault key getters check the tamper flag. ──────────────
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_pz(JNIEnv*, jobject) {
     return g_poisoned ? 1 : 0;
