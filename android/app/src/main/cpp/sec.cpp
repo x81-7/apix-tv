@@ -312,17 +312,37 @@ void punish_silent() {
 
 } // namespace
 
+// ── TV-Box detection ──────────────────────────────────────────────────────
+// Kotlin sets the system property "apix.is_tv" = "1" at boot when the device
+// exposes the leanback feature or reports UI_MODE_TYPE_TELEVISION. Chinese TV
+// boxes routinely expose Cast/DLNA services on the same ports we scan for
+// sniffing tools (8080/8888/1080) and a few also ship the frida-server port
+// range from an OEM debug service. We MUST NOT silent-kill on TV hardware for
+// those signals — only on real hook/instrumentation evidence in /proc/self/maps
+// or in /data/local/tmp/frida-server.
+static bool is_tv_box() {
+    char buf[64] = {0};
+    FILE* p = popen("getprop apix.is_tv 2>/dev/null", "r");
+    if (p) {
+        if (fgets(buf, sizeof(buf), p) == nullptr) buf[0] = 0;
+        pclose(p);
+    }
+    return buf[0] == '1';
+}
+
 extern "C" {
 
 // ── guard: runs all checks, terminates silently on ANY threat. Returns void
 // so there is no boolean for a patcher to flip. VPN detection is handled by the
 // server allow-list handshake, so tun interfaces alone do NOT kill here; only
-// sniffing/instrumentation threats do. ─────────────────────────────────────
+// sniffing/instrumentation threats do.
+// On real TV boxes we skip the port-based scans (cast/DLNA collisions) and
+// keep only maps/files scans, which cannot be triggered by OEM services.
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    if (scan_maps() || scan_files() || scan_frida_port() || scan_proxy_ports()) {
-        punish_silent();
-    }
+    bool tv = is_tv_box();
+    if (scan_maps() || scan_files()) { punish_silent(); return; }
+    if (!tv && (scan_frida_port() || scan_proxy_ports())) { punish_silent(); }
 }
 
 // ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.
