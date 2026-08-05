@@ -49,21 +49,18 @@ object x {
     @JvmStatic fun kh(): String = h()
 
     // checks return true when a threat is detected
-    // تم التخدير: نعيد false دائماً لنتجاهل أي خطر قادم من C++
-    @JvmStatic fun hasVpn(): Boolean     = false
-    @JvmStatic fun hasDanger(): Boolean  = false
-    @JvmStatic fun hasRoot(): Boolean    = false
+    @JvmStatic fun hasVpn(): Boolean     = nv() != 0
+    @JvmStatic fun hasDanger(): Boolean  = ne() != 0
+    @JvmStatic fun hasRoot(): Boolean    = nr() != 0
 
     // ── consolidated native guard API ──────────────────────────────
     /** Runs the full native sniffing/instrumentation sweep. Silently kills
      *  the process from native code if a live threat is present. Safe to call
      *  from a background thread during the splash ad. */
-    @JvmStatic fun guardOrDie() { 
-        // تم التعطيل كلياً لمنع C++ من تنفيذ أي أوامر إغلاق
-    }
+    @JvmStatic fun guardOrDie() { try { gd() } catch (_: Throwable) {} }
 
     /** True when a VPN tunnel interface is up (server decides allow/block). */
-    @JvmStatic fun vpnTunnelUp(): Boolean = false
+    @JvmStatic fun vpnTunnelUp(): Boolean = try { vpnRaw() != 0 } catch (_: Throwable) { false }
 
     /** Native HS256 verification of a signed VIP token. A forged/tampered
      *  token can never return true because the HMAC secret is native-only. */
@@ -71,5 +68,5 @@ object x {
         try { !token.isNullOrEmpty() && vt(token) != 0 } catch (_: Throwable) { false }
 
     /** True if native code detected tampering and poisoned key material. */
-    @JvmStatic fun isPoisoned(): Boolean = false
+    @JvmStatic fun isPoisoned(): Boolean = try { pz() != 0 } catch (_: Throwable) { false }
 }
