@@ -306,8 +306,8 @@ volatile bool g_poisoned = false;
 
 void punish_silent() {
     g_poisoned = true;
-    // Silent, no UI, no logs. _exit avoids atexit handlers a hook might trap.
-    _exit(0);
+    // تم إيقاف القتل الفوري من C++ لكي تظهر رسالة الجافا
+    // _exit(0);
 }
 
 } // namespace
