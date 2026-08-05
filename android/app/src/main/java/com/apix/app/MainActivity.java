@@ -43,15 +43,21 @@ public class MainActivity extends AppCompatActivity {
         
         webView.loadUrl(WEB_APP_URL);
         
+        // تشغيل AppVerifier (الذي عدلناه ليظهر التوست)
         webView.postDelayed(() -> {
-            AppVerifier.getInstance(MainActivity.this).startMonitor();
+            try {
+                AppVerifier.getInstance(MainActivity.this).startMonitor();
+            } catch (Throwable ignored) {}
         }, 3000);
         
         android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(UI_MODE_SERVICE);
         boolean isTV = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
         
+        // تشغيل GuardRunner الذي يستدعي g1 و g3 (والتي عدلناها لتظهر التوست)
         if (!isTV) {
-            com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+            try {
+                com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+            } catch (Throwable ignored) {}
         }
     }
 
