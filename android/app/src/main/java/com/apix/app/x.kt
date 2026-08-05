@@ -38,6 +38,7 @@ object x {
     private external fun vpnRaw(): Int   // 1 = a VPN tunnel interface is up
     private external fun vt(token: String): Int   // native HS256 VIP verify
     private external fun pz(): Int       // 1 = native tamper/poison flag set
+    private external fun st(tv: Boolean) // set TV-Box flag (skips port scans)
 
     @JvmStatic fun ka(): String = a()
     @JvmStatic fun kb(): String = b()
