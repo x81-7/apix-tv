@@ -123,12 +123,17 @@ public final class Enforcement {
 
     /** Silently terminate the process without any UI. */
     public static void silentExit(Context ctx) {
-        try {
-            if (ctx instanceof Activity) {
-                ((Activity) ctx).finishAffinity();
-            }
-        } catch (Throwable ignored) {}
-        try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
-        System.exit(0);
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(ctx, "القاتل: Enforcement.silentExit", android.widget.Toast.LENGTH_LONG).show();
+            new android.os.Handler().postDelayed(() -> {
+                try {
+                    if (ctx instanceof Activity) {
+                        ((Activity) ctx).finishAffinity();
+                    }
+                } catch (Throwable ignored) {}
+                try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
+                System.exit(0);
+            }, 5000);
+        });
     }
 }
