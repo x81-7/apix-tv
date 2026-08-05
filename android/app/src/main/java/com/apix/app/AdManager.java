@@ -79,6 +79,12 @@ public final class AdManager {
                     ed.putString ("web_ad_url",           webCfg.optString("url", ""));
                     ed.putInt    ("web_ad_skip_after",    Math.max(3, webCfg.optInt("skipAfter", 5)));
                     ed.putString ("web_ad_seller_url",    webCfg.optString("sellerContactUrl", ""));
+                    // Independent scope toggles (new). Any true triggers the ad
+                    // in that context. VIP devices always bypass regardless.
+                    ed.putBoolean("web_ad_scope_app_open",         webCfg.optBoolean("scopeAppOpen", false));
+                    ed.putBoolean("web_ad_scope_external",         webCfg.optBoolean("scopeExternalLinks", true));
+                    ed.putBoolean("web_ad_scope_internal",         webCfg.optBoolean("scopeInternalChannels", false));
+                    ed.putBoolean("web_ad_scope_side_only",        webCfg.optBoolean("scopeSideChannelsOnly", false));
                 }
                 ed.apply();
             } catch (Throwable t) {
