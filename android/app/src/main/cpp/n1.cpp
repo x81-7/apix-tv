@@ -2,6 +2,12 @@
 #include <string>
 #include <cstdio>
 #include <cstring>
+#include <sys/system_properties.h>
+#include <ctype.h>
+
+#ifndef PROP_VALUE_MAX
+#define PROP_VALUE_MAX 92
+#endif
 
 // ── مفتاح XOR مختلف تماماً عن vault.cpp ─────────────────────────
 static constexpr uint8_t K1[] = {
@@ -63,11 +69,31 @@ static bool n1_has_sniffer_proxy6() {
     return found;
 }
 
+// ── دالة ذكية لاكتشاف التيفي بوكس من جذور C++ ──
+static bool is_tv_box_cpp() {
+    char chars[PROP_VALUE_MAX] = {0};
+    __system_property_get("ro.build.characteristics", chars);
+    if (strstr(chars, "tv")) return true;
+    
+    char model[PROP_VALUE_MAX] = {0};
+    __system_property_get("ro.product.model", model);
+    for(int i = 0; model[i]; i++) model[i] = tolower(model[i]);
+    if (strstr(model, "box") || strstr(model, "tv") || strstr(model, "stick") || strstr(model, "player")) return true;
+
+    char hw[PROP_VALUE_MAX] = {0};
+    __system_property_get("ro.hardware", hw);
+    for(int i = 0; hw[i]; i++) hw[i] = tolower(hw[i]);
+    if (strstr(hw, "amlogic") || strstr(hw, "rockchip") || strstr(hw, "allwinner")) return true;
+
+    return false;
+}
+
 extern "C" {
 
-// يُعيد 1 "فقط" إذا تم اكتشاف أداة التقاط/بروكسي محلية
+// يُعيد 1 "فقط" إذا تم اكتشاف أداة التقاط/بروكسي محلية (ويستثني الشاشات)
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_nv(JNIEnv*, jobject) {
+    if (is_tv_box_cpp()) return 0; // السماح للتيفي بوكس بتجاوز منافذ البروكسي الافتراضية
     return (n1_has_sniffer_proxy() || n1_has_sniffer_proxy6()) ? 1 : 0;
 }
 
