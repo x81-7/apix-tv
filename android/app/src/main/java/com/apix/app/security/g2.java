@@ -16,7 +16,7 @@ public final class g2 {
     public static String check(Context ctx) {
         String hash = computeHash(ctx);
         if (hash == null) {
-            k();
+            k(ctx, "Hash is null");
             return null;
         }
 
@@ -24,7 +24,7 @@ public final class g2 {
             String ndkHash = com.apix.app.x.kh();
             if (ndkHash != null && !ndkHash.isEmpty() && !ndkHash.equals("__HASH__")) {
                 if (!hash.equalsIgnoreCase(ndkHash.trim())) {
-                    k();
+                    k(ctx, "NDK Hash Mismatch");
                 }
                 return null;
             }
@@ -38,7 +38,7 @@ public final class g2 {
             return null;
         }
         
-        k(); 
+        k(ctx, "Signature not in allowed list"); 
         return null;
     }
 
@@ -72,9 +72,14 @@ public final class g2 {
         }
     }
 
-    private static void k() {
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
+    private static void k(Context ctx, String reason) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(ctx, "القاتل: g2.java | السبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            new android.os.Handler().postDelayed(() -> {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
+            }, 5000);
+        });
     }
 
     private g2() {}
