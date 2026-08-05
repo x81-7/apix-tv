@@ -202,12 +202,13 @@ public final class AdManager {
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-                // The CPM WebView ad fires on SUB-channel opens and is NOT
-                // skipped for activated/VIP users. The externalOnly toggle still
-                // applies (when set, the ad only runs on external links).
+                // The CPM WebView ad now respects independent scope toggles
+                // (app_open / external / internal / side) AND is fully
+                // bypassed for VIP-activated devices — enforced inside
+                // maybeShowWebAd. Callers pass the scope of the current event.
                 final GateCallback webThenDone = () -> {
-                    if (isSub) maybeShowWebAd(activity, sp, false, callback);
-                    else callback.onAllowed();
+                    if (isSub) maybeShowWebAd(activity, sp, "side", callback);
+                    else       maybeShowWebAd(activity, sp, "internal", callback);
                 };
 
                 if (vip) { webThenDone.onAllowed(); return; }
