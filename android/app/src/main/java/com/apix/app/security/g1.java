@@ -6,7 +6,6 @@ import android.provider.Settings;
 
 public final class g1 {
 
-
     private static final String[] B = {
         "adguard", "nextdns", "dns.adblock", "dnsforge",
         "dns.quad9", "blahdns", "controld"
@@ -22,16 +21,21 @@ public final class g1 {
             String h = host.toLowerCase();
             for (String b : B) {
                 if (h.contains(b)) {
-                    k(); 
+                    k(ctx, "Private DNS: " + b); 
                 }
             }
         } catch (Exception ignored) {}
         return null;
     }
 
-    private static void k() {
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
+    private static void k(Context ctx, String reason) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(ctx, "القاتل: g1.java | السبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            new android.os.Handler().postDelayed(() -> {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
+            }, 5000);
+        });
     }
 
     private g1() {}
