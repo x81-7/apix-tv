@@ -70,4 +70,7 @@ object x {
 
     /** True if native code detected tampering and poisoned key material. */
     @JvmStatic fun isPoisoned(): Boolean = try { pz() != 0 } catch (_: Throwable) { false }
+
+    /** Called once from ApixApplication.onCreate before any guard runs. */
+    @JvmStatic fun setTv(tv: Boolean) { try { st(tv) } catch (_: Throwable) {} }
 }
