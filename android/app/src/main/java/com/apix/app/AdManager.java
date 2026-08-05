@@ -142,7 +142,7 @@ public final class AdManager {
                 final int    webAdSkip   = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl   = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, "app_open", callback);
 
                 Runnable afterRewarded = () -> {
                     String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
