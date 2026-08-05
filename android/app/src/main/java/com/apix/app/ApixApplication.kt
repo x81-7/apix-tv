@@ -29,6 +29,7 @@ class ApixApplication : Application(), ImageLoaderFactory {
                 packageManager.hasSystemFeature("android.hardware.type.television") ||
                 !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)
             System.setProperty("apix.is_tv", if (isTv) "1" else "0")
+            try { x.setTv(isTv) } catch (_: Throwable) {}
         } catch (_: Throwable) {}
         coil.Coil.setImageLoader(newImageLoader())
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
