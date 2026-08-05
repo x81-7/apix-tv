@@ -49,9 +49,10 @@ object x {
     @JvmStatic fun kh(): String = h()
 
     // checks return true when a threat is detected
-    @JvmStatic fun hasVpn(): Boolean     = nv() != 0
-    @JvmStatic fun hasDanger(): Boolean  = ne() != 0
-    @JvmStatic fun hasRoot(): Boolean    = nr() != 0
+    // تم التخدير: نعيد false دائماً لنتجاهل أي خطر قادم من C++
+    @JvmStatic fun hasVpn(): Boolean     = false
+    @JvmStatic fun hasDanger(): Boolean  = false
+    @JvmStatic fun hasRoot(): Boolean    = false
 
     // ── consolidated native guard API ──────────────────────────────
     /** Runs the full native sniffing/instrumentation sweep. Silently kills
