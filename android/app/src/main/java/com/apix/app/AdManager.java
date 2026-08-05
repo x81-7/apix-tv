@@ -251,7 +251,7 @@ public final class AdManager {
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 // On external links the WebView ad (externalOnly) runs last.
-                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, true, callback);
+                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, "external", callback);
 
                 boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
                     && fConfig != null && fConfig.optBoolean("adsEnabled", false);
