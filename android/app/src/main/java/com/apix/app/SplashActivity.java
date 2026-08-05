@@ -28,18 +28,6 @@ import com.apix.app.BuildConfig;
 public class SplashActivity extends AppCompatActivity {
 
     private static final String TAG = "SplashActivity";
-
-    // ── دالة فضح سبب القتل وتأخيره 5 ثواني ──
-    private void delayedKill(final String reason) {
-        runOnUiThread(() -> {
-            android.widget.Toast.makeText(SplashActivity.this, "القاتل: SplashActivity | الدالة: " + reason, android.widget.Toast.LENGTH_LONG).show();
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                android.os.Process.killProcess(android.os.Process.myPid());
-                System.exit(0);
-            }, 5000);
-        });
-    }
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
@@ -62,7 +50,15 @@ public class SplashActivity extends AppCompatActivity {
 
         // === STRICT EMULATOR BAN (per project policy) ===
         if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
-            delayedKill("shouldStrictBanEmulator (حظر المحاكيات)");
+            try {
+                android.widget.Toast.makeText(this,
+                        "تشغيل التطبيق على المحاكيات غير مسموح",
+                        android.widget.Toast.LENGTH_LONG).show();
+            } catch (Throwable ignored) {}
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                finishAffinity();
+                System.exit(0);
+            }, 1500);
             setContentView(R.layout.activity_splash);
             return;
         }
@@ -123,7 +119,9 @@ public class SplashActivity extends AppCompatActivity {
             if (passed) {
                 new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
             } else {
-                delayedKill("AppVerifier.runCheckAsync (" + failReason + ")");
+                // قتل صامت فوري — بدون أي رسالة أو تأخير
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
             }
         });
     }
@@ -282,8 +280,7 @@ public class SplashActivity extends AppCompatActivity {
             // Native consolidated guard — obfuscated sniffing/instrumentation
             // sweep. Silently terminates the process from native code on any
             // live threat (no boolean returned to Java to patch).
-            // تم التعطيل مؤقتاً لكي لا يسبق C++ رسالتنا ويقتل التطبيق
-            // try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
+            try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
 
             // Run extra guards (DNS / sniffers / signature)
             String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
@@ -304,14 +301,19 @@ public class SplashActivity extends AppCompatActivity {
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
                     if ("VPN_BLOCK".equals(fv.status)) {
+                        // Disallowed VPN detected BEFORE launch → SILENT force close.
+                        // No visible screen: cache the verdict then kill the app.
                         com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        delayedKill("Server Handshake -> VPN_BLOCK");
+                        runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
                     } else if ("MESSAGE".equals(fv.mode)) {
+                        // Panel ban: wipe content (if ordered) then show the
+                        // server reason instead of closing silently.
                         com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
                         if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
                         runOnUiThread(() -> showBanMessage(fv.message));
                     } else {
-                        delayedKill("Server Handshake -> Security Ban");
+                        // Security ban (tamper / dangerous env): silent wipe + close.
+                        com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
                     }
                     return;
                 } else if (v.status != null && "ACTIVE".equals(v.status)) {
@@ -332,7 +334,8 @@ public class SplashActivity extends AppCompatActivity {
                     android.content.SharedPreferences vp =
                             getSharedPreferences("vpn_cache", MODE_PRIVATE);
                     if (vp.getBoolean("vpn_block_enabled", false)) {
-                        delayedKill("Local VPN Gate -> isVpnActive");
+                        // SILENT force close — no dialog.
+                        runOnUiThread(() -> com.apix.app.security.Enforcement.silentExit(SplashActivity.this));
                         return;
                     }
                 }
