@@ -20,6 +20,16 @@ class ApixApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // Mark TV-Box hardware BEFORE loading libv (sec.cpp reads apix.is_tv
+        // via getprop and adjusts its silent-kill policy accordingly).
+        try {
+            val uiMode = (getSystemService(UI_MODE_SERVICE) as? android.app.UiModeManager)?.currentModeType
+            val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+                packageManager.hasSystemFeature("android.software.leanback") ||
+                packageManager.hasSystemFeature("android.hardware.type.television") ||
+                !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)
+            System.setProperty("apix.is_tv", if (isTv) "1" else "0")
+        } catch (_: Throwable) {}
         coil.Coil.setImageLoader(newImageLoader())
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
         try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}
