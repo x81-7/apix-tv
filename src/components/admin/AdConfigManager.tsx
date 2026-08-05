@@ -30,8 +30,13 @@ interface LocalAdsConfig {
 interface WebAdsConfig {
   enabled?: boolean;
   url?: string;
-  /** apply only on external link redirects */
+  /** LEGACY: apply only on external link redirects (still respected). */
   externalOnly?: boolean;
+  /** Independent scope toggles — any true triggers the ad in that context. */
+  scopeAppOpen?: boolean;         // when the app is first opened
+  scopeExternalLinks?: boolean;   // when opening an external / redirect link
+  scopeInternalChannels?: boolean;// when opening any internal channel/sub
+  scopeSideChannelsOnly?: boolean;// restrict internal scope to side-menu subs
   /** seconds until skip becomes available */
   skipAfter?: number;
   /** Telegram / contact URL for VIP activation */
