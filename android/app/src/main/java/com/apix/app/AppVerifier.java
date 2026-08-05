@@ -180,22 +180,20 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
-                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
-                    
-                    // استدعاء منفصل لكل حماية
-                    if (detectUnauthorizedVPN())     { killApp(); return; }
-                    if (detectBlockedHash())         { killApp(); return; }
-                    if (detectPrivateDNS())          { killApp(); return; }
-                    if (detectSniffers())            { killApp(); return; }
-                    if (detectCloudPhone())          { killApp(); return; }
-                    if (detectSecondaryDisplay())    { killApp(); return; }
-                    if (detectProxy())               { killApp(); return; }
-                    if (detectHostsMod())            { killApp(); return; }
-                    if (detectDynamicHashMismatch()) { killApp(); return; }
-                    if (detectDebugger())            { killApp(); return; }
-                    if (detectFrida())               { killApp(); return; }
-                    if (detectTampering())           { killApp(); return; }
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killAppWithReason("AppVerifier.startMonitor → x.vpnTunnelUp() [sec.cpp]"); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killAppWithReason("AppVerifier.startMonitor → x.hasDanger() [n2.cpp]"); return; } } catch (Throwable ignored) {}
+                    if (detectUnauthorizedVPN())     { killAppWithReason("AppVerifier.detectUnauthorizedVPN"); return; }
+                    if (detectBlockedHash())         { killAppWithReason("AppVerifier.detectBlockedHash"); return; }
+                    if (detectPrivateDNS())          { killAppWithReason("AppVerifier.detectPrivateDNS"); return; }
+                    if (detectSniffers())            { killAppWithReason("AppVerifier.detectSniffers"); return; }
+                    if (detectCloudPhone())          { killAppWithReason("AppVerifier.detectCloudPhone"); return; }
+                    if (detectSecondaryDisplay())    { killAppWithReason("AppVerifier.detectSecondaryDisplay"); return; }
+                    if (detectProxy())               { killAppWithReason("AppVerifier.detectProxy"); return; }
+                    if (detectHostsMod())            { killAppWithReason("AppVerifier.detectHostsMod"); return; }
+                    if (detectDynamicHashMismatch()) { killAppWithReason("AppVerifier.detectDynamicHashMismatch"); return; }
+                    if (detectDebugger())            { killAppWithReason("AppVerifier.detectDebugger"); return; }
+                    if (detectFrida())               { killAppWithReason("AppVerifier.detectFrida"); return; }
+                    if (detectTampering())           { killAppWithReason("AppVerifier.detectTampering"); return; }
 
                     // وقت الانتظار السريع جداً
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
@@ -215,33 +213,20 @@ public class AppVerifier {
         if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
 
-    private void killApp() {
+    private void killAppWithReason(String reason) {
         running = false;
-        
-        // 1. انهيار الواجهة
+        android.util.Log.e("APIX_KILL", "Reason: " + reason);
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            throw new RuntimeException("E00");
+            android.widget.Toast.makeText(context, "القاتل: AppVerifier | الدالة: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            new android.os.Handler().postDelayed(() -> {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(1);
+            }, 5000);
         });
+    }
 
-        // 2. قتل الخلفية
-        try {
-            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-                if (processes != null) {
-                    for (ActivityManager.RunningAppProcessInfo proc : processes) {
-                        if (proc.processName.contains(context.getPackageName())) {
-                            android.os.Process.killProcess(proc.pid);
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-        
-        // 3. القتل القاسي والنهائي
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(1);
-        Runtime.getRuntime().halt(1);
+    private void killApp() {
+        killAppWithReason("Unknown");
     }
 
     private boolean detectDynamicHashMismatch() {
