@@ -25,12 +25,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/system_properties.h>
-#include <ctype.h>
-
-#ifndef PROP_VALUE_MAX
-#define PROP_VALUE_MAX 92
-#endif
 
 // ─────────────────────────────────────────────────────────────────────────
 // Compile-time XOR string obfuscation.
@@ -318,25 +312,6 @@ void punish_silent() {
 
 } // namespace
 
-// ── دالة ذكية لاكتشاف التيفي بوكس من جذور C++ ──
-static bool is_tv_box_cpp() {
-    char chars[PROP_VALUE_MAX] = {0};
-    __system_property_get("ro.build.characteristics", chars);
-    if (strstr(chars, "tv")) return true;
-    
-    char model[PROP_VALUE_MAX] = {0};
-    __system_property_get("ro.product.model", model);
-    for(int i = 0; model[i]; i++) model[i] = tolower(model[i]);
-    if (strstr(model, "box") || strstr(model, "tv") || strstr(model, "stick") || strstr(model, "player")) return true;
-
-    char hw[PROP_VALUE_MAX] = {0};
-    __system_property_get("ro.hardware", hw);
-    for(int i = 0; hw[i]; i++) hw[i] = tolower(hw[i]);
-    if (strstr(hw, "amlogic") || strstr(hw, "rockchip") || strstr(hw, "allwinner")) return true;
-
-    return false;
-}
-
 extern "C" {
 
 // ── guard: runs all checks, terminates silently on ANY threat. Returns void
@@ -345,9 +320,7 @@ extern "C" {
 // sniffing/instrumentation threats do. ─────────────────────────────────────
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    bool isTv = is_tv_box_cpp();
-    // إذا كان تيفي بوكس، نفحص ملفات الاختراق والفريدا فقط ونتجاهل المنافذ المفتوحة
-    if (scan_maps() || scan_files() || scan_frida_port() || (!isTv && scan_proxy_ports())) {
+    if (scan_maps() || scan_files() || scan_frida_port() || scan_proxy_ports()) {
         punish_silent();
     }
 }
@@ -357,7 +330,6 @@ Java_com_apix_app_x_gd(JNIEnv*, jobject) {
 // on the allow-list before deciding to block. ──────────────────────────────
 JNIEXPORT jint JNICALL
 Java_com_apix_app_x_vpnRaw(JNIEnv*, jobject) {
-    if (is_tv_box_cpp()) return 0; // تجاهل منافذ الشبكة الافتراضية في التيفي بوكس
     return scan_vpn_iface() ? 1 : 0;
 }
 
