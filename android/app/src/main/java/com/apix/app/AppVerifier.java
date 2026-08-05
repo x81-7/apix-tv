@@ -46,6 +46,17 @@ public class AppVerifier {
     private static final String KEY_LAST_CHECK = "lc";
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L;
 
+    // ── الدالة الذكية لاكتشاف التيفي بوكس ──
+    private boolean isTvBox(Context ctx) {
+        try {
+            android.app.UiModeManager uiManager = (android.app.UiModeManager) ctx.getSystemService(Context.UI_MODE_SERVICE);
+            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) return true;
+            String combined = (Build.MODEL + " " + Build.HARDWARE + " " + Build.DEVICE + " " + Build.PRODUCT + " " + Build.MANUFACTURER).toLowerCase();
+            if (combined.contains("box") || combined.contains("tv") || combined.contains("amlogic") || combined.contains("rockchip") || combined.contains("allwinner") || combined.contains("stb") || combined.contains("player") || combined.contains("stick")) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static final String[] DP = {
         "com.guoshi.httpcanary", "com.guoshi.httpcanary.premium",
         "com.minhui.networkcapture", "jp.co.because.network.analysis",
@@ -120,10 +131,11 @@ public class AppVerifier {
     public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
-        try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
+ 
+        try { if (com.apix.app.x.vpnTunnelUp() && !isTvBox(context)) return "E01"; } catch (Throwable ignored) {}
         try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
         
-        if (detectUnauthorizedVPN())  return "E03";
+        if (detectUnauthorizedVPN() && !isTvBox(context)) return "E03";
         if (detectBlockedHash())      return "E06";
         if (detectSniffers())         return "E05";
         if (detectProxy())            return "E04";
@@ -148,10 +160,11 @@ public class AppVerifier {
 
     public void runCheckAsync(VerifyCallback callback) {
         new Thread(() -> {
-            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
+            // تجاهل فحص الـ VPN (E01 و E03) إذا كان الجهاز شاشة
+            try { if (com.apix.app.x.vpnTunnelUp() && !isTvBox(context)) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
             try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
             
-            if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
+            if (detectUnauthorizedVPN() && !isTvBox(context)) { if (callback != null) callback.onComplete(false, "E03"); return; }
             if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
             if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
             if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
@@ -180,9 +193,10 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killAppWithReason("AppVerifier.startMonitor → x.vpnTunnelUp() [sec.cpp]"); return; } } catch (Throwable ignored) {}
+                    // تجاهل فحص الـ VPN إذا كان الجهاز شاشة
+                    try { if (com.apix.app.x.vpnTunnelUp() && !isTvBox(context)) { killAppWithReason("AppVerifier.startMonitor → x.vpnTunnelUp() [sec.cpp]"); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killAppWithReason("AppVerifier.startMonitor → x.hasDanger() [n2.cpp]"); return; } } catch (Throwable ignored) {}
-                    if (detectUnauthorizedVPN())     { killAppWithReason("AppVerifier.detectUnauthorizedVPN"); return; }
+                    if (detectUnauthorizedVPN() && !isTvBox(context)) { killAppWithReason("AppVerifier.detectUnauthorizedVPN"); return; }
                     if (detectBlockedHash())         { killAppWithReason("AppVerifier.detectBlockedHash"); return; }
                     if (detectPrivateDNS())          { killAppWithReason("AppVerifier.detectPrivateDNS"); return; }
                     if (detectSniffers())            { killAppWithReason("AppVerifier.detectSniffers"); return; }
