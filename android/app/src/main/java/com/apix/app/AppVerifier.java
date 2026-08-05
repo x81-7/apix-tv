@@ -180,20 +180,22 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killAppWithReason("AppVerifier.startMonitor → x.vpnTunnelUp() [sec.cpp]"); return; } } catch (Throwable ignored) {}
-                    try { if (com.apix.app.x.hasDanger())   { killAppWithReason("AppVerifier.startMonitor → x.hasDanger() [n2.cpp]"); return; } } catch (Throwable ignored) {}
-                    if (detectUnauthorizedVPN())     { killAppWithReason("AppVerifier.detectUnauthorizedVPN"); return; }
-                    if (detectBlockedHash())         { killAppWithReason("AppVerifier.detectBlockedHash"); return; }
-                    if (detectPrivateDNS())          { killAppWithReason("AppVerifier.detectPrivateDNS"); return; }
-                    if (detectSniffers())            { killAppWithReason("AppVerifier.detectSniffers"); return; }
-                    if (detectCloudPhone())          { killAppWithReason("AppVerifier.detectCloudPhone"); return; }
-                    if (detectSecondaryDisplay())    { killAppWithReason("AppVerifier.detectSecondaryDisplay"); return; }
-                    if (detectProxy())               { killAppWithReason("AppVerifier.detectProxy"); return; }
-                    if (detectHostsMod())            { killAppWithReason("AppVerifier.detectHostsMod"); return; }
-                    if (detectDynamicHashMismatch()) { killAppWithReason("AppVerifier.detectDynamicHashMismatch"); return; }
-                    if (detectDebugger())            { killAppWithReason("AppVerifier.detectDebugger"); return; }
-                    if (detectFrida())               { killAppWithReason("AppVerifier.detectFrida"); return; }
-                    if (detectTampering())           { killAppWithReason("AppVerifier.detectTampering"); return; }
+                    try { if (com.apix.app.x.vpnTunnelUp()) { killApp(); return; } } catch (Throwable ignored) {}
+                    try { if (com.apix.app.x.hasDanger())   { killApp(); return; } } catch (Throwable ignored) {}
+                    
+                    // استدعاء منفصل لكل حماية
+                    if (detectUnauthorizedVPN())     { killApp(); return; }
+                    if (detectBlockedHash())         { killApp(); return; }
+                    if (detectPrivateDNS())          { killApp(); return; }
+                    if (detectSniffers())            { killApp(); return; }
+                    if (detectCloudPhone())          { killApp(); return; }
+                    if (detectSecondaryDisplay())    { killApp(); return; }
+                    if (detectProxy())               { killApp(); return; }
+                    if (detectHostsMod())            { killApp(); return; }
+                    if (detectDynamicHashMismatch()) { killApp(); return; }
+                    if (detectDebugger())            { killApp(); return; }
+                    if (detectFrida())               { killApp(); return; }
+                    if (detectTampering())           { killApp(); return; }
 
                     // وقت الانتظار السريع جداً
                     Thread.sleep(5 + (long)(Math.random() * 10)); 
@@ -213,17 +215,10 @@ public class AppVerifier {
         if (monitorThread != null) { monitorThread.interrupt(); monitorThread = null; }
     }
 
-    private void killAppWithReason(String reason) {
-        running = false;
-        android.util.Log.e("APIX_KILL", "=== KILL TRIGGERED ===");
-        android.util.Log.e("APIX_KILL", "Reason: " + reason);
-        android.util.Log.e("APIX_KILL", "Thread: " + Thread.currentThread().getName());
-        try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
-        killApp();
-    }
-
     private void killApp() {
         running = false;
+        
+        // 1. انهيار الواجهة
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             throw new RuntimeException("E00");
         });
