@@ -38,6 +38,7 @@ object x {
     private external fun vpnRaw(): Int   // 1 = a VPN tunnel interface is up
     private external fun vt(token: String): Int   // native HS256 VIP verify
     private external fun pz(): Int       // 1 = native tamper/poison flag set
+    private external fun st(tv: Boolean) // set TV-Box flag (skips port scans)
 
     @JvmStatic fun ka(): String = a()
     @JvmStatic fun kb(): String = b()
@@ -69,4 +70,7 @@ object x {
 
     /** True if native code detected tampering and poisoned key material. */
     @JvmStatic fun isPoisoned(): Boolean = try { pz() != 0 } catch (_: Throwable) { false }
+
+    /** Called once from ApixApplication.onCreate before any guard runs. */
+    @JvmStatic fun setTv(tv: Boolean) { try { st(tv) } catch (_: Throwable) {} }
 }

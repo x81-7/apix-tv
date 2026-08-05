@@ -79,6 +79,12 @@ public final class AdManager {
                     ed.putString ("web_ad_url",           webCfg.optString("url", ""));
                     ed.putInt    ("web_ad_skip_after",    Math.max(3, webCfg.optInt("skipAfter", 5)));
                     ed.putString ("web_ad_seller_url",    webCfg.optString("sellerContactUrl", ""));
+                    // Independent scope toggles (new). Any true triggers the ad
+                    // in that context. VIP devices always bypass regardless.
+                    ed.putBoolean("web_ad_scope_app_open",         webCfg.optBoolean("scopeAppOpen", false));
+                    ed.putBoolean("web_ad_scope_external",         webCfg.optBoolean("scopeExternalLinks", true));
+                    ed.putBoolean("web_ad_scope_internal",         webCfg.optBoolean("scopeInternalChannels", false));
+                    ed.putBoolean("web_ad_scope_side_only",        webCfg.optBoolean("scopeSideChannelsOnly", false));
                 }
                 ed.apply();
             } catch (Throwable t) {
@@ -136,7 +142,7 @@ public final class AdManager {
                 final int    webAdSkip   = getWebAdSkipAfter(fConfig, sp);
                 final String sellerUrl   = getSellerUrl(fConfig, sp);
 
-                Runnable afterAll = () -> maybeShowWebAd(activity, sp, false, callback);
+                Runnable afterAll = () -> maybeShowWebAd(activity, sp, "app_open", callback);
 
                 Runnable afterRewarded = () -> {
                     String trigger = sp.getString(KEY_LOCAL_TRIGGER, "app_open");
@@ -196,12 +202,13 @@ public final class AdManager {
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-                // The CPM WebView ad fires on SUB-channel opens and is NOT
-                // skipped for activated/VIP users. The externalOnly toggle still
-                // applies (when set, the ad only runs on external links).
+                // The CPM WebView ad now respects independent scope toggles
+                // (app_open / external / internal / side) AND is fully
+                // bypassed for VIP-activated devices — enforced inside
+                // maybeShowWebAd. Callers pass the scope of the current event.
                 final GateCallback webThenDone = () -> {
-                    if (isSub) maybeShowWebAd(activity, sp, false, callback);
-                    else callback.onAllowed();
+                    if (isSub) maybeShowWebAd(activity, sp, "side", callback);
+                    else       maybeShowWebAd(activity, sp, "internal", callback);
                 };
 
                 if (vip) { webThenDone.onAllowed(); return; }
@@ -244,7 +251,7 @@ public final class AdManager {
             activity.runOnUiThread(() -> {
                 SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 // On external links the WebView ad (externalOnly) runs last.
-                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, true, callback);
+                final GateCallback webThenDone = () -> maybeShowWebAd(activity, sp, "external", callback);
 
                 boolean networkOn = sp.getBoolean(KEY_NETWORK_FORCE_EXTERNAL, false)
                     && fConfig != null && fConfig.optBoolean("adsEnabled", false);
@@ -319,18 +326,47 @@ public final class AdManager {
     }
 
     /**
-     * Shows the real WebView ad (from `web_ads_config`) when it should apply,
-     * then continues. `isExternal` = true for external-link gates. When
-     * externalOnly is set the ad only runs on external links.
+     * Shows the real WebView ad (from `web_ads_config`) when scope allows.
+     * Scopes: "app_open" | "external" | "internal" | "side".
+     * VIP devices ALWAYS bypass regardless of scope (product rule).
+     * Legacy `externalOnly` toggle is still honored for backwards compatibility
+     * when no new scope flags are set at all.
      */
     private static void maybeShowWebAd(Activity activity, SharedPreferences sp, boolean isExternal, GateCallback done) {
+        maybeShowWebAd(activity, sp, isExternal ? "external" : "app_open", done);
+    }
+
+    private static void maybeShowWebAd(Activity activity, SharedPreferences sp, String scope, GateCallback done) {
+        // Hard VIP bypass — activated devices never see the CPM ad.
+        if (isVip(activity)) { done.onAllowed(); return; }
         if (!webAdEnabled(sp)) { done.onAllowed(); return; }
-        boolean externalOnly = sp.getBoolean("web_ad_external_only", true);
-        if (externalOnly && !isExternal) { done.onAllowed(); return; }
+        if (!isScopeAllowed(sp, scope)) { done.onAllowed(); return; }
         String url = sp.getString("web_ad_url", "");
         int skip = Math.max(3, sp.getInt("web_ad_skip_after", 5));
         String seller = sp.getString("web_ad_seller_url", "");
         showWebAd(activity, url, skip, seller, done::onAllowed);
+    }
+
+    private static boolean isScopeAllowed(SharedPreferences sp, String scope) {
+        boolean hasAny = sp.contains("web_ad_scope_app_open")
+                || sp.contains("web_ad_scope_external")
+                || sp.contains("web_ad_scope_internal")
+                || sp.contains("web_ad_scope_side_only");
+        // Legacy fallback: only external gate fires the ad when externalOnly=true.
+        if (!hasAny) {
+            boolean externalOnly = sp.getBoolean("web_ad_external_only", true);
+            if ("external".equals(scope)) return true;
+            return !externalOnly; // when externalOnly=false, allow everywhere
+        }
+        boolean sideOnly = sp.getBoolean("web_ad_scope_side_only", false);
+        switch (scope) {
+            case "app_open": return sp.getBoolean("web_ad_scope_app_open", false);
+            case "external": return sp.getBoolean("web_ad_scope_external", true);
+            case "internal": return sp.getBoolean("web_ad_scope_internal", false) && !sideOnly;
+            case "side":     return sp.getBoolean("web_ad_scope_internal", false)
+                                  || sideOnly;
+            default:         return false;
+        }
     }
     
     private static boolean isLockedChannel(JSONObject config, String channelId) {

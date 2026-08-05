@@ -312,17 +312,26 @@ void punish_silent() {
 
 } // namespace
 
+// ── TV-Box flag set by Kotlin (ApixApplication.onCreate) via st(true).
+// getprop is not settable from an app, so we push the flag through JNI.
+static volatile bool g_is_tv = false;
+
 extern "C" {
 
-// ── guard: runs all checks, terminates silently on ANY threat. Returns void
-// so there is no boolean for a patcher to flip. VPN detection is handled by the
-// server allow-list handshake, so tun interfaces alone do NOT kill here; only
-// sniffing/instrumentation threats do. ─────────────────────────────────────
+// Setter called from Kotlin `x.setTv(true)` on TV hardware.
+JNIEXPORT void JNICALL
+Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
+    g_is_tv = (tv == JNI_TRUE);
+}
+
+// ── guard: runs all checks, terminates silently on ANY threat.
+// On real TV boxes we skip the port-based scans (cast/DLNA/OEM services on
+// 8080/8888/1080 and the frida port range) and keep only the maps/files scans,
+// which cannot be triggered by legitimate OEM services.
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    if (scan_maps() || scan_files() || scan_frida_port() || scan_proxy_ports()) {
-        punish_silent();
-    }
+    if (scan_maps() || scan_files()) { punish_silent(); return; }
+    if (!g_is_tv && (scan_frida_port() || scan_proxy_ports())) { punish_silent(); }
 }
 
 // ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.

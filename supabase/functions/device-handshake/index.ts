@@ -300,6 +300,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 4.b) Cross-fingerprint ban lookup: even when a user rotates their
+    // device_id (via cloning apps or Widevine wipes) any prior PERMA_BAN /
+    // TAMPERED_MOD row that shares the same APK signature hash is enough to
+    // keep them out. This closes the "reinstall with a new id" bypass.
+    if (status === "ACTIVE" && body.signature_hash) {
+      const sigLc = String(body.signature_hash).toLowerCase();
+      const { data: prior } = await supabase
+        .from("app_users")
+        .select("status, ban_reason")
+        .eq("signature_hash", sigLc)
+        .in("status", ["PERMA_BAN", "TAMPERED_MOD"])
+        .neq("device_id", body.device_id)
+        .limit(1)
+        .maybeSingle();
+      if (prior?.status) {
+        status = prior.status as Status;
+        banReason = `SIG_CROSS_BAN:${prior.ban_reason ?? "linked_device_banned"}`;
+      }
+    }
+
     // VPN gate — response-only, does NOT persist a ban (user may just disable VPN).
     const mergedVpnAllow = Array.from(new Set([...vpnAllowedIps, ...CODE_VPN_ALLOWLIST]));
     const ipAllowedForVpn = mergedVpnAllow.includes(ip);
