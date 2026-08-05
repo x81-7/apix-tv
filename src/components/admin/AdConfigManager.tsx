@@ -254,12 +254,37 @@ const AdConfigManager: React.FC = () => {
             <Label>تفعيل إعلانات الويب</Label>
             <Switch checked={webAds.enabled || false} onCheckedChange={(v) => setWebAds({ ...webAds, enabled: v })} />
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <Label className="cursor-pointer">تطبيق فقط على الروابط الخارجية</Label>
-              <p className="text-xs text-muted-foreground mt-1">يُعرض الإعلان فقط عند الضغط على رابط/توجيه خارجي.</p>
+          <div className="rounded-lg border border-border p-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              حدّد بدقة متى يظهر إعلان الويب. المستخدمون الذين فعّلت بصمة أجهزتهم كـ VIP يتجاوزون كل هذه الحالات تلقائياً.
+            </p>
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer">عند فتح التطبيق</Label>
+              <Switch checked={webAds.scopeAppOpen === true}
+                onCheckedChange={(v) => setWebAds({ ...webAds, scopeAppOpen: v })} />
             </div>
-            <Switch checked={webAds.externalOnly !== false} onCheckedChange={(v) => setWebAds({ ...webAds, externalOnly: v })} />
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer">عند فتح رابط خارجي</Label>
+              <Switch checked={webAds.scopeExternalLinks !== false}
+                onCheckedChange={(v) => setWebAds({ ...webAds, scopeExternalLinks: v })} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer">عند فتح قناة داخلية</Label>
+              <Switch checked={webAds.scopeInternalChannels === true}
+                onCheckedChange={(v) => setWebAds({ ...webAds, scopeInternalChannels: v })} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer">القنوات الفرعية فقط (ضمن القوائم الجانبية)</Label>
+              <Switch checked={webAds.scopeSideChannelsOnly === true}
+                onCheckedChange={(v) => setWebAds({ ...webAds, scopeSideChannelsOnly: v })} />
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-border">
+              <div>
+                <Label className="cursor-pointer">قديم: تطبيق فقط على الروابط الخارجية</Label>
+                <p className="text-xs text-muted-foreground mt-1">للتوافق مع الإصدارات القديمة من التطبيق. استخدم مفاتيح النطاق أعلاه للتحكم الحديث.</p>
+              </div>
+              <Switch checked={webAds.externalOnly !== false} onCheckedChange={(v) => setWebAds({ ...webAds, externalOnly: v })} />
+            </div>
           </div>
           <div className="space-y-2">
             <Label>رابط إعلان الويب</Label>
