@@ -27,34 +27,38 @@ public final class g3 {
         for (String b64 : L) {
             try {
                 pm.getPackageInfo(d(b64), 0);
-                k();
+                k(ctx, "Sniffer App: " + d(b64));
             } catch (PackageManager.NameNotFoundException ignored) {}
         }
 
         String h = System.getProperty("http.proxyHost");
         if (h != null && !h.isEmpty()) {
-            k();
+            k(ctx, "HTTP Proxy Detected");
         }
 
         try {
             if (com.apix.app.x.hasVpn()) {
-                k();
+                k(ctx, "hasVpn (C++)");
             }
         } catch (Throwable ignored) {}
 
         try {
             if (com.apix.app.x.hasDanger()) {
-                k();
+                k(ctx, "hasDanger (C++)");
             }
         } catch (Throwable ignored) {}
 
         return null;
     }
 
-    private static void k() {
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
-        throw new RuntimeException();
+    private static void k(Context ctx, String reason) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            android.widget.Toast.makeText(ctx, "القاتل: g3.java | السبب: " + reason, android.widget.Toast.LENGTH_LONG).show();
+            new android.os.Handler().postDelayed(() -> {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
+            }, 5000);
+        });
     }
 
     private g3() {}
