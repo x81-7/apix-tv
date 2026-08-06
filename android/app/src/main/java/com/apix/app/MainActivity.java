@@ -43,16 +43,26 @@ public class MainActivity extends AppCompatActivity {
         
         webView.loadUrl(WEB_APP_URL);
         
+        // وضعنا تشغيل الحمايات كلها داخل المؤقت (3 ثواني) مع رسالة توضح لحظة الإطلاق
         webView.postDelayed(() -> {
-            AppVerifier.getInstance(MainActivity.this).startMonitor();
+            // 1. رسالة الفضح: ستظهر لتؤكد لك أن MainActivity بدأ بتشغيل الحمايات الآن
+            android.widget.Toast.makeText(MainActivity.this, "MainActivity: جاري إطلاق الحمايات الآن...", android.widget.Toast.LENGTH_SHORT).show();
+            
+            // 2. إطلاق AppVerifier داخل Try-Catch
+            try {
+                AppVerifier.getInstance(MainActivity.this).startMonitor();
+            } catch (Throwable ignored) {}
+            
+            android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(UI_MODE_SERVICE);
+            boolean isTV = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+            
+            // 3. إطلاق GuardRunner داخل Try-Catch
+            if (!isTV) {
+                try {
+                    com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+                } catch (Throwable ignored) {}
+            }
         }, 3000);
-        
-        android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(UI_MODE_SERVICE);
-        boolean isTV = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
-        
-        if (!isTV) {
-            com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
-        }
     }
 
 
