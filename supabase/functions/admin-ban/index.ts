@@ -55,8 +55,22 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    const deviceId = body.device_id as string;
-    if (!deviceId) return json({ error: "device_id required" }, 400);
+    const rawId = (body.device_id as string) || "";
+    if (!rawId) return json({ error: "device_id required" }, 400);
+    const deviceId = rawId.trim();
+    const idLower = deviceId.toLowerCase();
+    // The admin may paste EITHER a real device_id (Widevine ID) OR the SHA-256
+    // signature_hash shown in the panel. We try device_id first, then fall
+    // back to signature_hash so both work transparently.
+    const findTargets = async (): Promise<string[]> => {
+      const byId = await supabase.from("app_users").select("device_id").eq("device_id", deviceId);
+      const ids = new Set<string>((byId.data ?? []).map((r: any) => r.device_id));
+      if (idLower.length === 64) {
+        const bySig = await supabase.from("app_users").select("device_id").eq("signature_hash", idLower);
+        for (const r of bySig.data ?? []) ids.add(r.device_id);
+      }
+      return Array.from(ids);
+    };
 
     if (action === "ban") {
       const status = (body.status as string) ?? "PERMA_BAN";
@@ -64,37 +78,56 @@ Deno.serve(async (req) => {
       const minutes = Number(body.minutes ?? 0);
       const banUntil = minutes > 0 ? new Date(Date.now() + minutes * 60_000).toISOString() : null;
 
-      await supabase
-        .from("app_users")
-        .update({ status, ban_reason: reason, ban_until: banUntil })
-        .eq("device_id", deviceId);
-      await supabase.from("ban_history").insert({
-        device_id: deviceId,
-        status,
-        reason,
-        ban_until: banUntil,
-      });
-      return json({ ok: true });
+      const targets = await findTargets();
+      // If no existing row, create a stub row keyed on whatever the admin
+      // typed so the next handshake for that id/signature will hit the ban.
+      const finalIds = targets.length > 0 ? targets : [deviceId];
+      for (const id of finalIds) {
+        await supabase
+          .from("app_users")
+          .upsert(
+            {
+              device_id: id,
+              status,
+              ban_reason: reason,
+              ban_until: banUntil,
+              // Store the pasted value in signature_hash too so cross-fingerprint
+              // lookup in device-handshake catches it when the real device connects.
+              ...(idLower.length === 64 ? { signature_hash: idLower } : {}),
+              last_seen_at: new Date().toISOString(),
+            },
+            { onConflict: "device_id" },
+          );
+        await supabase.from("ban_history").insert({
+          device_id: id,
+          status,
+          reason,
+          ban_until: banUntil,
+        });
+      }
+      return json({ ok: true, targets: finalIds.length });
     }
 
     if (action === "unban") {
-      await supabase
-        .from("ban_history")
-        .delete()
-        .eq("device_id", deviceId);
-      await supabase
-        .from("app_users")
-        .update({
-          status: "ACTIVE",
-          ban_reason: null,
-          ban_until: null,
-          strike_count: 0,
-          install_count: 0,
-          last_strike_at: null,
-        })
-        .eq("device_id", deviceId);
-      return json({ ok: true });
+      const targets = await findTargets();
+      const finalIds = targets.length > 0 ? targets : [deviceId];
+      for (const id of finalIds) {
+        await supabase.from("ban_history").delete().eq("device_id", id);
+        await supabase
+          .from("app_users")
+          .update({
+            status: "ACTIVE",
+            ban_reason: null,
+            ban_until: null,
+            strike_count: 0,
+            install_count: 0,
+            last_strike_at: null,
+          })
+          .eq("device_id", id);
+      }
+      return json({ ok: true, targets: finalIds.length });
     }
+
 
     if (action === "rename") {
       const raw = (body.custom_name as string | null | undefined) ?? "";
