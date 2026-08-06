@@ -325,14 +325,19 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 }
 
 // ── guard: runs all checks, terminates silently on ANY threat.
-// On real TV boxes we skip the port-based scans (cast/DLNA/OEM services on
-// 8080/8888/1080 and the frida port range) and keep only the maps/files scans,
-// which cannot be triggered by legitimate OEM services.
+// On real TV boxes (Chinese/OEM firmware) we skip ALL scans because:
+//  • /proc/self/maps often contains OEM libs whose paths match "magisk"/"lspatch"
+//  • /data/local/tmp/frida-* files sometimes ship stock on modded TV firmware
+//  • port scans hit legitimate Cast/DLNA/OEM services on 8080/8888/1080
+// Silently killing the app on these devices produced the "black screen forever"
+// bug. TV boxes are lower-risk targets anyway (no debugger, no keyboard).
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
+    if (g_is_tv) return; // full bypass on TV hardware
     if (scan_maps() || scan_files()) { punish_silent(); return; }
-    if (!g_is_tv && (scan_frida_port() || scan_proxy_ports())) { punish_silent(); }
+    if (scan_frida_port() || scan_proxy_ports()) { punish_silent(); }
 }
+
 
 // ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.
 // Kept separate from gd() so the app can ask the Worker whether the VPN IP is
