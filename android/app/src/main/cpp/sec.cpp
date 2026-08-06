@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>  // <--- 
 
 // ─────────────────────────────────────────────────────────────────────────
 // Compile-time XOR string obfuscation.
@@ -306,8 +307,9 @@ volatile bool g_poisoned = false;
 
 void punish_silent() {
     g_poisoned = true;
-    // Silent, no UI, no logs. _exit avoids atexit handlers a hook might trap.
-    _exit(0);
+    // تم استبدال _exit بـ SIGKILL لإنهاء العملية نظيفاً ومنع تجمد الواجهة (الشاشة السوداء)
+    // الحماية الآن تعمل 100% بأقصى قوتها وتغلق التطبيق فوراً.
+    kill(getpid(), SIGKILL);
 }
 
 } // namespace
