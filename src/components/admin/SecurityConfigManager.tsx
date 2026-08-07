@@ -498,7 +498,41 @@ const SecurityConfigManager: React.FC = () => {
                   : <><Github className="w-4 h-4 mr-1" />مزامنة جيت هب</>}
               </Button>
             </div>
+      {/* === 6. Debug Kill Toasts (nvp/tostinfo) === */}
+      <Card className="bg-card border-amber-500/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <Bug className="w-5 h-5 text-amber-500" />
+            رسائل تشخيص القتل (نسخة Debug فقط)
+          </CardTitle>
+          <CardDescription>
+            عند التفعيل، كل حماية تُغلق التطبيق (Java أو C++) ستُظهر رسالة Toast بمكان الاكتشاف
+            (ملف/دالة) لمدة 5 ثوانٍ قبل الإغلاق. <b>لا يعمل إطلاقاً في نسخة Release</b> —
+            حتى لو كان مفعّلاً، نسخة الإصدار تُغلق بصمت دائماً.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary/50 border border-border">
+            <div>
+              <p className="text-sm font-medium text-foreground">تفعيل رسائل القتل في نسخة الديباج</p>
+              <p className="text-xs text-muted-foreground">Debug builds only. Release ignores this flag.</p>
+            </div>
+            <Switch
+              checked={debugKillToasts}
+              onCheckedChange={async (v) => {
+                setDebugKillToasts(v);
+                try {
+                  await adminDb.upsert('system_settings',
+                    { key: 'debug_kill_toasts', value: { enabled: v }, description: 'Debug diagnostic toasts on kill' },
+                    true);
+                  toast.success(v ? 'مُفعّل — سيظهر مصدر القتل في نسخ Debug' : 'مُعطّل — القتل صامت');
+                } catch { toast.error('فشل الحفظ'); setDebugKillToasts(!v); }
+              }}
+            />
           </div>
+        </CardContent>
+      </Card>
+    </div>
         </CardContent>
       </Card>
     </div>
