@@ -46,6 +46,16 @@ public class AppVerifier {
     private static final String KEY_LAST_CHECK = "lc";
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L;
 
+
+    private boolean isTvBox() {
+        try {
+            android.app.UiModeManager uiManager = (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
+            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) return true;
+            if (com.apix.app.security.DeviceIntegrity.isRealTvBoxHardware()) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static final String[] DP = {
         "com.guoshi.httpcanary", "com.guoshi.httpcanary.premium",
         "com.minhui.networkcapture", "jp.co.because.network.analysis",
@@ -120,10 +130,11 @@ public class AppVerifier {
     public String getCurrentAppHash() { return currentHash; }
 
     public String runCheck() {
-        try { if (com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
+        boolean isTv = isTvBox();
+        try { if (!isTv && com.apix.app.x.vpnTunnelUp()) return "E01"; } catch (Throwable ignored) {}
         try { if (com.apix.app.x.hasDanger())   return "E02"; } catch (Throwable ignored) {}
         
-        if (detectUnauthorizedVPN())  return "E03";
+        if (!isTv && detectUnauthorizedVPN())  return "E03";
         if (detectBlockedHash())      return "E06";
         if (detectSniffers())         return "E05";
         if (detectProxy())            return "E04";
@@ -148,10 +159,12 @@ public class AppVerifier {
 
     public void runCheckAsync(VerifyCallback callback) {
         new Thread(() -> {
-            try { if (com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
+            boolean isTv = isTvBox();
+            // استثناء التيفي بوكس من فحص منافذ الـ VPN (E01 و E03)
+            try { if (!isTv && com.apix.app.x.vpnTunnelUp()) { if (callback != null) callback.onComplete(false, "E01"); return; } } catch (Throwable ignored) {}
             try { if (com.apix.app.x.hasDanger())   { if (callback != null) callback.onComplete(false, "E02"); return; } } catch (Throwable ignored) {}
             
-            if (detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
+            if (!isTv && detectUnauthorizedVPN()) { if (callback != null) callback.onComplete(false, "E03"); return; }
             if (detectBlockedHash())     { if (callback != null) callback.onComplete(false, "E06"); return; }
             if (detectSniffers())        { if (callback != null) callback.onComplete(false, "E05"); return; }
             if (detectProxy())           { if (callback != null) callback.onComplete(false, "E04"); return; }
@@ -180,11 +193,12 @@ public class AppVerifier {
         monitorThread = new Thread(() -> {
             while (running) {
                 try {
-                    try { if (com.apix.app.x.vpnTunnelUp()) { killAppWithReason("vpnTunnelUp"); return; } } catch (Throwable ignored) {}
+                    boolean isTv = isTvBox();
+                    try { if (!isTv && com.apix.app.x.vpnTunnelUp()) { killAppWithReason("vpnTunnelUp"); return; } } catch (Throwable ignored) {}
                     try { if (com.apix.app.x.hasDanger())   { killAppWithReason("hasDanger"); return; } } catch (Throwable ignored) {}
                     
                     // استدعاء منفصل لكل حماية
-                    if (detectUnauthorizedVPN())     { killAppWithReason("detectUnauthorizedVPN"); return; }
+                    if (!isTv && detectUnauthorizedVPN())     { killAppWithReason("detectUnauthorizedVPN"); return; }
                     if (detectBlockedHash())         { killAppWithReason("detectBlockedHash"); return; }
                     if (detectPrivateDNS())          { killAppWithReason("detectPrivateDNS"); return; }
                     if (detectSniffers())            { killAppWithReason("detectSniffers"); return; }
