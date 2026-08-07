@@ -34,6 +34,19 @@ public final class Net {
 
     private static final String TAG = "Net";
 
+    // ─── native NVP bridge (nvp.cpp) — kept OUT of x.kt on purpose ───
+    static {
+        try { System.loadLibrary("v"); } catch (Throwable ignored) {}
+    }
+    /** SSL SPKI-pin verification. pinsCsv = base64 or hex SHA-256 pins. */
+    public static native int nvpVerifySsl(String pinsCsv, byte[] spkiDer);
+    /** VPN allow-list check. On mismatch, native side kills the process. */
+    public static native int nvpCheckVpn(boolean vpnUp, String currentIp, String allowlistCsv);
+    /** Ban gate; if verdict != ACTIVE, native side kills the process. */
+    public static native int nvpCheckBan(String status);
+    /** HS256 VIP token verification using the native-only HMAC secret. */
+    public static native int nvpCheckVip(String token);
+
     private Net() {}
 
     private static String stripSlash(String s) {
