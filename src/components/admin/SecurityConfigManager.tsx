@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Shield, Plus, Trash2, Copy, Check, Key, Clock, Eye, EyeOff, Github, Upload, Loader2 } from 'lucide-react';
+import { Shield, Plus, Trash2, Copy, Check, Key, Clock, Eye, EyeOff, Github, Upload, Loader2, Bug } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SignatureEntry { id: string; hash: string; label: string; enabled: boolean; addedAt: number; }
@@ -52,20 +52,23 @@ const SecurityConfigManager: React.FC = () => {
   const [settings, setSettings] = useState<SecuritySettings>(EMPTY_SETTINGS);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
+  const [debugKillToasts, setDebugKillToasts] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [sigRes, blkRes, secRes] = await Promise.all([
+      const [sigRes, blkRes, secRes, dbgRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'security_signatures').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'security_blocked_signatures').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'security_config').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'debug_kill_toasts').maybeSingle(),
       ]);
       const list: SignatureEntry[] = (sigRes.data?.value as any[]) || [];
       const blk: SignatureEntry[] = (blkRes.data?.value as any[]) || [];
       setSignatures(list.sort((a, b) => b.addedAt - a.addedAt));
       setBlockedSignatures(blk.sort((a, b) => b.addedAt - a.addedAt));
       if (secRes.data?.value) setSettings(s => ({ ...s, ...(secRes.data!.value as any) }));
+      setDebugKillToasts(Boolean((dbgRes.data?.value as any)?.enabled));
     } catch { toast.error('فشل تحميل الإعدادات'); }
     finally { setLoading(false); }
   }, []);
