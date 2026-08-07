@@ -14,6 +14,8 @@ import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Debug;
 import android.view.Display;
+import android.app.UiModeManager;
+import android.content.res.Configuration;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -47,11 +49,22 @@ public class AppVerifier {
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L;
 
 
+    // ── الدالة الذكية والمستقلة لاكتشاف التيفي بوكس ──
     private boolean isTvBox() {
         try {
-            android.app.UiModeManager uiManager = (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
-            if (uiManager != null && uiManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) return true;
-            if (com.apix.app.security.DeviceIntegrity.isRealTvBoxHardware()) return true;
+            UiModeManager uiManager = (UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
+            if (uiManager != null && uiManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) return true;
+            
+            // فحص المعالجات الصينية الشهيرة لأجهزة التيفي بوكس
+            String hw = Build.HARDWARE.toLowerCase();
+            String brd = Build.BOARD.toLowerCase();
+            String soc = Build.SOC_MODEL.toLowerCase();
+            String haystack = hw + "|" + brd + "|" + soc;
+            
+            String[] knownTvBoxChips = {"amlogic", "meson", "gxbb", "rockchip", "rk30", "rk31", "rk32", "rk33", "allwinner", "sun50i"};
+            for (String chip : knownTvBoxChips) {
+                if (haystack.contains(chip)) return true;
+            }
         } catch (Exception ignored) {}
         return false;
     }
