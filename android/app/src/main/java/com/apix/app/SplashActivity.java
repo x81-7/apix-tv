@@ -256,17 +256,8 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
-            // Native consolidated guard — obfuscated sniffing/instrumentation
-            // sweep. Silently terminates the process from native code on any
-            // live threat (no boolean returned to Java to patch).
-            try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
-
-            // Run extra guards (DNS / sniffers / signature)
-            String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
-            if (guardMsg != null) {
-                runOnUiThread(() -> showGuardMessage(guardMsg));
-                return;
-            }
+            // One JNI call runs the consolidated native protection sweep.
+            com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
 
             // Server-authoritative anti-tamper / ban handshake
             String verdictStatus = "ERROR";
@@ -322,8 +313,7 @@ public class SplashActivity extends AppCompatActivity {
             boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
 
             Class<?> target = (gateEnabled && !bypassed) ? GateActivity.class : ComposeActivity.class;
-            new com.apix.app.vip.VipChecker(SplashActivity.this, com.apix.app.Net.base(), com.apix.app.Net.anon()).check((active, expiresAt) ->
-              runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
+            runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
                 Intent intent = new Intent(SplashActivity.this, target);
                 String actionJson = getIntent().getStringExtra("notification_action");
                 if (actionJson != null && !actionJson.isEmpty()) intent.putExtra("notification_action", actionJson);
@@ -331,73 +321,9 @@ public class SplashActivity extends AppCompatActivity {
                 finish();
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
                 AppVerifier.getInstance(SplashActivity.this).startMonitor();
-            })));
+            }));
         }).start();
     }
 
-    private void showGuardMessage(String msg) {
-        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-            .setTitle("تنبيه")
-            .setMessage(msg)
-            .setCancelable(false)
-            .setPositiveButton("إعادة المحاولة", (d, w) -> {
-                d.dismiss();
-                proceedToMain();
-            })
-            .setNegativeButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
-            .show();
-    }
-
-    /** Blocking full-screen message for panel bans / VPN blocks. */
-    private void showBanMessage(String msg) {
-        try {
-            progressBar.setVisibility(View.GONE);
-            statusText.setVisibility(View.GONE);
-            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
-            errorText.setVisibility(View.VISIBLE);
-            errorText.setText(msg != null && !msg.isEmpty()
-                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق");
-        } catch (Throwable ignored) {}
-        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-            .setTitle("تم إيقاف الوصول")
-            .setMessage(msg != null && !msg.isEmpty()
-                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق")
-            .setCancelable(false)
-            .setPositiveButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
-            .show();
-    }
-
-    /**
-     * VPN block enforced as a FORCED CLOSE. We surface the reason so the user
-     * knows why, then terminate the app automatically after a short delay
-     * (and immediately if they tap the exit button). Unlike a panel ban, a
-     * disallowed VPN must not leave the app open in the background.
-     */
-    private void showVpnBlockThenClose(String msg) {
-        final String text = (msg != null && !msg.isEmpty())
-                ? msg : "يرجى إيقاف الـ VPN لاستخدام التطبيق";
-        try {
-            progressBar.setVisibility(View.GONE);
-            statusText.setVisibility(View.GONE);
-            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
-            errorText.setVisibility(View.VISIBLE);
-            errorText.setText(text);
-        } catch (Throwable ignored) {}
-        final Runnable kill = () -> {
-            try { finishAffinity(); } catch (Throwable ignored) {}
-            try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
-            System.exit(0);
-        };
-        try {
-            new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-                .setTitle("تم إيقاف الوصول")
-                .setMessage(text)
-                .setCancelable(false)
-                .setPositiveButton("خروج", (d, w) -> kill.run())
-                .show();
-        } catch (Throwable ignored) {}
-        // Force close automatically even if the user ignores the dialog.
-        new Handler(Looper.getMainLooper()).postDelayed(kill, 4000);
-    }
 }
 

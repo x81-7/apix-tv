@@ -95,7 +95,13 @@ public final class AdManager {
 
     // ── App Open Gate ─────────────────────────────────────────────────
     public static void maybeRunAppOpenGate(Activity activity, GateCallback callback) {
-        if (isVip(activity)) { callback.onAllowed(); return; }
+        new com.apix.app.vip.VipChecker(activity, Net.base(), Net.anon()).check((active, expiresAt) -> {
+            if (active) activity.runOnUiThread(callback::onAllowed);
+            else maybeRunAppOpenGateResolved(activity, callback);
+        });
+    }
+
+    private static void maybeRunAppOpenGateResolved(Activity activity, GateCallback callback) {
 
         new Thread(() -> {
             // جلب config في الخلفية — لا NetworkOnMainThreadException
@@ -185,12 +191,7 @@ public final class AdManager {
         maybeRunUnlockGate(activity, channelId, false, callback);
     }
 
-    /**
-     * @param isSub true when the opened item is a SUB-channel wired directly to
-     *              the player. The WebView (CPM) ad is gated to sub-channels and
-     *              runs even for activated/VIP users (per product policy), while
-     *              rewarded/local ads still skip for VIP.
-     */
+    /** @param isSub true when the opened item is a sub-channel wired to the player. */
     public static void maybeRunUnlockGate(Activity activity, String channelId, boolean isSub, GateCallback callback) {
         new com.apix.app.vip.VipChecker(activity, Net.base(), Net.anon()).check((active, expiresAt) ->
             activity.runOnUiThread(() -> maybeRunUnlockGateResolved(activity, channelId, isSub, active, callback)));
