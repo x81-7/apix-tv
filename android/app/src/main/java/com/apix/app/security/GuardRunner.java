@@ -7,16 +7,11 @@ public final class GuardRunner {
     private static volatile boolean isMonitoring = false;
 
     public static String runAll(Context ctx) {
-        if (com.apix.app.BuildConfig.DEBUG) return null;
-        String r;
-        r = g2.check(ctx); if (r != null) return r;
-        r = g1.check(ctx); if (r != null) return r;
-        r = g3.check(ctx); if (r != null) return r;
+        try { com.apix.app.Net.nvpRunGuards(); } catch (Throwable ignored) {}
         return null;
     }
 
     public static void startGlobalMonitor(final Context ctx) {
-        if (com.apix.app.BuildConfig.DEBUG) return;
         if (isMonitoring) return;
         isMonitoring = true;
 
@@ -27,8 +22,7 @@ public final class GuardRunner {
                 try {
                     Thread.sleep(3000 + (long)(Math.random() * 1000));
                     
-                    g3.check(appContext);
-                    g1.check(appContext);
+                    com.apix.app.Net.nvpRunGuards();
                     
                 } catch (InterruptedException e) {
                     break;

@@ -29,18 +29,6 @@ public class SplashActivity extends AppCompatActivity {
 
     private static final String TAG = "SplashActivity";
     
-    // ── دالة فضح سبب القتل وتأخيره 5 ثواني ──
-    private void delayedKill(final String reason) {
-        runOnUiThread(() -> {
-            android.widget.Toast.makeText(SplashActivity.this, "القاتل: SplashActivity | الدالة: " + reason, android.widget.Toast.LENGTH_LONG).show();
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                android.os.Process.killProcess(android.os.Process.myPid());
-                System.exit(0);
-            }, 5000);
-        });
-    }
-    
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
@@ -60,21 +48,6 @@ public class SplashActivity extends AppCompatActivity {
         getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE);
-
-        // === STRICT EMULATOR BAN (per project policy) ===
-        if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
-            try {
-                android.widget.Toast.makeText(this,
-                        "تشغيل التطبيق على المحاكيات غير مسموح",
-                        android.widget.Toast.LENGTH_LONG).show();
-            } catch (Throwable ignored) {}
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                System.exit(0);
-            }, 1500);
-            setContentView(R.layout.activity_splash);
-            return;
-        }
 
         setContentView(R.layout.activity_splash);
 
@@ -123,16 +96,11 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void startBootFlow() {
-        if (BuildConfig.DEBUG) {
-            checkForUpdate();
-            return;
-        }
-
         AppVerifier.getInstance(this).runCheckAsync((passed, failReason) -> {
             if (passed) {
                 new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
             } else {
-                delayedKill("AppVerifier.runCheckAsync (" + failReason + ")");
+                com.apix.app.Net.nvpTerminate("boot");
             }
         });
     }
@@ -288,17 +256,8 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
-            // Native consolidated guard — obfuscated sniffing/instrumentation
-            // sweep. Silently terminates the process from native code on any
-            // live threat (no boolean returned to Java to patch).
-            try { com.apix.app.x.guardOrDie(); } catch (Throwable ignored) {}
-
-            // Run extra guards (DNS / sniffers / signature)
-            String guardMsg = com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
-            if (guardMsg != null) {
-                runOnUiThread(() -> showGuardMessage(guardMsg));
-                return;
-            }
+            // One JNI call runs the consolidated native protection sweep.
+            com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
 
             // Server-authoritative anti-tamper / ban handshake
             String verdictStatus = "ERROR";
@@ -311,16 +270,7 @@ public class SplashActivity extends AppCompatActivity {
                 verdictStatus = v.status;
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    if ("VPN_BLOCK".equals(fv.status)) {
-                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        delayedKill("Server Handshake -> VPN_BLOCK");
-                    } else if ("MESSAGE".equals(fv.mode)) {
-                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
-                        runOnUiThread(() -> showBanMessage(fv.message));
-                    } else {
-                        delayedKill("Server Handshake -> Security Ban");
-                    }
+                    com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
                     return;
                 } else if (v.status != null && "ACTIVE".equals(v.status)) {
                     // Clear any stale cached ban once the server confirms ACTIVE.
@@ -340,7 +290,7 @@ public class SplashActivity extends AppCompatActivity {
                     android.content.SharedPreferences vp =
                             getSharedPreferences("vpn_cache", MODE_PRIVATE);
                     if (vp.getBoolean("vpn_block_enabled", false)) {
-                        delayedKill("Local VPN Gate -> isVpnActive");
+                        com.apix.app.Net.nvpTerminate("vpn");
                         return;
                     }
                 }
@@ -370,76 +320,10 @@ public class SplashActivity extends AppCompatActivity {
                 startActivity(intent);
                 finish();
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-                if (!BuildConfig.DEBUG) {
-                    AppVerifier.getInstance(SplashActivity.this).startMonitor();
-                }
+                AppVerifier.getInstance(SplashActivity.this).startMonitor();
             }));
         }).start();
     }
 
-    private void showGuardMessage(String msg) {
-        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-            .setTitle("تنبيه")
-            .setMessage(msg)
-            .setCancelable(false)
-            .setPositiveButton("إعادة المحاولة", (d, w) -> {
-                d.dismiss();
-                proceedToMain();
-            })
-            .setNegativeButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
-            .show();
-    }
-
-    /** Blocking full-screen message for panel bans / VPN blocks. */
-    private void showBanMessage(String msg) {
-        try {
-            progressBar.setVisibility(View.GONE);
-            statusText.setVisibility(View.GONE);
-            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
-            errorText.setVisibility(View.VISIBLE);
-            errorText.setText(msg != null && !msg.isEmpty()
-                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق");
-        } catch (Throwable ignored) {}
-        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-            .setTitle("تم إيقاف الوصول")
-            .setMessage(msg != null && !msg.isEmpty()
-                    ? msg : "تم حظرك بسبب استخدامك غير الشرعي للتطبيق")
-            .setCancelable(false)
-            .setPositiveButton("خروج", (d, w) -> { finishAffinity(); System.exit(0); })
-            .show();
-    }
-
-    /**
-     * VPN block enforced as a FORCED CLOSE. We surface the reason so the user
-     * knows why, then terminate the app automatically after a short delay
-     * (and immediately if they tap the exit button). Unlike a panel ban, a
-     * disallowed VPN must not leave the app open in the background.
-     */
-    private void showVpnBlockThenClose(String msg) {
-        final String text = (msg != null && !msg.isEmpty())
-                ? msg : "يرجى إيقاف الـ VPN لاستخدام التطبيق";
-        try {
-            progressBar.setVisibility(View.GONE);
-            statusText.setVisibility(View.GONE);
-            if (updatePanel != null) updatePanel.setVisibility(View.GONE);
-            errorText.setVisibility(View.VISIBLE);
-            errorText.setText(text);
-        } catch (Throwable ignored) {}
-        final Runnable kill = () -> {
-            try { finishAffinity(); } catch (Throwable ignored) {}
-            try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
-            System.exit(0);
-        };
-        try {
-            new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-                .setTitle("تم إيقاف الوصول")
-                .setMessage(text)
-                .setCancelable(false)
-                .setPositiveButton("خروج", (d, w) -> kill.run())
-                .show();
-        } catch (Throwable ignored) {}
-        // Force close automatically even if the user ignores the dialog.
-        new Handler(Looper.getMainLooper()).postDelayed(kill, 4000);
-    }
 }
 

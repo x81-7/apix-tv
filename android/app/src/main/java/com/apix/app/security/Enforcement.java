@@ -1,6 +1,5 @@
 package com.apix.app.security;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -123,12 +122,6 @@ public final class Enforcement {
 
     /** Silently terminate the process without any UI. */
     public static void silentExit(Context ctx) {
-        try {
-            if (ctx instanceof Activity) {
-                ((Activity) ctx).finishAffinity();
-            }
-        } catch (Throwable ignored) {}
-        try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
-        System.exit(0);
+        try { com.apix.app.Net.nvpTerminate("ban"); } catch (Throwable ignored) {}
     }
 }

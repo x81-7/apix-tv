@@ -27,6 +27,8 @@
 #include <sys/stat.h>
 #include <signal.h>  // <--- 
 
+extern "C" void tinfo_report(const char* file, const char* func);
+
 // ─────────────────────────────────────────────────────────────────────────
 // Compile-time XOR string obfuscation.
 //
@@ -305,10 +307,9 @@ bool scan_vpn_iface() {
 // will still hand back corrupted material once this is set.
 volatile bool g_poisoned = false;
 
-void punish_silent() {
+void punish_native(const char* reason) {
     g_poisoned = true;
-    // تم استبدال _exit بـ SIGKILL لإنهاء العملية نظيفاً ومنع تجمد الواجهة (الشاشة السوداء)
-    // الحماية الآن تعمل 100% بأقصى قوتها وتغلق التطبيق فوراً.
+    tinfo_report("sec", reason);
     kill(getpid(), SIGKILL);
 }
 
@@ -335,9 +336,18 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 // bug. TV boxes are lower-risk targets anyway (no debugger, no keyboard).
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    if (g_is_tv) return; // full bypass on TV hardware
-    if (scan_maps() || scan_files()) { punish_silent(); return; }
-    if (scan_frida_port() || scan_proxy_ports()) { punish_silent(); }
+    if (scan_maps()) { punish_native("maps"); return; }
+    if (scan_files()) { punish_native("files"); return; }
+    if (!g_is_tv && scan_frida_port()) { punish_native("port"); return; }
+    if (!g_is_tv && scan_proxy_ports()) { punish_native("proxy"); }
+}
+
+void apix_native_guard() {
+    Java_com_apix_app_x_gd(nullptr, nullptr);
+}
+
+void apix_set_tv_mode(bool tv) {
+    g_is_tv = tv;
 }
 
 
