@@ -192,7 +192,12 @@ public final class AdManager {
      *              rewarded/local ads still skip for VIP.
      */
     public static void maybeRunUnlockGate(Activity activity, String channelId, boolean isSub, GateCallback callback) {
-        final boolean vip = isVip(activity);
+        new com.apix.app.vip.VipChecker(activity, Net.base(), Net.anon()).check((active, expiresAt) ->
+            activity.runOnUiThread(() -> maybeRunUnlockGateResolved(activity, channelId, isSub, active, callback)));
+    }
+
+    private static void maybeRunUnlockGateResolved(Activity activity, String channelId, boolean isSub,
+                                                    boolean vip, GateCallback callback) {
 
         new Thread(() -> {
             JSONObject freshConfig = null;
@@ -241,7 +246,13 @@ public final class AdManager {
 
     // ── External Gate (روابط خارجية) ──────────────────────────────────
     public static void maybeRunExternalGate(Activity activity, GateCallback callback) {
-        if (isVip(activity)) { callback.onAllowed(); return; }
+        new com.apix.app.vip.VipChecker(activity, Net.base(), Net.anon()).check((active, expiresAt) -> {
+            if (active) activity.runOnUiThread(callback::onAllowed);
+            else maybeRunExternalGateResolved(activity, callback);
+        });
+    }
+
+    private static void maybeRunExternalGateResolved(Activity activity, GateCallback callback) {
 
         new Thread(() -> {
             JSONObject freshConfig = null;
@@ -380,6 +391,7 @@ public final class AdManager {
     }
 
     public static void showSequentialAds(Activity activity, GateCallback callback) {
+        if (isVip(activity)) { callback.onAllowed(); return; }
         SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String raw = sp.getString(KEY_CUSTOM_ADS, "[]");
         int forcedCount = Math.max(1, sp.getInt(KEY_FORCED_COUNT, 1));

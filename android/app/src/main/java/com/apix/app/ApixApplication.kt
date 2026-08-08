@@ -62,7 +62,6 @@ class ApixApplication : Application(), ImageLoaderFactory {
      * device is recorded server-side and will never pass the handshake again.
      */
     private fun registerRuntimeGuard() {
-        if (BuildConfig.DEBUG) return
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) { runRuntimeGuard(activity) }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -81,8 +80,8 @@ class ApixApplication : Application(), ImageLoaderFactory {
             try {
                 // Native obfuscated sweep first — silently kills from native on
                 // any live sniffing/instrumentation threat detected mid-session.
-                try { x.guardOrDie() } catch (_: Throwable) {}
-                val danger = try { DeviceIntegrity.environmentDanger(applicationContext) } catch (_: Throwable) { null }
+                try { Net.nvpRunGuards() } catch (_: Throwable) {}
+                val danger: String? = null
                 val vpnOn = try { DeviceIntegrity.isVpnActive(applicationContext) } catch (_: Throwable) { false }
                 if (danger != null) {
                     val supaUrl = try { Net.base() } catch (_: Throwable) { null }

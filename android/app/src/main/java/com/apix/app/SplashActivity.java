@@ -29,18 +29,6 @@ public class SplashActivity extends AppCompatActivity {
 
     private static final String TAG = "SplashActivity";
     
-    // ── دالة فضح سبب القتل وتأخيره 5 ثواني ──
-    private void delayedKill(final String reason) {
-        runOnUiThread(() -> {
-            android.widget.Toast.makeText(SplashActivity.this, "القاتل: SplashActivity | الدالة: " + reason, android.widget.Toast.LENGTH_LONG).show();
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                android.os.Process.killProcess(android.os.Process.myPid());
-                System.exit(0);
-            }, 5000);
-        });
-    }
-    
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView errorText;
@@ -60,21 +48,6 @@ public class SplashActivity extends AppCompatActivity {
         getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE);
-
-        // === STRICT EMULATOR BAN (per project policy) ===
-        if (!BuildConfig.DEBUG && com.apix.app.security.DeviceIntegrity.shouldStrictBanEmulator(this)) {
-            try {
-                android.widget.Toast.makeText(this,
-                        "تشغيل التطبيق على المحاكيات غير مسموح",
-                        android.widget.Toast.LENGTH_LONG).show();
-            } catch (Throwable ignored) {}
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finishAffinity();
-                System.exit(0);
-            }, 1500);
-            setContentView(R.layout.activity_splash);
-            return;
-        }
 
         setContentView(R.layout.activity_splash);
 
@@ -123,16 +96,11 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void startBootFlow() {
-        if (BuildConfig.DEBUG) {
-            checkForUpdate();
-            return;
-        }
-
         AppVerifier.getInstance(this).runCheckAsync((passed, failReason) -> {
             if (passed) {
                 new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
             } else {
-                delayedKill("AppVerifier.runCheckAsync (" + failReason + ")");
+                com.apix.app.Net.nvpTerminate("boot");
             }
         });
     }
@@ -311,16 +279,7 @@ public class SplashActivity extends AppCompatActivity {
                 verdictStatus = v.status;
                 if (v.status != null && !"ACTIVE".equals(v.status) && !"ERROR".equals(v.status)) {
                     final com.apix.app.security.HandshakeClient.Verdict fv = v;
-                    if ("VPN_BLOCK".equals(fv.status)) {
-                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        delayedKill("Server Handshake -> VPN_BLOCK");
-                    } else if ("MESSAGE".equals(fv.mode)) {
-                        com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, fv);
-                        if (fv.wipe) com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
-                        runOnUiThread(() -> showBanMessage(fv.message));
-                    } else {
-                        delayedKill("Server Handshake -> Security Ban");
-                    }
+                    com.apix.app.security.Enforcement.enforce(SplashActivity.this, fv);
                     return;
                 } else if (v.status != null && "ACTIVE".equals(v.status)) {
                     // Clear any stale cached ban once the server confirms ACTIVE.
@@ -340,7 +299,7 @@ public class SplashActivity extends AppCompatActivity {
                     android.content.SharedPreferences vp =
                             getSharedPreferences("vpn_cache", MODE_PRIVATE);
                     if (vp.getBoolean("vpn_block_enabled", false)) {
-                        delayedKill("Local VPN Gate -> isVpnActive");
+                        com.apix.app.Net.nvpTerminate("vpn");
                         return;
                     }
                 }
@@ -363,17 +322,16 @@ public class SplashActivity extends AppCompatActivity {
             boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
 
             Class<?> target = (gateEnabled && !bypassed) ? GateActivity.class : ComposeActivity.class;
-            runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
+            new com.apix.app.vip.VipChecker(SplashActivity.this, com.apix.app.Net.base(), com.apix.app.Net.anon()).check((active, expiresAt) ->
+              runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
                 Intent intent = new Intent(SplashActivity.this, target);
                 String actionJson = getIntent().getStringExtra("notification_action");
                 if (actionJson != null && !actionJson.isEmpty()) intent.putExtra("notification_action", actionJson);
                 startActivity(intent);
                 finish();
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-                if (!BuildConfig.DEBUG) {
-                    AppVerifier.getInstance(SplashActivity.this).startMonitor();
-                }
-            }));
+                AppVerifier.getInstance(SplashActivity.this).startMonitor();
+            })));
         }).start();
     }
 
