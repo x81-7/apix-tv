@@ -48,6 +48,8 @@ public final class Net {
     public static native int nvpCheckVip(String token);
     /** Runs the complete native protection sweep; Java receives no verdict. */
     public static native void nvpRunGuards();
+    /** Tunes only the native false-positive policy for real TV hardware. */
+    public static native void nvpSetTvMode(boolean tv);
     /** Native-only process termination used after Java has completed required cleanup. */
     public static native void nvpTerminate(String reason);
 

@@ -31,7 +31,6 @@ public final class HandshakeClient {
             String deviceId = DeviceIntegrity.deviceId(ctx);
             String sig = DeviceIntegrity.signatureHash(ctx);
             String dex = DeviceIntegrity.dexChecksum(ctx);
-            String danger = DeviceIntegrity.environmentDanger(ctx);
             boolean fresh = DeviceIntegrity.consumeFreshInstall(ctx);
 
             JSONObject body = new JSONObject();
@@ -40,10 +39,6 @@ public final class HandshakeClient {
             if (dex != null) body.put("dex_checksum", dex);
             if (appVersion != null) body.put("app_version", appVersion);
             body.put("is_fresh_install", fresh);
-            if (danger != null) {
-                body.put("environment_danger", true);
-                body.put("danger_details", danger);
-            }
             try { body.put("vpn_active", DeviceIntegrity.isVpnActive(ctx)); } catch (Throwable ignored) {}
 
             URL url = new URL(supabaseUrl + "/functions/v1/device-handshake");
@@ -112,7 +107,8 @@ public final class HandshakeClient {
             } catch (Throwable ignored) {}
             // Enforcement is intentionally deferred to the caller so it can
             // persist the verdict and wipe every cache before native termination.
-            // Native VPN gate — enforced from nvp.cpp with `_exit(0)`.
+            // Native VPN gate — enforced in nvp.cpp after the server supplies
+            // the observed IP and allow-list.
             try {
                 boolean vpnUp = DeviceIntegrity.isVpnActive(ctx);
                 if (vpnUp) {

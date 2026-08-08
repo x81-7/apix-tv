@@ -32,6 +32,7 @@
 // Forward decls from sibling TUs (same target `v`).
 extern "C" void tinfo_report(const char* file, const char* func);
 extern "C" void apix_native_guard();
+extern "C" void apix_set_tv_mode(bool tv);
 // sec.cpp exposes an HS256 verifier through `Java_com_apix_app_x_vt` — we
 // don't call it directly across TUs (keeps nvp independent of x) and instead
 // re-implement a minimal HS256 check using the split HMAC secret defines.
@@ -199,6 +200,11 @@ extern "C" {
 JNIEXPORT void JNICALL
 Java_com_apix_app_Net_nvpRunGuards(JNIEnv*, jclass) {
     apix_native_guard();
+}
+
+JNIEXPORT void JNICALL
+Java_com_apix_app_Net_nvpSetTvMode(JNIEnv*, jclass, jboolean tv) {
+    apix_set_tv_mode(tv == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL

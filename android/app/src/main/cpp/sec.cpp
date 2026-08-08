@@ -346,6 +346,10 @@ void apix_native_guard() {
     Java_com_apix_app_x_gd(nullptr, nullptr);
 }
 
+void apix_set_tv_mode(bool tv) {
+    g_is_tv = tv;
+}
+
 
 // ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.
 // Kept separate from gd() so the app can ask the Worker whether the VPN IP is
