@@ -26,6 +26,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
+#include <signal.h>
 #include <vector>
 #include <ctime>
 
