@@ -22,12 +22,14 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 
 namespace {
     // Runtime gate. Java sets this from BuildConfig.DEBUG && admin toggle.
     // Default = false ensures a Release build never leaks a toast even if
     // the Java setter is never invoked.
     std::atomic<bool> g_debug_enabled{false};
+    std::atomic<bool> g_runtime_debug{false};
 
     // Compile-time XOR obfuscation to keep the toast prefix off .rodata.
     template <size_t N>
@@ -65,6 +67,11 @@ Java_com_apix_app_security_TostInfo_jniSetDebugEnabled(JNIEnv*, jclass, jboolean
     g_debug_enabled.store(enabled == JNI_TRUE);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_apix_app_security_TostInfo_jniSetRuntimeDebug(JNIEnv*, jclass, jboolean enabled) {
+    g_runtime_debug.store(enabled == JNI_TRUE);
+}
+
 // Java bootstrap so we can call back into TostInfo.showToastStatic() safely.
 extern "C" JNIEXPORT void JNICALL
 Java_com_apix_app_security_TostInfo_jniBind(JNIEnv* env, jclass cls) {
@@ -78,16 +85,27 @@ Java_com_apix_app_security_TostInfo_jniBind(JNIEnv* env, jclass cls) {
 // `file`/`func` are compile-time-known short tokens (already XOR-obfuscated
 // by their call sites), never full paths.
 static void tinfo_dispatch(const char* file, const char* func) {
-    if (!g_debug_enabled.load()) {
-        _exit(0);
+#if APIX_RELEASE_BUILD
+    (void)file;
+    (void)func;
+    kill(getpid(), SIGKILL);
+    _exit(137);
+#else
+    if (!g_runtime_debug.load() || !g_debug_enabled.load()) {
+        kill(getpid(), SIGKILL);
+        _exit(137);
     }
     if (g_vm == nullptr || g_tost_cls == nullptr || g_show_mid == nullptr) {
-        _exit(0);
+        kill(getpid(), SIGKILL);
+        _exit(137);
     }
     JNIEnv* env = nullptr;
     bool attached = false;
     if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) _exit(0);
+        if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+            kill(getpid(), SIGKILL);
+            _exit(137);
+        }
         attached = true;
     }
     std::string msg = PFX.dec();
@@ -100,7 +118,9 @@ static void tinfo_dispatch(const char* file, const char* func) {
     if (attached) g_vm->DetachCurrentThread();
     // Give the toast 5 seconds on-screen, then terminate.
     sleep(5);
-    _exit(0);
+    kill(getpid(), SIGKILL);
+    _exit(137);
+#endif
 }
 
 // Public C entry the other cpp files (nvp/sec/n1/n2/n3) link against.

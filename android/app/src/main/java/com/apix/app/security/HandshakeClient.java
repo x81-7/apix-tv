@@ -110,12 +110,8 @@ public final class HandshakeClient {
                     com.apix.app.security.TostInfo.setDebugEnabled(ctx, jo.optBoolean("debug_kill_toasts", false));
                 }
             } catch (Throwable ignored) {}
-            // Native ban gate — a Smali patch on this Java caller cannot skip it.
-            try {
-                if (!"ERROR".equalsIgnoreCase(v.status)) {
-                    com.apix.app.Net.nvpCheckBan(v.status);
-                }
-            } catch (Throwable ignored) {}
+            // Enforcement is intentionally deferred to the caller so it can
+            // persist the verdict and wipe every cache before native termination.
             // Native VPN gate — enforced from nvp.cpp with `_exit(0)`.
             try {
                 boolean vpnUp = DeviceIntegrity.isVpnActive(ctx);

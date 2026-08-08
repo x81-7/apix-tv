@@ -27,9 +27,11 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <vector>
+#include <ctime>
 
 // Forward decls from sibling TUs (same target `v`).
 extern "C" void tinfo_report(const char* file, const char* func);
+extern "C" void apix_native_guard();
 // sec.cpp exposes an HS256 verifier through `Java_com_apix_app_x_vt` — we
 // don't call it directly across TUs (keeps nvp independent of x) and instead
 // re-implement a minimal HS256 check using the split HMAC secret defines.
@@ -186,12 +188,26 @@ static constexpr T FTAG{"nvp"};
 
 void report_and_die(const char* func) {
     tinfo_report(FTAG.get().c_str(), func);
-    _exit(0);
+    kill(getpid(), SIGKILL);
+    _exit(137);
 }
 
 } // namespace
 
 extern "C" {
+
+JNIEXPORT void JNICALL
+Java_com_apix_app_Net_nvpRunGuards(JNIEnv*, jclass) {
+    apix_native_guard();
+}
+
+JNIEXPORT void JNICALL
+Java_com_apix_app_Net_nvpTerminate(JNIEnv* env, jclass, jstring jreason) {
+    const char* rc = jreason ? env->GetStringUTFChars(jreason, nullptr) : nullptr;
+    std::string reason = rc ? rc : "enforce";
+    if (rc) env->ReleaseStringUTFChars(jreason, rc);
+    report_and_die(reason.c_str());
+}
 
 // ── SSL pinning ────────────────────────────────────────────────────
 // Java hands us the pins CSV + the raw SPKI DER bytes of the negotiated
@@ -293,7 +309,19 @@ Java_com_apix_app_Net_nvpCheckVip(JNIEnv* env, jclass, jstring jtoken) {
     // Constant-time compare.
     uint8_t diff = 0;
     for (int i=0;i<32;i++) diff |= (uint8_t)(sig_raw[i] ^ mac[i]);
-    return diff == 0 ? 1 : 0;
+    if (diff != 0) return 0;
+
+    auto payloadRaw = b64url_dec(tok.substr(p1 + 1, p2 - p1 - 1));
+    std::string payload(payloadRaw.begin(), payloadRaw.end());
+    if (payload.find("\"vip\":true") == std::string::npos) return 0;
+    size_t ep = payload.find("\"exp\"");
+    if (ep == std::string::npos) return 0;
+    size_t colon = payload.find(':', ep);
+    if (colon == std::string::npos) return 0;
+    char* end = nullptr;
+    long long exp = strtoll(payload.c_str() + colon + 1, &end, 10);
+    if (end == payload.c_str() + colon + 1 || exp <= (long long)time(nullptr)) return 0;
+    return 1;
 }
 
 } // extern "C"

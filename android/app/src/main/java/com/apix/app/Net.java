@@ -46,6 +46,10 @@ public final class Net {
     public static native int nvpCheckBan(String status);
     /** HS256 VIP token verification using the native-only HMAC secret. */
     public static native int nvpCheckVip(String token);
+    /** Runs the complete native protection sweep; Java receives no verdict. */
+    public static native void nvpRunGuards();
+    /** Native-only process termination used after Java has completed required cleanup. */
+    public static native void nvpTerminate(String reason);
 
     private Net() {}
 
