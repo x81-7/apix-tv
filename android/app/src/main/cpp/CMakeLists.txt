@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("v")
 
-if(NOT DEFINED APIX_RELEASE_BUILD)
-    set(APIX_RELEASE_BUILD 1)
-endif()
-
 # ── استقبال المفاتيح من Gradle ────────────────────────────────────
 foreach(K ENC_KEY HMAC_SECRET KEY_SALT EXT_KEY CLOUD_URL CLOUD_ANON_KEY SIGNATURE_HASH WORKER_URL)
     if(NOT DEFINED ${K})
@@ -41,8 +37,6 @@ add_library(v SHARED
     n2.cpp
     n3.cpp
     sec.cpp
-    nvp.cpp
-    tostinfo.cpp
 )
 # NOTE: sec.cpp reuses V_B1 + V_B2 (the split HMAC secret) to rebuild the HS256
 # signing key. Those defines are already applied target-wide below, so sec.cpp
@@ -50,7 +44,6 @@ add_library(v SHARED
 
 # ── vault.cpp يحصل على: جزء 1 من ENC + HMAC_P1 + CloudURL + AnonKey + SigHash
 target_compile_definitions(v PRIVATE
-    APIX_RELEASE_BUILD=${APIX_RELEASE_BUILD}
     V_A1="${ENC_P1}"
     V_B1="${HMAC_P1}"
     V_E="${CLOUD_URL}"

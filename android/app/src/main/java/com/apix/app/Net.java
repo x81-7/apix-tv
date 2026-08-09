@@ -34,25 +34,6 @@ public final class Net {
 
     private static final String TAG = "Net";
 
-    // ─── native NVP bridge (nvp.cpp) — kept OUT of x.kt on purpose ───
-    static {
-        try { System.loadLibrary("v"); } catch (Throwable ignored) {}
-    }
-    /** SSL SPKI-pin verification. pinsCsv = base64 or hex SHA-256 pins. */
-    public static native int nvpVerifySsl(String pinsCsv, byte[] spkiDer);
-    /** VPN allow-list check. On mismatch, native side kills the process. */
-    public static native int nvpCheckVpn(boolean vpnUp, String currentIp, String allowlistCsv);
-    /** Ban gate; if verdict != ACTIVE, native side kills the process. */
-    public static native int nvpCheckBan(String status);
-    /** HS256 VIP token verification using the native-only HMAC secret. */
-    public static native int nvpCheckVip(String token);
-    /** Runs the complete native protection sweep; Java receives no verdict. */
-    public static native void nvpRunGuards();
-    /** Tunes only the native false-positive policy for real TV hardware. */
-    public static native void nvpSetTvMode(boolean tv);
-    /** Native-only process termination used after Java has completed required cleanup. */
-    public static native void nvpTerminate(String reason);
-
     private Net() {}
 
     private static String stripSlash(String s) {
@@ -178,18 +159,10 @@ public final class Net {
         https.connect();
         Certificate[] chain = https.getServerCertificates();
         if (chain == null || chain.length == 0) throw new Exception("pin: empty chain");
-        String csv = android.text.TextUtils.join(",", expected);
         for (Certificate c : chain) {
             if (!(c instanceof X509Certificate)) continue;
-            byte[] spki = c.getPublicKey().getEncoded();
-            // Delegate to native nvp.cpp — a hooked Java verifier cannot lie.
-            try {
-                if (nvpVerifySsl(csv, spki) == 1) return;
-            } catch (Throwable ignored) {
-                // Fallback: legacy Java path
-                String pin = spkiSha256((X509Certificate) c);
-                if (expected.contains(pin)) return;
-            }
+            String pin = spkiSha256((X509Certificate) c);
+            if (expected.contains(pin)) return; // match found anywhere in chain
         }
         throw new Exception("pin: no matching SPKI pin");
     }

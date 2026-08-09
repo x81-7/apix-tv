@@ -53,7 +53,6 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
           ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
-          APP_API_HMAC_SECRET: ${{ secrets.APP_API_HMAC_SECRET }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
@@ -77,7 +76,6 @@ jobs:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           EXTERNAL_PANEL_DECRYPTION_KEY: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY }}
           ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
-          APP_API_HMAC_SECRET: ${{ secrets.APP_API_HMAC_SECRET }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           WORKER_PINS: ${{ secrets.WORKER_PINS }}
           CLOUD_URL: ${{ secrets.CLOUD_URL }}

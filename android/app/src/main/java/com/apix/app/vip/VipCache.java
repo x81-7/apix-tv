@@ -23,7 +23,7 @@ public final class VipCache {
     private static final String K_EXPIRES = "expires";
     private static final String K_CACHED_AT = "cached_at";
     /** Re-validate against server when local cache is older than this. */
-    public static final long REVALIDATE_AFTER_MS = 5L * 60 * 1000;
+    public static final long REVALIDATE_AFTER_MS = 24L * 60 * 60 * 1000;
 
     private final SharedPreferences prefs;
 

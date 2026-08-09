@@ -85,18 +85,12 @@ android {
 
     buildTypes {
         release {
-            externalNativeBuild {
-                cmake { arguments "-DAPIX_RELEASE_BUILD=1" }
-            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                           'proguard-rules.pro'
         }
         debug {
-            externalNativeBuild {
-                cmake { arguments "-DAPIX_RELEASE_BUILD=0" }
-            }
             debuggable true
         }
     }

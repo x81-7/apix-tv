@@ -29,10 +29,8 @@ class ApixApplication : Application(), ImageLoaderFactory {
                 packageManager.hasSystemFeature("android.hardware.type.television") ||
                 !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)
             System.setProperty("apix.is_tv", if (isTv) "1" else "0")
-            try { Net.nvpSetTvMode(isTv) } catch (_: Throwable) {}
+            try { x.setTv(isTv) } catch (_: Throwable) {}
         } catch (_: Throwable) {}
-        // Bind the smart debug-toast dispatcher BEFORE any guard runs.
-        try { com.apix.app.security.TostInfo.init(applicationContext) } catch (_: Throwable) {}
         coil.Coil.setImageLoader(newImageLoader())
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
         try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}
@@ -62,6 +60,7 @@ class ApixApplication : Application(), ImageLoaderFactory {
      * device is recorded server-side and will never pass the handshake again.
      */
     private fun registerRuntimeGuard() {
+        if (BuildConfig.DEBUG) return
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) { runRuntimeGuard(activity) }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -74,18 +73,37 @@ class ApixApplication : Application(), ImageLoaderFactory {
     }
 
     private fun runRuntimeGuard(activity: Activity) {
-        // Splash performs the authoritative handshake first so it can seed the
-        // native Debug diagnostic toggle before any guard can terminate.
-        if (activity is SplashActivity) return
         if (runtimeGuardBusy) return
         runtimeGuardBusy = true
         Thread {
             try {
                 // Native obfuscated sweep first — silently kills from native on
                 // any live sniffing/instrumentation threat detected mid-session.
-                try { Net.nvpRunGuards() } catch (_: Throwable) {}
+                try { x.guardOrDie() } catch (_: Throwable) {}
+                val danger = try { DeviceIntegrity.environmentDanger(applicationContext) } catch (_: Throwable) { null }
                 val vpnOn = try { DeviceIntegrity.isVpnActive(applicationContext) } catch (_: Throwable) { false }
-                if (vpnOn) {
+                if (danger != null) {
+                    val supaUrl = try { Net.base() } catch (_: Throwable) { null }
+                    val anonKey = try { Net.anon() } catch (_: Throwable) { null }
+                    var verdict: HandshakeClient.Verdict? = null
+                    if (supaUrl != null && anonKey != null) {
+                        verdict = try {
+                            HandshakeClient.handshake(applicationContext, supaUrl, anonKey, BuildConfig.VERSION_NAME)
+                        } catch (_: Throwable) { null }
+                    }
+                    // Whether or not the server round-trip succeeded, a live
+                    // sniffing environment means we must destroy cached data.
+                    val v = verdict ?: HandshakeClient.Verdict().apply {
+                        status = "ENVIRONMENT_DANGER"; wipe = true; reason = danger
+                    }
+                    if (v.status != null && v.status != "ACTIVE" && v.status != "ERROR") {
+                        Enforcement.enforce(applicationContext, v)
+                    } else {
+                        // Server hasn't (yet) confirmed the ban — still wipe locally.
+                        Enforcement.wipeChannelCache(applicationContext)
+                        Enforcement.silentExit(applicationContext)
+                    }
+                } else if (vpnOn) {
                     // VPN turned on mid-session: ask the server if this IP is on
                     // the allow-list. If not, bounce back to the splash gate which
                     // shows the "disable VPN" message instead of silently killing.

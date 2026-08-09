@@ -300,6 +300,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 4.b) Cross-fingerprint ban lookup: even when a user rotates their
+    // device_id (via cloning apps or Widevine wipes) any prior PERMA_BAN /
+    // TAMPERED_MOD row that shares the same APK signature hash is enough to
+    // keep them out. This closes the "reinstall with a new id" bypass.
+    if (status === "ACTIVE" && body.signature_hash) {
+      const sigLc = String(body.signature_hash).toLowerCase();
+      const { data: prior } = await supabase
+        .from("app_users")
+        .select("status, ban_reason")
+        .eq("signature_hash", sigLc)
+        .in("status", ["PERMA_BAN", "TAMPERED_MOD"])
+        .neq("device_id", body.device_id)
+        .limit(1)
+        .maybeSingle();
+      if (prior?.status) {
+        status = prior.status as Status;
+        banReason = `SIG_CROSS_BAN:${prior.ban_reason ?? "linked_device_banned"}`;
+      }
+    }
+
     // VPN gate — response-only, does NOT persist a ban (user may just disable VPN).
     const mergedVpnAllow = Array.from(new Set([...vpnAllowedIps, ...CODE_VPN_ALLOWLIST]));
     const ipAllowedForVpn = mergedVpnAllow.includes(ip);
@@ -342,17 +362,6 @@ Deno.serve(async (req) => {
 
     const mode = !isBan ? "OK" : silent ? "SILENT" : "MESSAGE";
 
-    // Debug-toast toggle for the smart tostinfo dispatcher (Debug APKs only).
-    let debugKillToasts = false;
-    try {
-      const { data: dbg } = await supabase
-        .from("system_settings")
-        .select("value")
-        .eq("key", "debug_kill_toasts")
-        .maybeSingle();
-      debugKillToasts = Boolean((dbg?.value as any)?.enabled);
-    } catch (_) { /* ignore */ }
-
     return encryptedJson({
       status: responseStatus,
       ban_until: banUntil?.toISOString() ?? null,
@@ -364,10 +373,6 @@ Deno.serve(async (req) => {
       // Echoed so the app can cache the VPN allow-list encrypted for offline checks.
       vpn_block_enabled: vpnBlockEnabled,
       vpn_allowed_ips: mergedVpnAllow,
-      // Client IP for the native nvp.cpp VPN allow-list gate.
-      client_ip: ip,
-      // Smart diagnostic toast toggle (only honored by Debug APKs).
-      debug_kill_toasts: debugKillToasts,
     });
 
   } catch (e) {

@@ -22,8 +22,7 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const body = req.method === "GET" ? {} : await req.json().catch(() => ({}));
-    const action = url.searchParams.get("action") ?? String(body.action ?? "list");
+    const action = url.searchParams.get("action") ?? "list";
 
     if (action === "list") {
       const { data, error } = await supabase
@@ -34,6 +33,8 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return json({ users: data });
     }
+
+    const body = await req.json().catch(() => ({}));
 
     // Bulk unban every banned/tampered device — admin emergency reset.
     if (action === "unban_all") {
@@ -54,18 +55,8 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    const rawId = (body.device_id as string) || "";
-    if (!rawId) return json({ error: "device_id required" }, 400);
-    const deviceId = rawId.trim();
-    // Device IDs are SHA-256 values too, so their 64-character shape MUST NOT
-    // be interpreted as the APK signing certificate. A signing certificate is
-    // shared by every legitimate install and would turn a one-device action
-    // into a fleet-wide ban.
-    const findTargets = async (): Promise<string[]> => {
-      const byId = await supabase.from("app_users").select("device_id").eq("device_id", deviceId);
-      if (byId.error) throw byId.error;
-      return (byId.data ?? []).map((r: any) => r.device_id);
-    };
+    const deviceId = body.device_id as string;
+    if (!deviceId) return json({ error: "device_id required" }, 400);
 
     if (action === "ban") {
       const status = (body.status as string) ?? "PERMA_BAN";
@@ -73,55 +64,37 @@ Deno.serve(async (req) => {
       const minutes = Number(body.minutes ?? 0);
       const banUntil = minutes > 0 ? new Date(Date.now() + minutes * 60_000).toISOString() : null;
 
-      const targets = await findTargets();
-      // If no existing row, create a stub row keyed on whatever the admin
-      // typed so the next handshake for that id/signature will hit the ban.
-      const finalIds = targets.length > 0 ? targets : [deviceId];
-      for (const id of finalIds) {
-        const { error: upsertError } = await supabase
-          .from("app_users")
-          .upsert(
-            {
-              device_id: id,
-              status,
-              ban_reason: reason,
-              ban_until: banUntil,
-              last_seen_at: new Date().toISOString(),
-            },
-            { onConflict: "device_id" },
-          );
-        if (upsertError) throw upsertError;
-        const { error: historyError } = await supabase.from("ban_history").insert({
-          device_id: id,
-          status,
-          reason,
-          ban_until: banUntil,
-        });
-        if (historyError) throw historyError;
-      }
-      return json({ ok: true, targets: finalIds.length });
+      await supabase
+        .from("app_users")
+        .update({ status, ban_reason: reason, ban_until: banUntil })
+        .eq("device_id", deviceId);
+      await supabase.from("ban_history").insert({
+        device_id: deviceId,
+        status,
+        reason,
+        ban_until: banUntil,
+      });
+      return json({ ok: true });
     }
 
     if (action === "unban") {
-      const targets = await findTargets();
-      const finalIds = targets.length > 0 ? targets : [deviceId];
-      for (const id of finalIds) {
-        await supabase.from("ban_history").delete().eq("device_id", id);
-        await supabase
-          .from("app_users")
-          .update({
-            status: "ACTIVE",
-            ban_reason: null,
-            ban_until: null,
-            strike_count: 0,
-            install_count: 0,
-            last_strike_at: null,
-          })
-          .eq("device_id", id);
-      }
-      return json({ ok: true, targets: finalIds.length });
+      await supabase
+        .from("ban_history")
+        .delete()
+        .eq("device_id", deviceId);
+      await supabase
+        .from("app_users")
+        .update({
+          status: "ACTIVE",
+          ban_reason: null,
+          ban_until: null,
+          strike_count: 0,
+          install_count: 0,
+          last_strike_at: null,
+        })
+        .eq("device_id", deviceId);
+      return json({ ok: true });
     }
-
 
     if (action === "rename") {
       const raw = (body.custom_name as string | null | undefined) ?? "";

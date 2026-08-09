@@ -143,9 +143,7 @@ const AdminUsersManager: React.FC = () => {
 
   const callAction = async (a: RowAction) => {
     try {
-      const { data, error } = await supabase.functions.invoke('admin-ban', {
-        body: { action: a.kind, ...a.body },
-      });
+      const { data, error } = await supabase.functions.invoke(`admin-ban?action=${a.kind}`, { body: a.body });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const successMsg =
@@ -162,7 +160,7 @@ const AdminUsersManager: React.FC = () => {
   const unbanAll = async () => {
     if (!confirm('هل تريد فعلاً رفع الحظر عن جميع المستخدمين المحظورين؟ لا يمكن التراجع.')) return;
     try {
-      const { data, error } = await supabase.functions.invoke('admin-ban', { body: { action: 'unban_all' } });
+      const { data, error } = await supabase.functions.invoke('admin-ban?action=unban_all', { body: {} });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success('تم رفع الحظر عن جميع المحظورين');

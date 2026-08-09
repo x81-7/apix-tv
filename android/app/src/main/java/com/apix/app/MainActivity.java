@@ -44,10 +44,15 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(WEB_APP_URL);
         
         webView.postDelayed(() -> {
-            try {
-                com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
-            } catch (Throwable ignored) {}
+            AppVerifier.getInstance(MainActivity.this).startMonitor();
         }, 3000);
+        
+        android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(UI_MODE_SERVICE);
+        boolean isTV = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+        
+        if (!isTV) {
+            com.apix.app.security.GuardRunner.startGlobalMonitor(MainActivity.this);
+        }
     }
 
 

@@ -93,6 +93,52 @@ public final class DeviceIntegrity {
         }
     }
 
+    public static String environmentDanger(Context ctx) {
+        if (Debug.isDebuggerConnected() || Debug.waitingForDebugger()) return "DEBUGGER";
+        try {
+            File maps = new File("/proc/self/maps");
+            if (maps.exists() && maps.canRead()) {
+                FileInputStream fis = new FileInputStream(maps);
+                byte[] data = new byte[(int) Math.min(maps.length(), 1024 * 200)];
+                int read = fis.read(data);
+                fis.close();
+                if (read > 0) {
+                    String s = new String(data, 0, read);
+                    String[] needles = {"frida", "xposed", "substrate", "lspatch", "lsposed"};
+                    for (String n : needles) if (s.contains(n)) return "HOOK:" + n;
+                }
+            }
+        } catch (Throwable ignored) {}
+        try {
+            PackageManager pm = ctx.getPackageManager();
+            String[] pkgs = {
+                "de.robv.android.xposed.installer",
+                "io.github.lsposed.manager",
+                "com.topjohnwu.magisk",
+                "io.github.huskydg.magisk",
+                "io.github.vvb2060.magisk",
+                "me.weishu.kernelsu",
+                "me.bmax.apatch"
+            };
+            for (String p : pkgs) {
+                try { pm.getPackageInfo(p, 0); return "HOOK_APP:" + p; } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        // Sniffing / man-in-the-middle: an active system HTTP proxy is the
+        // tell-tale of mitmproxy/HttpToolkit/Frida setups used to pull raw
+        // stream URLs. (Bare VPN is intentionally NOT escalated here — many
+        // IPTV users rely on a VPN legitimately.)
+        try {
+            String host = System.getProperty("http.proxyHost");
+            String port = System.getProperty("http.proxyPort");
+            if (host != null && !host.trim().isEmpty()
+                    && port != null && !"-1".equals(port.trim()) && !"0".equals(port.trim())) {
+                return "PROXY:" + host + ":" + port;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     /**
      * Detects a system-wide HTTP proxy or an active VPN transport.
      * Returns "PROXY:host:port", "VPN" or null. Purely local, no native code,

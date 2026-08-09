@@ -25,9 +25,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <signal.h>  // <--- 
-
-extern "C" void tinfo_report(const char* file, const char* func);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Compile-time XOR string obfuscation.
@@ -252,34 +249,6 @@ bool scan_files() {
     return false;
 }
 
-bool scan_tracer() {
-    std::string path = OBF("/proc/self/status");
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) return false;
-    std::string key = OBF("TracerPid:");
-    char line[256];
-    bool traced = false;
-    while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, key.c_str())) {
-            const char* p = strchr(line, ':');
-            traced = p != nullptr && strtol(p + 1, nullptr, 10) > 0;
-            break;
-        }
-    }
-    fclose(f);
-    return traced;
-}
-
-bool scan_root() {
-    const std::string paths[] = {
-        OBF("/system/xbin/su"), OBF("/system/bin/su"),
-        OBF("/sbin/su"), OBF("/su/bin/su"),
-        OBF("/data/adb/magisk"), OBF("/data/local/tmp/su")
-    };
-    for (const auto& p : paths) if (file_exists(p)) return true;
-    return false;
-}
-
 bool scan_frida_port() {
     // frida default ports 27042/27043 → 69A2/69A3 hex in /proc/net/tcp
     std::string path = OBF("/proc/net/tcp");
@@ -335,10 +304,10 @@ bool scan_vpn_iface() {
 // will still hand back corrupted material once this is set.
 volatile bool g_poisoned = false;
 
-void punish_native(const char* reason) {
+void punish_silent() {
     g_poisoned = true;
-    tinfo_report("sec", reason);
-    kill(getpid(), SIGKILL);
+    // Silent, no UI, no logs. _exit avoids atexit handlers a hook might trap.
+    _exit(0);
 }
 
 } // namespace
@@ -356,30 +325,14 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 }
 
 // ── guard: runs all checks, terminates silently on ANY threat.
-// On real TV boxes (Chinese/OEM firmware) we skip ALL scans because:
-//  • /proc/self/maps often contains OEM libs whose paths match "magisk"/"lspatch"
-//  • /data/local/tmp/frida-* files sometimes ship stock on modded TV firmware
-//  • port scans hit legitimate Cast/DLNA/OEM services on 8080/8888/1080
-// Silently killing the app on these devices produced the "black screen forever"
-// bug. TV boxes are lower-risk targets anyway (no debugger, no keyboard).
+// On real TV boxes we skip the port-based scans (cast/DLNA/OEM services on
+// 8080/8888/1080 and the frida port range) and keep only the maps/files scans,
+// which cannot be triggered by legitimate OEM services.
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    if (scan_tracer()) { punish_native("trace"); return; }
-    if (scan_maps()) { punish_native("maps"); return; }
-    if (scan_files()) { punish_native("files"); return; }
-    if (!g_is_tv && scan_root()) { punish_native("root"); return; }
-    if (!g_is_tv && scan_frida_port()) { punish_native("port"); return; }
-    if (!g_is_tv && scan_proxy_ports()) { punish_native("proxy"); }
+    if (scan_maps() || scan_files()) { punish_silent(); return; }
+    if (!g_is_tv && (scan_frida_port() || scan_proxy_ports())) { punish_silent(); }
 }
-
-void apix_native_guard() {
-    Java_com_apix_app_x_gd(nullptr, nullptr);
-}
-
-void apix_set_tv_mode(bool tv) {
-    g_is_tv = tv;
-}
-
 
 // ── vpnRaw: reports tunnel presence (1) for the server-authoritative VPN gate.
 // Kept separate from gd() so the app can ask the Worker whether the VPN IP is

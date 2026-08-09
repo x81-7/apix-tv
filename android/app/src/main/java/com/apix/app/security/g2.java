@@ -73,7 +73,8 @@ public final class g2 {
     }
 
     private static void k() {
-        TostInfo.report("g2", "sig");
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(0);
     }
 
     private g2() {}

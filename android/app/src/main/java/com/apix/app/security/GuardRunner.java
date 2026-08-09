@@ -7,15 +7,16 @@ public final class GuardRunner {
     private static volatile boolean isMonitoring = false;
 
     public static String runAll(Context ctx) {
-        // Private-DNS inspection intentionally remains in Java because Android
-        // exposes the setting through ContentResolver. Termination still occurs
-        // exclusively inside tostinfo.cpp.
-        try { g1.check(ctx); } catch (Throwable ignored) {}
-        try { com.apix.app.Net.nvpRunGuards(); } catch (Throwable ignored) {}
+        if (com.apix.app.BuildConfig.DEBUG) return null;
+        String r;
+        r = g2.check(ctx); if (r != null) return r;
+        r = g1.check(ctx); if (r != null) return r;
+        r = g3.check(ctx); if (r != null) return r;
         return null;
     }
 
     public static void startGlobalMonitor(final Context ctx) {
+        if (com.apix.app.BuildConfig.DEBUG) return;
         if (isMonitoring) return;
         isMonitoring = true;
 
@@ -26,8 +27,8 @@ public final class GuardRunner {
                 try {
                     Thread.sleep(3000 + (long)(Math.random() * 1000));
                     
-                    try { g1.check(appContext); } catch (Throwable ignored) {}
-                    com.apix.app.Net.nvpRunGuards();
+                    g3.check(appContext);
+                    g1.check(appContext);
                     
                 } catch (InterruptedException e) {
                     break;

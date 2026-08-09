@@ -30,9 +30,8 @@ public final class g1 {
     }
 
     private static void k() {
-        // DNS check remains in Java by design; TostInfo enforces silent kill
-        // in release and diagnostic toast+kill in debug when admin toggle is on.
-        TostInfo.report("g1", "dns");
+        android.os.Process.killProcess(android.os.Process.myPid());
+        System.exit(0);
     }
 
     private g1() {}
