@@ -22,7 +22,8 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get("action") ?? "list";
+    const body = req.method === "GET" ? {} : await req.json().catch(() => ({}));
+    const action = url.searchParams.get("action") ?? String(body.action ?? "list");
 
     if (action === "list") {
       const { data, error } = await supabase
@@ -33,8 +34,6 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return json({ users: data });
     }
-
-    const body = await req.json().catch(() => ({}));
 
     // Bulk unban every banned/tampered device — admin emergency reset.
     if (action === "unban_all") {
@@ -58,18 +57,14 @@ Deno.serve(async (req) => {
     const rawId = (body.device_id as string) || "";
     if (!rawId) return json({ error: "device_id required" }, 400);
     const deviceId = rawId.trim();
-    const idLower = deviceId.toLowerCase();
-    // The admin may paste EITHER a real device_id (Widevine ID) OR the SHA-256
-    // signature_hash shown in the panel. We try device_id first, then fall
-    // back to signature_hash so both work transparently.
+    // Device IDs are SHA-256 values too, so their 64-character shape MUST NOT
+    // be interpreted as the APK signing certificate. A signing certificate is
+    // shared by every legitimate install and would turn a one-device action
+    // into a fleet-wide ban.
     const findTargets = async (): Promise<string[]> => {
       const byId = await supabase.from("app_users").select("device_id").eq("device_id", deviceId);
-      const ids = new Set<string>((byId.data ?? []).map((r: any) => r.device_id));
-      if (idLower.length === 64) {
-        const bySig = await supabase.from("app_users").select("device_id").eq("signature_hash", idLower);
-        for (const r of bySig.data ?? []) ids.add(r.device_id);
-      }
-      return Array.from(ids);
+      if (byId.error) throw byId.error;
+      return (byId.data ?? []).map((r: any) => r.device_id);
     };
 
     if (action === "ban") {
@@ -83,7 +78,7 @@ Deno.serve(async (req) => {
       // typed so the next handshake for that id/signature will hit the ban.
       const finalIds = targets.length > 0 ? targets : [deviceId];
       for (const id of finalIds) {
-        await supabase
+        const { error: upsertError } = await supabase
           .from("app_users")
           .upsert(
             {
@@ -91,19 +86,18 @@ Deno.serve(async (req) => {
               status,
               ban_reason: reason,
               ban_until: banUntil,
-              // Store the pasted value in signature_hash too so cross-fingerprint
-              // lookup in device-handshake catches it when the real device connects.
-              ...(idLower.length === 64 ? { signature_hash: idLower } : {}),
               last_seen_at: new Date().toISOString(),
             },
             { onConflict: "device_id" },
           );
-        await supabase.from("ban_history").insert({
+        if (upsertError) throw upsertError;
+        const { error: historyError } = await supabase.from("ban_history").insert({
           device_id: id,
           status,
           reason,
           ban_until: banUntil,
         });
+        if (historyError) throw historyError;
       }
       return json({ ok: true, targets: finalIds.length });
     }

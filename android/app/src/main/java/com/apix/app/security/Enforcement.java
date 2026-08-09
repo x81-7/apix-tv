@@ -123,5 +123,8 @@ public final class Enforcement {
     /** Silently terminate the process without any UI. */
     public static void silentExit(Context ctx) {
         try { com.apix.app.Net.nvpTerminate("ban"); } catch (Throwable ignored) {}
+        // Native normally never returns. This fallback covers an ABI/JNI load
+        // failure so a banned device cannot continue merely because libv failed.
+        try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
     }
 }

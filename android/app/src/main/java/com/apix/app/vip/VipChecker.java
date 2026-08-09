@@ -109,13 +109,16 @@ public final class VipChecker {
             }
             JSONObject obj = new JSONObject(plain);
             boolean active = obj.optBoolean("active", false);
-            // When the server issues a signed VIP token, it is the AUTHORITATIVE
-            // source: verify the HS256 signature ENTIRELY in native code. A MitM
-            // that flips "active" to true cannot forge a valid signature.
+            // The AES-GCM envelope is already authenticated and is the canonical
+            // verdict. A VIP token is an optional second factor only when the APK
+            // was built with the matching HMAC secret. Older/white-label APKs may
+            // legitimately use a different build secret, so a token mismatch must
+            // not overwrite a valid authenticated server verdict.
             String vipToken = obj.optString("vipToken", null);
             if (vipToken != null && !vipToken.isEmpty() && !"null".equals(vipToken)) {
-                try { active = com.apix.app.Net.nvpCheckVip(vipToken) == 1; }
-                catch (Throwable t) { active = false; }
+                try {
+                    if (com.apix.app.Net.nvpCheckVip(vipToken) == 1) active = true;
+                } catch (Throwable ignored) {}
             }
             String expStr = obj.optString("expiresAt", null);
             long exp = 0L;

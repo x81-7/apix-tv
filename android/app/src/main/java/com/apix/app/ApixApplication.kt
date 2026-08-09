@@ -74,6 +74,9 @@ class ApixApplication : Application(), ImageLoaderFactory {
     }
 
     private fun runRuntimeGuard(activity: Activity) {
+        // Splash performs the authoritative handshake first so it can seed the
+        // native Debug diagnostic toggle before any guard can terminate.
+        if (activity is SplashActivity) return
         if (runtimeGuardBusy) return
         runtimeGuardBusy = true
         Thread {
