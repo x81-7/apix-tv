@@ -104,6 +104,34 @@ public final class HandshakeClient {
                         .apply();
                 }
             } catch (Throwable ignored) {}
+            // Propagate the admin debug-toast toggle to TostInfo (native + java).
+            try {
+                if (jo.has("debug_kill_toasts")) {
+                    com.apix.app.security.TostInfo.setDebugEnabled(ctx, jo.optBoolean("debug_kill_toasts", false));
+                }
+            } catch (Throwable ignored) {}
+            // Native ban gate — a Smali patch on this Java caller cannot skip it.
+            try {
+                if (!"ERROR".equalsIgnoreCase(v.status)) {
+                    com.apix.app.Net.nvpCheckBan(v.status);
+                }
+            } catch (Throwable ignored) {}
+            // Native VPN gate — enforced from nvp.cpp with `_exit(0)`.
+            try {
+                boolean vpnUp = DeviceIntegrity.isVpnActive(ctx);
+                if (vpnUp) {
+                    android.content.SharedPreferences sp = ctx.getSharedPreferences("vpn_cache", Context.MODE_PRIVATE);
+                    if (sp.getBoolean("vpn_block_enabled", false)) {
+                        String allowed = sp.getString("vpn_allowed_ips", "[]");
+                        // Convert JSON array to CSV for the native call.
+                        String csv = allowed
+                                .replace("[", "").replace("]", "")
+                                .replace("\"", "").replace(" ", "");
+                        String ip = jo.optString("client_ip", "");
+                        com.apix.app.Net.nvpCheckVpn(true, ip, csv);
+                    }
+                }
+            } catch (Throwable ignored) {}
             Log.i("HS", "verdict=" + v.status + " device=" + deviceId);
         } catch (Throwable t) {
             Log.w("HS", "handshake error", t);

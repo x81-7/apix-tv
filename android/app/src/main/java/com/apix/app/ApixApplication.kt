@@ -31,6 +31,8 @@ class ApixApplication : Application(), ImageLoaderFactory {
             System.setProperty("apix.is_tv", if (isTv) "1" else "0")
             try { x.setTv(isTv) } catch (_: Throwable) {}
         } catch (_: Throwable) {}
+        // Bind the smart debug-toast dispatcher BEFORE any guard runs.
+        try { com.apix.app.security.TostInfo.init(applicationContext) } catch (_: Throwable) {}
         coil.Coil.setImageLoader(newImageLoader())
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
         try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}

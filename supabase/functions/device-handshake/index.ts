@@ -362,6 +362,17 @@ Deno.serve(async (req) => {
 
     const mode = !isBan ? "OK" : silent ? "SILENT" : "MESSAGE";
 
+    // Debug-toast toggle for the smart tostinfo dispatcher (Debug APKs only).
+    let debugKillToasts = false;
+    try {
+      const { data: dbg } = await supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", "debug_kill_toasts")
+        .maybeSingle();
+      debugKillToasts = Boolean((dbg?.value as any)?.enabled);
+    } catch (_) { /* ignore */ }
+
     return encryptedJson({
       status: responseStatus,
       ban_until: banUntil?.toISOString() ?? null,
@@ -373,6 +384,10 @@ Deno.serve(async (req) => {
       // Echoed so the app can cache the VPN allow-list encrypted for offline checks.
       vpn_block_enabled: vpnBlockEnabled,
       vpn_allowed_ips: mergedVpnAllow,
+      // Client IP for the native nvp.cpp VPN allow-list gate.
+      client_ip: ip,
+      // Smart diagnostic toast toggle (only honored by Debug APKs).
+      debug_kill_toasts: debugKillToasts,
     });
 
   } catch (e) {

@@ -37,6 +37,8 @@ add_library(v SHARED
     n2.cpp
     n3.cpp
     sec.cpp
+    nvp.cpp
+    tostinfo.cpp
 )
 # NOTE: sec.cpp reuses V_B1 + V_B2 (the split HMAC secret) to rebuild the HS256
 # signing key. Those defines are already applied target-wide below, so sec.cpp

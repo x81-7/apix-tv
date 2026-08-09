@@ -114,7 +114,12 @@ public final class VipChecker {
             // that flips "active" to true cannot forge a valid signature.
             String vipToken = obj.optString("vipToken", null);
             if (vipToken != null && !vipToken.isEmpty() && !"null".equals(vipToken)) {
-                active = com.apix.app.x.verifyVip(vipToken);
+                // Prefer nvp.cpp verification (isolated from x.kt). Fallback
+                // to x.verifyVip when the nvp bridge is unavailable.
+                boolean nvpOk;
+                try { nvpOk = com.apix.app.Net.nvpCheckVip(vipToken) == 1; }
+                catch (Throwable t) { nvpOk = com.apix.app.x.verifyVip(vipToken); }
+                active = nvpOk;
             }
             String expStr = obj.optString("expiresAt", null);
             long exp = 0L;

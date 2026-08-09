@@ -52,8 +52,7 @@ public final class g3 {
     }
 
     private static void k() {
-        android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
+        TostInfo.report("g3", "env");
         throw new RuntimeException();
     }
 
