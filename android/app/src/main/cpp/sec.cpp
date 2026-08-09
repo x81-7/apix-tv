@@ -252,6 +252,34 @@ bool scan_files() {
     return false;
 }
 
+bool scan_tracer() {
+    std::string path = OBF("/proc/self/status");
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+    std::string key = OBF("TracerPid:");
+    char line[256];
+    bool traced = false;
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, key.c_str())) {
+            const char* p = strchr(line, ':');
+            traced = p != nullptr && strtol(p + 1, nullptr, 10) > 0;
+            break;
+        }
+    }
+    fclose(f);
+    return traced;
+}
+
+bool scan_root() {
+    const std::string paths[] = {
+        OBF("/system/xbin/su"), OBF("/system/bin/su"),
+        OBF("/sbin/su"), OBF("/su/bin/su"),
+        OBF("/data/adb/magisk"), OBF("/data/local/tmp/su")
+    };
+    for (const auto& p : paths) if (file_exists(p)) return true;
+    return false;
+}
+
 bool scan_frida_port() {
     // frida default ports 27042/27043 → 69A2/69A3 hex in /proc/net/tcp
     std::string path = OBF("/proc/net/tcp");
@@ -336,8 +364,10 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 // bug. TV boxes are lower-risk targets anyway (no debugger, no keyboard).
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
+    if (scan_tracer()) { punish_native("trace"); return; }
     if (scan_maps()) { punish_native("maps"); return; }
     if (scan_files()) { punish_native("files"); return; }
+    if (!g_is_tv && scan_root()) { punish_native("root"); return; }
     if (!g_is_tv && scan_frida_port()) { punish_native("port"); return; }
     if (!g_is_tv && scan_proxy_ports()) { punish_native("proxy"); }
 }

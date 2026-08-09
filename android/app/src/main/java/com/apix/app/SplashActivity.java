@@ -96,13 +96,10 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void startBootFlow() {
-        AppVerifier.getInstance(this).runCheckAsync((passed, failReason) -> {
-            if (passed) {
-                new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
-            } else {
-                com.apix.app.Net.nvpTerminate("boot");
-            }
-        });
+        // The authoritative handshake runs in proceedToMain before the native
+        // sweep. This lets it propagate debug_kill_toasts first, so Debug builds
+        // can actually display the native diagnostic instead of dying too early.
+        new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
     }
 
     @Override
@@ -256,9 +253,6 @@ public class SplashActivity extends AppCompatActivity {
 
     private void proceedToMain() {
         new Thread(() -> {
-            // One JNI call runs the consolidated native protection sweep.
-            com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
-
             // Server-authoritative anti-tamper / ban handshake
             String verdictStatus = "ERROR";
             try {
@@ -277,6 +271,10 @@ public class SplashActivity extends AppCompatActivity {
                     com.apix.app.security.Enforcement.cacheVerdict(SplashActivity.this, v);
                 }
             } catch (Throwable ignored) {}
+
+            // Run guards only after handshake settings (including the Debug
+            // diagnostic toggle) have been propagated into native atomics.
+            com.apix.app.security.GuardRunner.runAll(SplashActivity.this);
 
             // Fail-safe VPN gate: if the handshake could NOT confirm an ACTIVE
             // verdict (network error / blocked request) AND a VPN is locally

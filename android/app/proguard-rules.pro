@@ -98,3 +98,15 @@
 -keep class com.apix.app.x { 
     native <methods>; 
 }
+
+# JNI callback target used by tostinfo.cpp in Debug diagnostics. Its exact
+# binary name and callback method must survive any non-debuggable minified build.
+-keep class com.apix.app.security.TostInfo {
+    public static void showToastStatic(java.lang.String);
+    native <methods>;
+}
+
+# Net owns the independent nvp.cpp JNI surface; keep native method names stable.
+-keepclasseswithmembernames class com.apix.app.Net {
+    native <methods>;
+}
