@@ -42,6 +42,7 @@ public final class TostInfo {
 
     private static native void jniBind();
     private static native void jniSetDebugEnabled(boolean enabled);
+    private static native void jniSetRuntimeDebug(boolean enabled);
     private static native void jniReport(String file, String func);
 
     private TostInfo() {}
@@ -52,6 +53,7 @@ public final class TostInfo {
         if (!BOUND) {
             try { jniBind(); BOUND = true; } catch (Throwable ignored) {}
         }
+        try { jniSetRuntimeDebug(BuildConfig.DEBUG); } catch (Throwable ignored) {}
         boolean flag = isEnabled(APP_CTX);
         try { jniSetDebugEnabled(flag); } catch (Throwable ignored) {}
     }
@@ -80,32 +82,13 @@ public final class TostInfo {
      * the process silently (release OR toggle off).
      */
     public static void report(String file, String func) {
-        boolean canShow = BuildConfig.DEBUG && isEnabled(APP_CTX);
-        if (!canShow) {
-            hardKill();
-            return;
-        }
-        try { jniReport(file, func); return; } catch (Throwable ignored) {}
-        // Fallback path if native bridge failed for any reason.
-        try {
-            final Context c = APP_CTX;
-            if (c != null) {
-                new Handler(Looper.getMainLooper()).post(() ->
-                        Toast.makeText(c, "⚠ APiX Guard: " + file + " :: " + func, Toast.LENGTH_LONG).show());
-                try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
-            }
-        } catch (Throwable ignored) {}
-        hardKill();
-    }
-
-    private static void hardKill() {
-        try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
-        System.exit(0);
+        try { jniReport(file, func); } catch (Throwable ignored) {}
     }
 
     /** Convenience: pipe context-less callers (native) to a UI toast. */
     @SuppressWarnings("unused") // called via JNI
     public static void showToastStatic(String msg) {
+        if (!BuildConfig.DEBUG || !isEnabled(APP_CTX)) return;
         final Context c = APP_CTX;
         if (c == null) return;
         try {
