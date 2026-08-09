@@ -57,18 +57,14 @@ Deno.serve(async (req) => {
     const rawId = (body.device_id as string) || "";
     if (!rawId) return json({ error: "device_id required" }, 400);
     const deviceId = rawId.trim();
-    const idLower = deviceId.toLowerCase();
-    // The admin may paste EITHER a real device_id (Widevine ID) OR the SHA-256
-    // signature_hash shown in the panel. We try device_id first, then fall
-    // back to signature_hash so both work transparently.
+    // Device IDs are SHA-256 values too, so their 64-character shape MUST NOT
+    // be interpreted as the APK signing certificate. A signing certificate is
+    // shared by every legitimate install and would turn a one-device action
+    // into a fleet-wide ban.
     const findTargets = async (): Promise<string[]> => {
       const byId = await supabase.from("app_users").select("device_id").eq("device_id", deviceId);
-      const ids = new Set<string>((byId.data ?? []).map((r: any) => r.device_id));
-      if (idLower.length === 64) {
-        const bySig = await supabase.from("app_users").select("device_id").eq("signature_hash", idLower);
-        for (const r of bySig.data ?? []) ids.add(r.device_id);
-      }
-      return Array.from(ids);
+      if (byId.error) throw byId.error;
+      return (byId.data ?? []).map((r: any) => r.device_id);
     };
 
     if (action === "ban") {
@@ -90,9 +86,6 @@ Deno.serve(async (req) => {
               status,
               ban_reason: reason,
               ban_until: banUntil,
-              // Store the pasted value in signature_hash too so cross-fingerprint
-              // lookup in device-handshake catches it when the real device connects.
-              ...(idLower.length === 64 ? { signature_hash: idLower } : {}),
               last_seen_at: new Date().toISOString(),
             },
             { onConflict: "device_id" },
