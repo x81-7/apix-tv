@@ -6,6 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-token",
 };
 
+function normalizeDeviceId(value: unknown): string {
+  const id = typeof value === "string" ? value.trim() : "";
+  return /^(?:[a-z]{2,4}_)?[0-9a-f]{32,128}$/i.test(id) ? id.toLowerCase() : id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -56,7 +61,7 @@ Deno.serve(async (req) => {
 
     const rawId = (body.device_id as string) || "";
     if (!rawId) return json({ error: "device_id required" }, 400);
-    const deviceId = rawId.trim();
+    const deviceId = normalizeDeviceId(rawId);
     // Device IDs are SHA-256 values too, so their 64-character shape MUST NOT
     // be interpreted as the APK signing certificate. A signing certificate is
     // shared by every legitimate install and would turn a one-device action

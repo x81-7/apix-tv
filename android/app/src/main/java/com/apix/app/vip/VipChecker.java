@@ -52,14 +52,12 @@ public final class VipChecker {
         return cache.isActiveNow();
     }
 
-    /** Async full check (local first, server only if needed). */
+    /**
+     * Async authoritative check. The device id is sent on every check/app
+     * launch so newly granted/revoked VIP state is never hidden by a stale
+     * positive cache. The encrypted cache is offline fallback only.
+     */
     public void check(final Callback cb) {
-        // 1. Trust local cache when fresh + active.
-        if (cache.isActiveNow() && !cache.needsServerCheck()) {
-            cb.onResult(true, cache.expiresAt());
-            return;
-        }
-        // 2. Need server check.
         io.execute(() -> {
             ServerResult r = queryServer();
             if (r != null) {

@@ -272,6 +272,15 @@ public class SplashActivity extends AppCompatActivity {
                 }
             } catch (Throwable ignored) {}
 
+            // A previously cached server ban remains authoritative when the
+            // gateway is unavailable or its encrypted response is invalid.
+            if (!"ACTIVE".equals(verdictStatus)
+                    && com.apix.app.security.Enforcement.isBannedCached(SplashActivity.this)) {
+                com.apix.app.security.Enforcement.wipeChannelCache(SplashActivity.this);
+                com.apix.app.security.Enforcement.silentExit(SplashActivity.this);
+                return;
+            }
+
             // Run guards only after handshake settings (including the Debug
             // diagnostic toggle) have been propagated into native atomics.
             com.apix.app.security.GuardRunner.runAll(SplashActivity.this);

@@ -36,4 +36,7 @@ object ApixConfig {
 
     /** External-link AES-256-GCM decryption key (same as Android BuildConfig.X_DP_K). */
     val externalDecryptKey: String get() = value("X_DP_K")
+
+    /** AES key used by encrypted backend payload envelopes. */
+    val payloadEncryptionKey: String get() = value("ENCRYPTION_SECRET_KEY")
 }

@@ -134,16 +134,21 @@ export default {
     // 2b) Realtime websocket passthrough — keeps Supabase hidden behind the edge.
     if (url.pathname.startsWith("/realtime/v1/")) {
       const upgrade = request.headers.get("Upgrade") || "";
-      const target = env.SUPA_URL + url.pathname + url.search;
-      if (upgrade.toLowerCase() === "websocket") {
-        // Pass the upgrade through untouched so CF tunnels the WS frames.
-        return fetch(target, request);
+      const targetUrl = new URL(env.SUPA_URL + url.pathname + url.search);
+      // Realtime requires the publishable key during the websocket upgrade.
+      // Clients intentionally omit it in Worker mode, so inject it here.
+      if (!targetUrl.searchParams.has("apikey")) {
+        targetUrl.searchParams.set("apikey", env.SUPA_ANON);
       }
-      // Non-upgrade realtime calls (rare) fall back to a normal proxy.
+      const target = targetUrl.toString();
       const h = new Headers(request.headers);
       h.set("apikey", env.SUPA_ANON);
       h.set("Authorization", "Bearer " + env.SUPA_ANON);
       h.delete("host");
+      if (upgrade.toLowerCase() === "websocket") {
+        return fetch(target, { method: request.method, headers: h });
+      }
+      // Non-upgrade realtime calls (rare) fall back to a normal proxy.
       return fetch(target, { method: request.method, headers: h });
     }
 

@@ -26,6 +26,11 @@ interface HandshakePayload {
   vpn_active?: boolean;         // device reports an active VPN transport
 }
 
+function normalizeDeviceId(value: unknown): string {
+  const id = typeof value === "string" ? value.trim() : "";
+  return /^(?:[a-z]{2,4}_)?[0-9a-f]{32,128}$/i.test(id) ? id.toLowerCase() : id;
+}
+
 type Status = "ACTIVE" | "TEMP_BAN" | "PERMA_BAN" | "TAMPERED_MOD" | "ENVIRONMENT_DANGER" | "VPN_BLOCK";
 
 Deno.serve(async (req) => {
@@ -38,6 +43,7 @@ Deno.serve(async (req) => {
     );
 
     const body = (await req.json()) as HandshakePayload;
+    body.device_id = normalizeDeviceId(body.device_id);
     if (!body.device_id || body.device_id.length < 8) {
       return plainJson({ status: "ERROR", message: "invalid device_id" }, 400);
     }

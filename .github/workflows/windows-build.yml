@@ -37,6 +37,7 @@ jobs:
           # White-label gateway: route ALL Windows traffic through the Cloudflare
           # Worker (hides Supabase) exactly like Android/iOS.
           WORKER_URL: ${{ secrets.WORKER_URL }}
+          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
           # Panel pushes the key as EXTERNAL_PANEL_DECRYPTION_KEY (same as Android).
           # X_DP_K is kept as a legacy fallback.
           X_DP_K: ${{ secrets.EXTERNAL_PANEL_DECRYPTION_KEY || secrets.X_DP_K }}
@@ -47,6 +48,7 @@ jobs:
           echo "CLOUD_URL=$CLOUD_URL"           >> $GITHUB_ENV
           echo "CLOUD_ANON_KEY=$CLOUD_ANON_KEY" >> $GITHUB_ENV
           echo "WORKER_URL=$WORKER_URL"         >> $GITHUB_ENV
+          echo "ENCRYPTION_SECRET_KEY=$ENCRYPTION_SECRET_KEY" >> $GITHUB_ENV
           echo "X_DP_K=$X_DP_K"                 >> $GITHUB_ENV
           
           # التحقق من وجود البصمة وتمريرها

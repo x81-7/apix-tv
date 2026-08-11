@@ -63,7 +63,10 @@ class ApixApplication : Application(), ImageLoaderFactory {
      */
     private fun registerRuntimeGuard() {
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityResumed(activity: Activity) { runRuntimeGuard(activity) }
+            override fun onActivityResumed(activity: Activity) {
+                try { RealtimeNotificationManager.ensureConnected(applicationContext) } catch (_: Throwable) {}
+                runRuntimeGuard(activity)
+            }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {}
             override fun onActivityPaused(activity: Activity) {}

@@ -26,8 +26,28 @@ public final class DeviceIntegrity {
     private static final UUID WV = new UUID(0xEDEF8BA979D64ACEL, 0xA3C827DCD51D21EDL);
     private static final String P = "_di_state";
     private static final String K_INSTALL = "_inst";
+    private static final String K_DEVICE_ID = "_stable_device_id";
 
     public static String deviceId(Context ctx) {
+        // Never reinterpret or decrypt this value: it is an opaque identifier.
+        // Persist the first valid derivation so transient Widevine failures do
+        // not change the identity used by VIP and ban checks between launches.
+        try {
+            String stored = ctx.getSharedPreferences(P, Context.MODE_PRIVATE)
+                    .getString(K_DEVICE_ID, null);
+            if (stored != null && !stored.trim().isEmpty()) return stored.trim().toLowerCase();
+        } catch (Throwable ignored) {}
+        String derived = deriveDeviceId(ctx);
+        try {
+            if (derived != null && !derived.isEmpty() && !"unknown".equals(derived)) {
+                ctx.getSharedPreferences(P, Context.MODE_PRIVATE).edit()
+                        .putString(K_DEVICE_ID, derived.toLowerCase()).commit();
+            }
+        } catch (Throwable ignored) {}
+        return derived == null ? "unknown" : derived.toLowerCase();
+    }
+
+    private static String deriveDeviceId(Context ctx) {
         try {
             MediaDrm drm = new MediaDrm(WV);
             byte[] raw = drm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID);

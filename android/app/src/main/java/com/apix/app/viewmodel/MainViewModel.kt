@@ -1,13 +1,24 @@
 package com.apix.app.viewmodel
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.lifecycle.AndroidViewModel
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.apix.app.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val cacheUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.apix.app.CACHE_UPDATED") refresh()
+        }
+    }
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -19,7 +30,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     init {
+        ContextCompat.registerReceiver(
+            app,
+            cacheUpdateReceiver,
+            IntentFilter("com.apix.app.CACHE_UPDATED"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         loadData()
+    }
+
+    override fun onCleared() {
+        runCatching { getApplication<Application>().unregisterReceiver(cacheUpdateReceiver) }
+        super.onCleared()
     }
 
     private fun loadData() {

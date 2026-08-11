@@ -27,14 +27,11 @@ object PayloadCipher {
     private const val IV_LEN = 12
     private const val TAG_BITS = 128
 
-    // 32-byte all-zero placeholder. Replaced at build time by CI (env var).
-    private const val FALLBACK_KEY_HEX =
-        "0000000000000000000000000000000000000000000000000000000000000000"
-
     private val keyBytes: ByteArray by lazy {
         val raw = (System.getProperty("apix.encryption.key")
-            ?: System.getenv("ENCRYPTION_SECRET_KEY")
-            ?: FALLBACK_KEY_HEX).trim()
+            ?: ApixConfig.payloadEncryptionKey.takeIf { it.isNotBlank() }
+            ?: System.getenv("ENCRYPTION_SECRET_KEY")?.takeIf { it.isNotBlank() }
+            ?: error("ENCRYPTION_SECRET_KEY not configured")).trim()
         decodeKey(raw)
     }
 
@@ -65,5 +62,11 @@ object PayloadCipher {
             GCMParameterSpec(TAG_BITS, iv),
         )
         return String(cipher.doFinal(ct), Charsets.UTF_8)
+    }
+
+    /** Accept both encrypted gateway envelopes and legacy/plain JSON. */
+    fun decryptIfNeeded(payload: String): String {
+        val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return payload
+        return if (obj.has("iv") && obj.has("data")) decryptEnvelope(payload) else payload
     }
 }

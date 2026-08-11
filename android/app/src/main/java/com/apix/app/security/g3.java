@@ -37,12 +37,6 @@ public final class g3 {
         }
 
         try {
-            if (com.apix.app.x.hasVpn()) {
-                k();
-            }
-        } catch (Throwable ignored) {}
-
-        try {
             if (com.apix.app.x.hasDanger()) {
                 k();
             }
@@ -53,7 +47,9 @@ public final class g3 {
 
     private static void k() {
         TostInfo.report("g3", "env");
-        throw new RuntimeException();
+        // JNI never returns. If it is unavailable, terminate here rather than
+        // throwing into a caller that intentionally catches guard failures.
+        try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
     }
 
     private g3() {}
