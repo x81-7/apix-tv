@@ -43,6 +43,8 @@ public class RealtimeNotificationManager {
     private static int retryDelay = 2000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean started = false;
+    private static volatile boolean connected = false;
+    private static volatile boolean reconnectScheduled = false;
     private static volatile String myDeviceId = null;
 
     public static synchronized void start(Context ctx) {
@@ -60,7 +62,18 @@ public class RealtimeNotificationManager {
         connect();
     }
 
+    /** Idempotent lifecycle/network recovery entry point. */
+    public static synchronized void ensureConnected(Context ctx) {
+        if (!started) {
+            start(ctx);
+            return;
+        }
+        if (!connected) connect();
+    }
+
     private static void connect() {
+        if (client == null || connected) return;
+        reconnectScheduled = false;
         // Routed through the Cloudflare Worker gateway (wss) when WORKER_URL is
         // set; the Worker proxies the realtime websocket to Supabase.
         String url = Net.realtimeWsUrl();
@@ -69,8 +82,11 @@ public class RealtimeNotificationManager {
     }
 
     private static void scheduleReconnect() {
+        if (reconnectScheduled) return;
+        reconnectScheduled = true;
         MAIN.postDelayed(() -> {
-            try { connect(); } catch (Exception ignored) {}
+            reconnectScheduled = false;
+            try { if (!connected) connect(); } catch (Exception ignored) {}
         }, retryDelay);
         retryDelay = Math.min(retryDelay * 2, 60000);
     }
@@ -78,6 +94,7 @@ public class RealtimeNotificationManager {
     private static class Listener extends WebSocketListener {
         @Override
         public void onOpen(WebSocket ws, Response response) {
+            connected = true;
             retryDelay = 2000;
             try {
                 // Subscribe to notifications (INSERT only).
@@ -136,7 +153,12 @@ public class RealtimeNotificationManager {
                                     .put("event", "heartbeat")
                                     .put("payload", new JSONObject())
                                     .put("ref", String.valueOf(System.currentTimeMillis()));
-                            ws.send(hb.toString());
+                            if (!ws.send(hb.toString())) {
+                                connected = false;
+                                ws.cancel();
+                                scheduleReconnect();
+                                return;
+                            }
                             MAIN.postDelayed(this, 25000);
                         } catch (Exception ignored) {}
                     }
@@ -281,12 +303,16 @@ public class RealtimeNotificationManager {
 
         @Override
         public void onClosed(WebSocket ws, int code, String reason) {
+            connected = false;
+            socket = null;
             Log.w(TAG, "closed " + code + " " + reason);
             scheduleReconnect();
         }
 
         @Override
         public void onFailure(WebSocket ws, Throwable t, Response response) {
+            connected = false;
+            socket = null;
             Log.w(TAG, "failure", t);
             scheduleReconnect();
         }
