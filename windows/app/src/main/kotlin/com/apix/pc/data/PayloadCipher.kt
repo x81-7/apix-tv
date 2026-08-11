@@ -34,6 +34,7 @@ object PayloadCipher {
     private val keyBytes: ByteArray by lazy {
         val raw = (System.getProperty("apix.encryption.key")
             ?: System.getenv("ENCRYPTION_SECRET_KEY")
+            ?: ApixConfig.payloadEncryptionKey.takeIf { it.isNotBlank() }
             ?: FALLBACK_KEY_HEX).trim()
         decodeKey(raw)
     }
@@ -65,5 +66,11 @@ object PayloadCipher {
             GCMParameterSpec(TAG_BITS, iv),
         )
         return String(cipher.doFinal(ct), Charsets.UTF_8)
+    }
+
+    /** Accept both encrypted gateway envelopes and legacy/plain JSON. */
+    fun decryptIfNeeded(payload: String): String {
+        val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return payload
+        return if (obj.has("iv") && obj.has("data")) decryptEnvelope(payload) else payload
     }
 }

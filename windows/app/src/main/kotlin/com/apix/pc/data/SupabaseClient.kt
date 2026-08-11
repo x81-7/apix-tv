@@ -37,7 +37,10 @@ object SupabaseClient {
             .header("Authorization", "Bearer $anonKey")
             .header("Accept", "application/json")
             .build()
-        http.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+        http.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) null
+            else r.body?.string()?.let { PayloadCipher.decryptIfNeeded(it) }
+        }
     }.getOrNull()
 
     /** Result of a cached-data bundle fetch. `notModified=true` means the
@@ -73,7 +76,7 @@ object SupabaseClient {
             if (!r.isSuccessful) return@runCatching null
             val envelope = r.body?.string() ?: return@runCatching null
             // cached-data is AES-256-GCM encrypted ({iv,data}). Decrypt first.
-            val raw = runCatching { PayloadCipher.decryptEnvelope(envelope) }
+            val raw = runCatching { PayloadCipher.decryptIfNeeded(envelope) }
                 .getOrElse { return@runCatching null }
             val obj = JSONObject(raw)
             val cats = obj.optJSONArray("categories") ?: JSONArray()

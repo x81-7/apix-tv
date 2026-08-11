@@ -56,6 +56,7 @@ val generateApixConfig by tasks.registering {
             "WORKER_URL=${env("WORKER_URL")}\n" +
             "CLOUD_URL=${env("CLOUD_URL")}\n" +
             "CLOUD_ANON_KEY=${env("CLOUD_ANON_KEY")}\n" +
+            "ENCRYPTION_SECRET_KEY=${env("ENCRYPTION_SECRET_KEY")}\n" +
             "X_DP_K=${env("X_DP_K")}\n"
         )
     }

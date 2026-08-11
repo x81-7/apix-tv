@@ -252,6 +252,21 @@ bool scan_files() {
     return false;
 }
 
+bool scan_dangerous_env() {
+    // Runtime injection commonly leaves one of these variables behind. Keep
+    // this in the consolidated guard so Debug and Release execute the same
+    // protection set (only the diagnostic presentation differs).
+    const std::string names[] = {
+        OBF("FRIDA_SCRIPT"), OBF("LD_PRELOAD"), OBF("DYLD_INSERT_LIBRARIES"),
+        OBF("MAGISK_PATH"), OBF("XPOSED_BRIDGE")
+    };
+    for (const auto& name : names) {
+        const char* value = getenv(name.c_str());
+        if (value != nullptr && value[0] != '\0') return true;
+    }
+    return false;
+}
+
 bool scan_tracer() {
     std::string path = OBF("/proc/self/status");
     FILE* f = fopen(path.c_str(), "r");
@@ -365,6 +380,7 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
     if (scan_tracer()) { punish_native("trace"); return; }
+    if (scan_dangerous_env()) { punish_native("env"); return; }
     if (scan_maps()) { punish_native("maps"); return; }
     if (scan_files()) { punish_native("files"); return; }
     if (!g_is_tv && scan_root()) { punish_native("root"); return; }

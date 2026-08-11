@@ -26,6 +26,11 @@ function b64urlStr(str: string): string {
   return b64url(new TextEncoder().encode(str));
 }
 
+function normalizeDeviceId(value: unknown): string {
+  const id = typeof value === 'string' ? value.trim() : '';
+  return /^(?:[a-z]{2,4}_)?[0-9a-f]{32,128}$/i.test(id) ? id.toLowerCase() : id;
+}
+
 /** Sign a compact HS256 JWT with claims {vip, device_id, exp}. */
 async function signVipToken(deviceId: string, expiresAtMs: number): Promise<string | null> {
   const secret = Deno.env.get('VIP_JWT_SECRET');
@@ -52,7 +57,7 @@ Deno.serve(async (req) => {
   }
   try {
     const body = await req.json().catch(() => ({}));
-    const deviceId = typeof body?.device_id === 'string' ? body.device_id.trim() : '';
+    const deviceId = normalizeDeviceId(body?.device_id);
     if (!deviceId) {
       return await encryptedJson({ active: false, expiresAt: null, reason: 'missing_device_id' }, 200);
     }
@@ -61,20 +66,21 @@ Deno.serve(async (req) => {
     const srv = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const sb = createClient(url, srv, { auth: { persistSession: false } });
 
-    const { data, error } = await sb
+    const { data: candidates, error } = await sb
       .from('vip_subscriptions')
       .select('expires_at, active, device_ids')
-      .contains('device_ids', [deviceId])
       .eq('active', true)
       .order('expires_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(500);
 
     if (error) {
       console.error('[check-vip] db error', error);
       return await encryptedJson({ active: false, expiresAt: null, reason: 'db_error' }, 200);
     }
 
+    const data = (candidates ?? []).find((row: any) =>
+      Array.isArray(row.device_ids) && row.device_ids.some((id: unknown) => normalizeDeviceId(id) === deviceId)
+    );
     if (!data) {
       return await encryptedJson({ active: false, expiresAt: null }, 200);
     }
