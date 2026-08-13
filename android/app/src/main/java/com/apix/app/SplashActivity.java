@@ -96,9 +96,22 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void startBootFlow() {
-        // The authoritative handshake runs in proceedToMain before the native
-        // sweep. This lets it propagate debug_kill_toasts first, so Debug builds
-        // can actually display the native diagnostic instead of dying too early.
+        // ربط TostInfo بالـ JVM أولاً لكي تعمل رسائل الكشف
+        try {
+            com.apix.app.security.TostInfo.init(this);
+        } catch (Throwable ignored) {}
+
+        // إخبار الـ NDK بوضع تيفي بوكس لتعطيل فحص الشاشة الثانوية
+        try {
+            boolean isTv = getPackageManager()
+                .hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEVISION)
+                || getPackageManager()
+                .hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+                || getPackageManager()
+                .hasSystemFeature("android.hardware.hdmi.cec");
+            com.apix.app.Net.nvpSetTvMode(isTv);
+        } catch (Throwable ignored) {}
+
         new Handler(Looper.getMainLooper()).post(this::checkForUpdate);
     }
 
