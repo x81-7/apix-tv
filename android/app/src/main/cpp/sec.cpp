@@ -330,20 +330,27 @@ bool scan_proxy_ports() {
 }
 
 bool scan_vpn_iface() {
-    // presence of tun/ppp/tap interface in /proc/net/dev signals a VPN tunnel.
-    std::string path = OBF("/proc/net/dev");
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) return false;
-    std::string t = OBF("tun"), p = OBF("ppp"), a = OBF("tap");
-    char line[512];
-    bool hit = false;
-    while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, t.c_str()) || strstr(line, p.c_str()) || strstr(line, a.c_str())) {
-            hit = true; break;
+    // Detect common tunnel interfaces. This is a native secondary signal; the
+    // authoritative Android-side transport check is performed before the
+    // server IP allow-list gate.
+    const std::string paths[] = { OBF("/proc/net/dev"), OBF("/proc/net/if_inet6") };
+    const std::string needles[] = { OBF("tun"), OBF("ppp"), OBF("tap"), OBF("wg") };
+
+    for (const auto& path : paths) {
+        FILE* f = fopen(path.c_str(), "r");
+        if (!f) continue;
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            for (const auto& n : needles) {
+                if (strstr(line, n.c_str())) {
+                    fclose(f);
+                    return true;
+                }
+            }
         }
+        fclose(f);
     }
-    fclose(f);
-    return hit;
+    return false;
 }
 
 // Global poison flag: if a patcher bypasses the exit, the key getters below
