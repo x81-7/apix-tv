@@ -63,7 +63,16 @@ public final class VipCache {
         if (!hasCache()) return false;
         if (!prefs.getBoolean(K_ACTIVE, false)) return false;
         long exp = prefs.getLong(K_EXPIRES, 0L);
-        return exp > System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        if (exp > now) return true;
+        // Some server responses intentionally omit expiresAt. Keep an
+        // authenticated active verdict usable locally until the normal
+        // revalidation window elapses instead of making ads reappear.
+        if (exp <= 0L) {
+            long cachedAt = prefs.getLong(K_CACHED_AT, 0L);
+            return cachedAt > 0L && (now - cachedAt) <= REVALIDATE_AFTER_MS;
+        }
+        return false;
     }
 
     /** True if we should re-check server (cache empty, expired, or stale). */
