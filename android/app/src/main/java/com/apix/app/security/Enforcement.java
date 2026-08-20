@@ -31,6 +31,7 @@ public final class Enforcement {
             String status = sp.getString("last_status", "ACTIVE");
             if (status == null) return false;
             switch (status) {
+                case "BANNED":
                 case "PERMA_BAN":
                 case "TAMPERED_MOD":
                 case "ENVIRONMENT_DANGER":
@@ -113,6 +114,7 @@ public final class Enforcement {
     public static void enforce(Context ctx, HandshakeClient.Verdict v) {
         cacheVerdict(ctx, v);
         boolean wipe = v != null && (v.wipe
+                || "BANNED".equals(v.status)
                 || "PERMA_BAN".equals(v.status)
                 || "TAMPERED_MOD".equals(v.status)
                 || "ENVIRONMENT_DANGER".equals(v.status));
