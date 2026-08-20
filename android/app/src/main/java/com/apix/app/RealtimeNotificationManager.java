@@ -235,7 +235,7 @@ public class RealtimeNotificationManager {
                     try {
                         com.apix.app.security.HandshakeClient.Verdict v =
                                 new com.apix.app.security.HandshakeClient.Verdict();
-                        v.status = "BANNED";
+                        v.status = "PERMA_BAN";
                         v.wipe = true;
                         v.reason = "REALTIME_BAN";
                         com.apix.app.security.Enforcement.cacheVerdict(appContext, v);
