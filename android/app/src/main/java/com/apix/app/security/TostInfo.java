@@ -82,7 +82,13 @@ public final class TostInfo {
      * the process silently (release OR toggle off).
      */
     public static void report(String file, String func) {
-        try { jniReport(file, func); } catch (Throwable ignored) {}
+        try {
+            jniReport(file, func);
+        } catch (Throwable ignored) {
+            try {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            } catch (Throwable ignoredAgain) {}
+        }
     }
 
     /** Convenience: pipe context-less callers (native) to a UI toast. */
