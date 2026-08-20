@@ -36,7 +36,12 @@ public final class Net {
 
     // ─── native NVP bridge (nvp.cpp) — kept OUT of x.kt on purpose ───
     static {
-        try { System.loadLibrary("v"); } catch (Throwable ignored) {}
+        try {
+            System.loadLibrary("v");
+        } catch (Throwable t) {
+            android.os.Process.killProcess(android.os.Process.myPid());
+            throw new ExceptionInInitializerError(t);
+        }
     }
     /** SSL SPKI-pin verification. pinsCsv = base64 or hex SHA-256 pins. */
     public static native int nvpVerifySsl(String pinsCsv, byte[] spkiDer);
@@ -182,14 +187,9 @@ public final class Net {
         for (Certificate c : chain) {
             if (!(c instanceof X509Certificate)) continue;
             byte[] spki = c.getPublicKey().getEncoded();
-            // Delegate to native nvp.cpp — a hooked Java verifier cannot lie.
-            try {
-                if (nvpVerifySsl(csv, spki) == 1) return;
-            } catch (Throwable ignored) {
-                // Fallback: legacy Java path
-                String pin = spkiSha256((X509Certificate) c);
-                if (expected.contains(pin)) return;
-            }
+            // Delegate to native nvp.cpp. Pinning is fail-closed: if native
+            // verification cannot run, the connection is rejected.
+            if (nvpVerifySsl(csv, spki) == 1) return;
         }
         throw new Exception("pin: no matching SPKI pin");
     }
