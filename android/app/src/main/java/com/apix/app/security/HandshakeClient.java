@@ -30,14 +30,16 @@ public final class HandshakeClient {
 
         try {
             String deviceId = DeviceIntegrity.deviceId(ctx);
-            String sig = DeviceIntegrity.signatureHash(ctx);
-            String dex = DeviceIntegrity.dexChecksum(ctx);
+            String sig = BuildConfig.DEBUG ? null : DeviceIntegrity.signatureHash(ctx);
+            String dex = BuildConfig.DEBUG ? null : DeviceIntegrity.dexChecksum(ctx);
             boolean fresh = DeviceIntegrity.consumeFreshInstall(ctx);
 
             JSONObject body = new JSONObject();
             body.put("device_id", deviceId);
-            if (sig != null) body.put("signature_hash", sig);
-            if (dex != null) body.put("dex_checksum", dex);
+            if (!BuildConfig.DEBUG) {
+                if (sig != null) body.put("signature_hash", sig);
+                if (dex != null) body.put("dex_checksum", dex);
+            }
             if (appVersion != null) body.put("app_version", appVersion);
             body.put("is_fresh_install", fresh);
 
@@ -116,42 +118,55 @@ public final class HandshakeClient {
             v.wipe = jo.optBoolean("wipe", false);
             v.mode = jo.optString("mode", "OK");
 
-            // Persist the VPN allow-list encrypted for lightweight offline checks.
-            try {
-                if (jo.has("vpn_allowed_ips")) {
-                    org.json.JSONArray arr =
-                            jo.optJSONArray("vpn_allowed_ips");
+            // Read control-panel security settings from the root response or
+            // the common nested `settings` object.
+            JSONObject settings = jo.optJSONObject("settings");
+            boolean vpnBlockEnabled = jo.optBoolean(
+                    "vpn_block_enabled",
+                    settings != null && settings.optBoolean("vpn_block_enabled", false)
+            );
 
-                    ctx.getSharedPreferences(
-                                    "vpn_cache",
-                                    Context.MODE_PRIVATE
-                            )
-                            .edit()
-                            .putBoolean(
-                                    "vpn_block_enabled",
-                                    jo.optBoolean(
-                                            "vpn_block_enabled",
-                                            false
-                                    )
-                            )
-                            .putString(
-                                    "vpn_allowed_ips",
-                                    arr != null ? arr.toString() : "[]"
-                            )
-                            .apply();
+            String allowedIps = null;
+            Object allowedRaw = jo.opt("vpn_allowed_ips");
+            if (allowedRaw == null && settings != null) {
+                allowedRaw = settings.opt("vpn_allowed_ips");
+            }
+            if (allowedRaw instanceof org.json.JSONArray) {
+                allowedIps = allowedRaw.toString();
+            } else if (allowedRaw instanceof String) {
+                allowedIps = ((String) allowedRaw).trim();
+            } else {
+                String single = jo.optString("vpn_allowed_ip", "");
+                if (single.isEmpty() && settings != null) {
+                    single = settings.optString("vpn_allowed_ip", "");
                 }
+                if (!single.isEmpty()) allowedIps = single;
+            }
+
+            try {
+                android.content.SharedPreferences.Editor vpnEdit =
+                        ctx.getSharedPreferences("vpn_cache", Context.MODE_PRIVATE).edit();
+                vpnEdit.putBoolean("vpn_block_enabled", vpnBlockEnabled);
+                if (allowedIps != null) vpnEdit.putString("vpn_allowed_ips", allowedIps);
+                vpnEdit.apply();
             } catch (Throwable ignored) {}
 
             // Propagate the admin debug-toast toggle to TostInfo (native + java).
             try {
-                if (jo.has("debug_kill_toasts")) {
-                    com.apix.app.security.TostInfo.setDebugEnabled(
-                            ctx,
-                            jo.optBoolean(
-                                    "debug_kill_toasts",
-                                    false
-                            )
-                    );
+                boolean hasDebugFlag = jo.has("debug_kill_toasts") || jo.has("debugKillToasts")
+                        || (settings != null && (settings.has("debug_kill_toasts") || settings.has("debugKillToasts")));
+                if (hasDebugFlag) {
+                    boolean debugToasts = jo.has("debug_kill_toasts")
+                            ? jo.optBoolean("debug_kill_toasts", false)
+                            : jo.optBoolean("debugKillToasts", false);
+                    if (settings != null) {
+                        if (settings.has("debug_kill_toasts")) {
+                            debugToasts = settings.optBoolean("debug_kill_toasts", debugToasts);
+                        } else if (settings.has("debugKillToasts")) {
+                            debugToasts = settings.optBoolean("debugKillToasts", debugToasts);
+                        }
+                    }
+                    com.apix.app.security.TostInfo.setDebugEnabled(ctx, debugToasts);
                 }
             } catch (Throwable ignored) {}
 
@@ -185,11 +200,12 @@ public final class HandshakeClient {
                                         .replace("\"", "")
                                         .replace(" ", "");
 
-                        String ip =
-                                jo.optString(
-                                        "client_ip",
-                                        ""
-                                );
+                        String ip = jo.optString("client_ip", "");
+                        if (ip.isEmpty()) ip = jo.optString("clientIp", "");
+                        if (ip.isEmpty() && settings != null) {
+                            ip = settings.optString("client_ip", "");
+                            if (ip.isEmpty()) ip = settings.optString("clientIp", "");
+                        }
 
                         com.apix.app.Net.nvpCheckVpn(
                                 true,
@@ -205,6 +221,15 @@ public final class HandshakeClient {
                         "VPN enforcement failed",
                         t
                 );
+                try {
+                    if (DeviceIntegrity.isVpnActive(ctx)
+                            && ctx.getSharedPreferences("vpn_cache", Context.MODE_PRIVATE)
+                                .getBoolean("vpn_block_enabled", false)) {
+                        com.apix.app.Net.nvpTerminate("vpn_enforcement_error");
+                    }
+                } catch (Throwable ignored) {
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                }
             }
 
             Log.i(
