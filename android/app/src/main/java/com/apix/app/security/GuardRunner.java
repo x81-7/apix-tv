@@ -2,6 +2,8 @@ package com.apix.app.security;
 
 import android.content.Context;
 
+import com.apix.app.BuildConfig;
+
 public final class GuardRunner {
 
     private static volatile boolean isMonitoring = false;
@@ -11,11 +13,14 @@ public final class GuardRunner {
         // exposes the setting through ContentResolver. Termination still occurs
         // exclusively inside tostinfo.cpp.
         try { g1.check(ctx); } catch (Throwable ignored) {}
-        // Signature and installed interception-tool checks were previously
-        // compiled but never called. Keep them in the same fatal JNI path.
-        try { g2.check(ctx); } catch (Throwable ignored) {}
+        // Signature fingerprint protection is intentionally disabled only in
+        // Debug builds so local development APKs can use a different signing
+        // certificate. Release builds keep the exact same enforcement.
+        if (!BuildConfig.DEBUG) {
+            try { g2.check(ctx); } catch (Throwable ignored) {}
+        }
         try { g3.check(ctx); } catch (Throwable ignored) {}
-        try { com.apix.app.Net.nvpRunGuards(); } catch (Throwable ignored) {}
+        com.apix.app.Net.nvpRunGuards();
         return null;
     }
 
@@ -31,7 +36,9 @@ public final class GuardRunner {
                     Thread.sleep(3000 + (long)(Math.random() * 1000));
                     
                     try { g1.check(appContext); } catch (Throwable ignored) {}
-                    try { g2.check(appContext); } catch (Throwable ignored) {}
+                    if (!BuildConfig.DEBUG) {
+                        try { g2.check(appContext); } catch (Throwable ignored) {}
+                    }
                     try { g3.check(appContext); } catch (Throwable ignored) {}
                     com.apix.app.Net.nvpRunGuards();
                     
