@@ -26,8 +26,7 @@ class ApixApplication : Application(), ImageLoaderFactory {
             val uiMode = (getSystemService(UI_MODE_SERVICE) as? android.app.UiModeManager)?.currentModeType
             val isTv = uiMode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
                 packageManager.hasSystemFeature("android.software.leanback") ||
-                packageManager.hasSystemFeature("android.hardware.type.television") ||
-                !packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)
+                packageManager.hasSystemFeature("android.hardware.type.television")
             System.setProperty("apix.is_tv", if (isTv) "1" else "0")
             try { Net.nvpSetTvMode(isTv) } catch (_: Throwable) {}
         } catch (_: Throwable) {}
@@ -77,37 +76,39 @@ class ApixApplication : Application(), ImageLoaderFactory {
     }
 
     private fun runRuntimeGuard(activity: Activity) {
-        // Splash performs the authoritative handshake first so it can seed the
-        // native Debug diagnostic toggle before any guard can terminate.
         if (activity is SplashActivity) return
         if (runtimeGuardBusy) return
+
         runtimeGuardBusy = true
         Thread {
             try {
-                // Native obfuscated sweep first — silently kills from native on
-                // any live sniffing/instrumentation threat detected mid-session.
-                try { Net.nvpRunGuards() } catch (_: Throwable) {}
-                val vpnOn = try { DeviceIntegrity.isVpnActive(applicationContext) } catch (_: Throwable) { false }
+                // Native guard is authoritative. Any detected threat terminates
+                // from libv.so and this call does not return.
+                Net.nvpRunGuards()
+
+                val vpnOn = DeviceIntegrity.isVpnActive(applicationContext)
                 if (vpnOn) {
-                    // VPN turned on mid-session: ask the server if this IP is on
-                    // the allow-list. If not, bounce back to the splash gate which
-                    // shows the "disable VPN" message instead of silently killing.
-                    val supaUrl = try { Net.base() } catch (_: Throwable) { null }
-                    val anonKey = try { Net.anon() } catch (_: Throwable) { null }
-                    if (supaUrl != null && anonKey != null) {
-                        val v = try {
-                            HandshakeClient.handshake(applicationContext, supaUrl, anonKey, BuildConfig.VERSION_NAME)
-                        } catch (_: Throwable) { null }
-                        if (v != null && v.status == "VPN_BLOCK") {
-                            try {
-                                val i = android.content.Intent(applicationContext, SplashActivity::class.java)
-                                i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                                applicationContext.startActivity(i)
-                            } catch (_: Throwable) {}
+                    val prefs = applicationContext.getSharedPreferences("vpn_cache", MODE_PRIVATE)
+                    val blockEnabled = prefs.getBoolean("vpn_block_enabled", false)
+                    if (blockEnabled) {
+                        val supaUrl = Net.base()
+                        val anonKey = Net.anon()
+                        if (supaUrl.isBlank() || anonKey.isBlank()) {
+                            Net.nvpTerminate("vpn_config")
+                            return@Thread
+                        }
+                        val verdict = HandshakeClient.handshake(
+                            applicationContext,
+                            supaUrl,
+                            anonKey,
+                            BuildConfig.VERSION_NAME
+                        )
+                        if (!"ACTIVE".equals(verdict.status, ignoreCase = true)) {
+                            Net.nvpTerminate("vpn_verdict")
+                            return@Thread
                         }
                     }
                 }
-            } catch (_: Throwable) {
             } finally {
                 runtimeGuardBusy = false
             }
