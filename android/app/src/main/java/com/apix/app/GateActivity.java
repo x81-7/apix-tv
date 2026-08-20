@@ -153,7 +153,9 @@ public class GateActivity extends AppCompatActivity {
     }
 
     private void goToMain() {
-        startActivity(new Intent(this, ComposeActivity.class));
+        // A successful dashboard bypass opens the new Home hub.
+        // Manual stream entry still goes directly to ComposeActivity above.
+        startActivity(new Intent(this, HomeComposeActivity.class));
         finish();
     }
 
