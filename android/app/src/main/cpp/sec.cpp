@@ -379,13 +379,47 @@ Java_com_apix_app_x_st(JNIEnv*, jobject, jboolean tv) {
 // bug. TV boxes are lower-risk targets anyway (no debugger, no keyboard).
 JNIEXPORT void JNICALL
 Java_com_apix_app_x_gd(JNIEnv*, jobject) {
-    if (scan_tracer()) { punish_native("trace"); return; }
-    if (scan_dangerous_env()) { punish_native("env"); return; }
-    if (scan_maps()) { punish_native("maps"); return; }
-    if (scan_files()) { punish_native("files"); return; }
-    if (!g_is_tv && scan_root()) { punish_native("root"); return; }
-    if (!g_is_tv && scan_frida_port()) { punish_native("port"); return; }
-    if (!g_is_tv && scan_proxy_ports()) { punish_native("proxy"); }
+    // VPN/Tunnel detection must always be enforced.
+    // Do NOT bypass this check on TV devices.
+    if (scan_vpn_iface()) {
+        punish_native("vpn");
+        return;
+    }
+
+    if (scan_tracer()) {
+        punish_native("trace");
+        return;
+    }
+
+    if (scan_dangerous_env()) {
+        punish_native("env");
+        return;
+    }
+
+    if (scan_maps()) {
+        punish_native("maps");
+        return;
+    }
+
+    if (scan_files()) {
+        punish_native("files");
+        return;
+    }
+
+    if (!g_is_tv && scan_root()) {
+        punish_native("root");
+        return;
+    }
+
+    if (!g_is_tv && scan_frida_port()) {
+        punish_native("port");
+        return;
+    }
+
+    if (!g_is_tv && scan_proxy_ports()) {
+        punish_native("proxy");
+        return;
+    }
 }
 
 void apix_native_guard() {
