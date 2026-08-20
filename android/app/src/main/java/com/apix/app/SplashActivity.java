@@ -332,7 +332,13 @@ public class SplashActivity extends AppCompatActivity {
             GateActivity.revalidateBypass(SplashActivity.this, currentCode);
             boolean bypassed = GateActivity.isBypassed(SplashActivity.this);
 
-            Class<?> target = (gateEnabled && !bypassed) ? GateActivity.class : ComposeActivity.class;
+            boolean directCompose =
+                    getIntent().getStringExtra("streamConfig") != null
+                    || (getIntent().getStringExtra("notification_action") != null
+                        && !getIntent().getStringExtra("notification_action").isEmpty());
+            Class<?> target = (gateEnabled && !bypassed)
+                    ? GateActivity.class
+                    : (directCompose ? ComposeActivity.class : HomeComposeActivity.class);
             runOnUiThread(() -> AdManager.maybeRunAppOpenGate(SplashActivity.this, () -> {
                 Intent intent = new Intent(SplashActivity.this, target);
                 String actionJson = getIntent().getStringExtra("notification_action");
