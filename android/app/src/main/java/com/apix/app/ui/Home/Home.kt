@@ -1,7 +1,5 @@
 package com.apix.app.ui.Home
 
-import com.apix.app.ui.Home.Movies.MoviesUnavailableScreen
-
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -71,6 +69,7 @@ private val HomeGoldDark = Color(0xFF6E4D13)
 
 @Composable
 fun HomeRoot(onOpenLive: () -> Unit) {
+    val context = LocalContext.current
     var page by remember { mutableStateOf(HomePage.Home) }
     val backToHome: () -> Unit = { page = HomePage.Home }
 
@@ -86,12 +85,23 @@ fun HomeRoot(onOpenLive: () -> Unit) {
         when (target) {
             HomePage.Home -> HomeScreen(
                 onLive = onOpenLive,
-                onMovies = { page = HomePage.Movies },
+                onMovies = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                context,
+                                com.lagradost.cloudstream3.apix.ApixLauncherActivity::class.java
+                            )
+                        )
+                    }
+                },
                 onSettings = { page = HomePage.Settings }
             )
 
-            HomePage.Movies -> MoviesUnavailableScreen(
-                onBack = backToHome
+            HomePage.Movies -> HomeScreen(
+                onLive = onOpenLive,
+                onMovies = { page = HomePage.Home },
+                onSettings = { page = HomePage.Settings }
             )
 
             HomePage.Settings -> SettingsScreen(
