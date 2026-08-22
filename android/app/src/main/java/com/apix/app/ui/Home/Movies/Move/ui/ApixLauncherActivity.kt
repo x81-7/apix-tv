@@ -38,8 +38,8 @@ import com.lagradost.cloudstream3.apix.ui.settings.SettingsScreen
 import com.lagradost.cloudstream3.apix.ui.theme.APiXTheme
 import com.lagradost.cloudstream3.apix.ui.theme.ApixBackground
 import com.lagradost.cloudstream3.apix.ui.theme.ApixGold
-import com.lagradost.cloudstream3.ui.player.DownloadedPlayerActivity
-import com.lagradost.cloudstream3.ui.player.OfflinePlaybackHelper
+import com.apix.app.ui.Home.Movies.Move.Player.DownloadedPlayerActivity
+import com.apix.app.ui.Home.Movies.Move.Player.OfflinePlaybackHelper
 import kotlinx.coroutines.launch
 
 sealed class ApixRoute {
