@@ -1,8 +1,8 @@
 pluginManagement {
     repositories {
+        gradlePluginPortal()
         google()
         mavenCentral()
-        gradlePluginPortal()
     }
 }
 
@@ -11,8 +11,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
 rootProject.name = "APiX"
+
 include ':app'
+include ':movies-library'
+include ':movies'
+
+project(':movies-library').projectDir = file('app/src/main/java/com/apix/app/ui/Home/Movies/Move/CoreLibrary/src')
+project(':movies').projectDir = file('app/src/main/java/com/apix/app/ui/Home/Movies/Move/MovieEngine')
