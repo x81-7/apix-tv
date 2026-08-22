@@ -12,6 +12,13 @@ plugins {
     id 'com.codingfeline.buildkonfig' version '0.21.2' apply false
 }
 
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy.force 'androidx.compose.material:material-icons-extended:1.7.8'
+        resolutionStrategy.force 'androidx.compose.material:material-icons-core:1.7.8'
+    }
+}
+
 tasks.register('clean', Delete) {
     delete rootProject.layout.buildDirectory
 }
