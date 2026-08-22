@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@id/navigation_player">
+
+    <action
+        android:id="@+id/global_to_navigation_player"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/navigation_home"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/navigation_settings"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/global_to_navigation_home"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/global_to_navigation_results_phone"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/global_to_navigation_results_tv"
+        app:destination="@id/navigation_player" />
+
+    <action
+        android:id="@+id/global_to_navigation_subtitles"
+        app:destination="@id/navigation_subtitles">
+        <argument android:name="hide" android:defaultValue="true" app:argType="boolean" />
+    </action>
+
+    <action
+        android:id="@+id/global_to_navigation_chrome_subtitles"
+        app:destination="@id/navigation_chrome_subtitles">
+        <argument android:name="hide" android:defaultValue="true" app:argType="boolean" />
+    </action>
+
+    <fragment
+        android:id="@+id/navigation_player"
+        android:name="com.lagradost.cloudstream3.ui.player.GeneratorPlayer"
+        android:layout_height="match_parent"
+        tools:layout="@layout/fragment_player" />
+
+    <fragment
+        android:id="@+id/navigation_subtitles"
+        android:name="com.lagradost.cloudstream3.ui.subtitles.SubtitlesFragment"
+        android:layout_height="match_parent"
+        tools:layout="@layout/subtitle_settings" />
+
+    <fragment
+        android:id="@+id/navigation_chrome_subtitles"
+        android:name="com.lagradost.cloudstream3.ui.subtitles.ChromecastSubtitlesFragment"
+        android:layout_height="match_parent"
+        tools:layout="@layout/chromecast_subtitle_settings" />
+
+    <fragment
+        android:id="@+id/navigation_webview"
+        android:name="com.lagradost.cloudstream3.ui.WebviewFragment"
+        android:layout_height="match_parent"
+        tools:layout="@layout/fragment_webview" />
+
+    <action
+        android:id="@+id/global_to_navigation_settings_plugins"
+        app:destination="@id/navigation_player" />
+</navigation>
