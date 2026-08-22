@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.android.library)
     id("org.jetbrains.kotlin.android")
@@ -9,6 +7,14 @@ plugins {
 
 android {
     namespace = "com.lagradost.cloudstream3"
+
+    sourceSets["main"].kotlin.srcDirs(
+        "../Player",
+        "../Plugs",
+        "../ui",
+        "../Core/Shared",
+        "../Core/CoreLibraryCompat/src/main/java"
+    )
     compileSdk = 36
     defaultConfig {
         minSdk = 23
@@ -35,20 +41,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-}
-
-
-kotlin {
-    sourceSets.getByName("main").kotlin.srcDirs(
-        "../Player",
-        "../Plugs",
-        "../ui",
-        "../Core/Shared",
-        "../Core/CoreLibraryCompat"
-    )
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-    }
 }
 
 dependencies {
