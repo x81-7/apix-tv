@@ -159,6 +159,7 @@ dependencies {
     implementation "net.zetetic:android-database-sqlcipher:4.5.4"
     implementation "androidx.sqlite:sqlite-ktx:2.4.0"
     implementation project(':movies')
+    
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.0.4'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
