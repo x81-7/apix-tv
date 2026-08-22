@@ -1,6 +1,5 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
@@ -17,7 +16,6 @@ android {
         versionCode 2
         versionName "1.8"
 
-        // حل خطأ DataProcessor.kt المفقود في السجلات
         buildConfigField "String", "X_DP_K", "\"7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a\""
 
         def envFile = rootProject.file("../.env")
@@ -29,28 +27,15 @@ android {
             value == null ? null : value.toString().trim().replaceAll('^"|"$', '')
         }
 
-        def cloudUrl = System.getenv("CLOUD_URL")
-                    ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
-        def cloudKey = System.getenv("CLOUD_ANON_KEY")
-                    ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_PUBLISHABLE_KEY")) ?: ""
-        def encKey   = System.getenv("ENCRYPTION_SECRET_KEY")
-                    ?: "0000000000000000000000000000000000000000000000000000000000000000"
-        def hmacSec  = System.getenv("APP_API_HMAC_SECRET")
-                    ?: "default_hmac_secret_32bytes_here!"
-        def keySalt  = System.getenv("INTERNAL_KEY_SALT")
-                    ?: "default_salt_value_16b"
-        def extKey   = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY")
-                     ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
+        def cloudUrl = System.getenv("CLOUD_URL") ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_URL")) ?: ""
+        def cloudKey = System.getenv("CLOUD_ANON_KEY") ?: cleanEnv(envProps.getProperty("VITE_SUPABASE_PUBLISHABLE_KEY")) ?: ""
+        def encKey   = System.getenv("ENCRYPTION_SECRET_KEY") ?: "0000000000000000000000000000000000000000000000000000000000000000"
+        def hmacSec  = System.getenv("APP_API_HMAC_SECRET") ?: "default_hmac_secret_32bytes_here!"
+        def keySalt  = System.getenv("INTERNAL_KEY_SALT") ?: "default_salt_value_16b"
+        def extKey   = System.getenv("EXTERNAL_PANEL_DECRYPTION_KEY") ?: "7a3f8b9d4e2c1a5f6b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a"
         def sigHash  = System.getenv("SIGNATURE_HASH") ?: "__HASH__"
-        // White-label gateway: when WORKER_URL is provided the app talks ONLY to
-        // the Cloudflare Worker, which hides Supabase. Falls back to direct cloud.
-        def workerUrl = System.getenv("WORKER_URL")
-                    ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
-        // Optional SSL pinning: comma-separated base64 SHA-256 SPKI pins for the
-        // Worker host. Empty = pinning disabled (network_security_config still
-        // blocks user-installed CAs). Injected via CI from the WORKER_PINS secret.
-        def workerPins = System.getenv("WORKER_PINS")
-                    ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
+        def workerUrl = System.getenv("WORKER_URL") ?: cleanEnv(envProps.getProperty("WORKER_URL")) ?: ""
+        def workerPins = System.getenv("WORKER_PINS") ?: cleanEnv(envProps.getProperty("WORKER_PINS")) ?: ""
 
         buildConfigField "String", "CLOUD_URL",      "\"${cloudUrl}\""
         buildConfigField "String", "CLOUD_ANON_KEY", "\"${cloudKey}\""
@@ -84,9 +69,6 @@ android {
         }
     }
 
-    // The embedded Movies engine is a separate Gradle library module located
-    // inside the Home/Movies/Move tree. Exclude its source tree from :app so
-    // the Player/Plug classes are compiled exactly once.
     sourceSets {
         main.java.exclude 'com/apix/app/ui/Home/Movies/Move/**'
     }
@@ -98,8 +80,7 @@ android {
             }
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
-                          'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
             externalNativeBuild {
@@ -118,15 +99,8 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true 
     }
-
-    // Kotlin 2.4 compilerOptions DSL (works with KGP 2.4 when built-in Kotlin is opted out).
-    kotlin {
-        compilerOptions {
-            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-        }
-    }
-
 
     packagingOptions {
         resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' }
@@ -167,7 +141,6 @@ dependencies {
     implementation 'com.google.android.gms:play-services-ads:23.0.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
-    // Embedded local HTTP server for the on-device IPTV proxy (manifest rewriting).
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
     implementation 'androidx.leanback:leanback:1.0.0'
     implementation 'androidx.compose.material3:material3-window-size-class'
