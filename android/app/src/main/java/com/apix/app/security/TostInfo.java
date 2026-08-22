@@ -63,7 +63,7 @@ public final class TostInfo {
         if (!BuildConfig.DEBUG) return false;
         if (ctx == null) return false;
         SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-        return sp.getBoolean(KEY, false);
+        return sp.getBoolean(KEY, BuildConfig.DEBUG);
     }
 
     /** Persist + propagate to native. */
@@ -83,6 +83,15 @@ public final class TostInfo {
      */
     public static void report(String file, String func) {
         try {
+            Context ctx = APP_CTX;
+            if (ctx != null && BuildConfig.DEBUG) {
+                ctx.getSharedPreferences("apix_debug", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("last_kill_file", file == null ? "?" : file)
+                        .putString("last_kill_func", func == null ? "?" : func)
+                        .putLong("last_kill_at", System.currentTimeMillis())
+                        .apply();
+            }
             jniReport(file, func);
         } catch (Throwable ignored) {
             try {
