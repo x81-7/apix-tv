@@ -20,9 +20,9 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.plugins.RepositoryManager
-import com.lagradost.cloudstream3.ui.player.PlayerSubtitleHelper
-import com.lagradost.cloudstream3.ui.player.SubtitleData
-import com.lagradost.cloudstream3.ui.settings.extensions.RepositoryData
+import com.apix.app.ui.Home.Movies.Move.Player.PlayerSubtitleHelper
+import com.apix.app.ui.Home.Movies.Move.Player.SubtitleData
+import com.lagradost.cloudstream3.plugins.support.RepositoryData
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -106,15 +106,15 @@ class ApixRepository(private val context: Context) {
             ?: ApixCatalog(workerUrl = workerUrl)
         if (catalog.workerUrl.isBlank()) catalog = catalog.copy(workerUrl = workerUrl)
 
-        // Development fallback until the APiX worker is wired.
-        if (catalog.extensions.none { it.enabled && it.url.isNotBlank() }) {
-            catalog = catalog.copy(extensions = listOf(
-                ApixExtension(
-                    name = STATIC_PLUGIN_LIST_NAME,
-                    url = STATIC_PLUGIN_LIST_URL,
-                    enabled = true,
-                )
-            ))
+        // Keep the known-good repository available until the APiX worker owns the extension list.
+        // If the worker already supplies it, do not duplicate it; otherwise append the static source.
+        val staticExtension = ApixExtension(
+            name = STATIC_PLUGIN_LIST_NAME,
+            url = STATIC_PLUGIN_LIST_URL,
+            enabled = true,
+        )
+        if (catalog.extensions.none { it.url.trim() == STATIC_PLUGIN_LIST_URL }) {
+            catalog = catalog.copy(extensions = (catalog.extensions + staticExtension).distinctBy { it.url.trim() })
         }
 
         val token = tmdbToken(catalog.tmdbToken.ifBlank { STATIC_TMDB_TOKEN })
