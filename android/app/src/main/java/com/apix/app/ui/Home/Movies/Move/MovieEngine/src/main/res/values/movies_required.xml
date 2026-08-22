@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="subtitles_encoding_list"><item>UTF-8</item><item>UTF-16</item><item>ISO-8859-1</item><item>Windows-1256</item></array>
+    <array name="subtitles_encoding_values"><item>UTF-8</item><item>UTF-16</item><item>ISO-8859-1</item><item>Windows-1256</item></array>
+    <string name="exo_controls_stop_description">Stop</string>
+    <item type="id" name="sort_sources_holder" />
+</resources>
