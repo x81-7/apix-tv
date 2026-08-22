@@ -1,28 +1,14 @@
 package com.lagradost.cloudstream3.ui.player
 
 import android.content.Context
-import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.Renderer
-import androidx.media3.exoplayer.text.TextOutput
-import androidx.media3.exoplayer.text.TextRenderer
-import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
+import androidx.media3.exoplayer.DefaultRenderersFactory
 
-@UnstableApi
-class FixedNextRenderersFactory(context: Context) : NextRenderersFactory(context) {
-    /** Somehow the nextlib authors decided that we need a text renderer that causes
-     * "ERROR_CODE_FAILED_RUNTIME_CHECK".
-     *
-     * Core issue: https://github.com/anilbeesetti/nextlib/pull/158
-     * Comment: https://github.com/recloudstream/cloudstream/pull/2342#issuecomment-3917751718
-     * */
-    override fun buildTextRenderers(
-        context: Context,
-        output: TextOutput,
-        outputLooper: Looper,
-        extensionRendererMode: Int,
-        out: ArrayList<Renderer>
-    ) {
-        out.add(TextRenderer(output, outputLooper))
-    }
-}
+/**
+ * Media3-only renderer factory kept as the compatibility class used by the Movies player.
+ * The host APiX application is pinned to Media3 1.2.x, so the optional NextLib renderer
+ * stack is deliberately not used here. This avoids pulling a second Media3 ABI.
+ */
+@OptIn(UnstableApi::class)
+class FixedNextRenderersFactory(context: Context) : DefaultRenderersFactory(context)
