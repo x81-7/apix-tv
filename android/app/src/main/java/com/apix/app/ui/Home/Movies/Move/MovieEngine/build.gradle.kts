@@ -1,33 +1,21 @@
 plugins {
     alias(libs.plugins.android.library)
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.lagradost.cloudstream3"
 
-    sourceSets {
-        getByName("main") {
-            java.srcDirs(
-                "../Player",
-                "../Plugs",
-                "../ui",
-                "../Core/Shared",
-                "../Core/CoreLibraryCompat/src/main/java"
-            )
-            kotlin.srcDirs(
-                "../Player",
-                "../Plugs",
-                "../ui",
-                "../Core/Shared",
-                "../Core/CoreLibraryCompat/src/main/java"
-            )
-        }
-    }
-
-    compileSdk = 36
+    sourceSets["main"].java.srcDirs(
+        "../Player",
+        "../Plugs",
+        "../ui",
+        "../Core/Shared",
+        "../Core/CoreLibraryCompat/src/main/java"
+    )
+    
+    compileSdk = 35
     defaultConfig {
         minSdk = 23
         consumerProguardFiles("consumer-rules.pro")
@@ -47,6 +35,11 @@ android {
         buildConfigField("int", "VERSION_CODE", "68")
     }
     buildFeatures { buildConfig = true; viewBinding = true; compose = true }
+    
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -77,13 +70,13 @@ dependencies {
     implementation(libs.colorpicker)
     implementation(libs.newpipeextractor)
     implementation(libs.juniversalchardet)
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.ui:ui:1.9.3")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.9.3")
-    implementation("androidx.compose.foundation:foundation:1.9.3")
-    implementation("androidx.compose.material3:material3:1.4.0")
-    implementation("androidx.compose.material:material-icons-core:1.7.8")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.compose.ui:ui:1.5.4")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.5.4")
+    implementation("androidx.compose.foundation:foundation:1.5.4")
+    implementation("androidx.compose.material3:material3:1.1.2")
+    implementation("androidx.compose.material:material-icons-core:1.5.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
     implementation(libs.shimmer)
     implementation(libs.palette.ktx)
     implementation(libs.tvprovider)
