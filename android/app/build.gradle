@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
@@ -119,7 +120,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = '17' }
+    // Kotlin 2.4 compilerOptions DSL (works with KGP 2.4 when built-in Kotlin is opted out).
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
+
 
     packagingOptions {
         resources { excludes += '/META-INF/{AL2.0,LGPL2.1}' }
