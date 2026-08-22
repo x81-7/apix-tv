@@ -1,2 +1,0 @@
--keep class com.lagradost.cloudstream3.** { *; }
--keep class com.lagradost.api.** { *; }
