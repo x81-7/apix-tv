@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.library)
+    id("com.android.library")
     id("org.jetbrains.kotlin.android")
     alias(libs.plugins.kotlin.serialization)
 }
@@ -7,13 +7,17 @@ plugins {
 android {
     namespace = "com.lagradost.cloudstream3"
 
-    sourceSets["main"].java.srcDirs(
-        "../Player",
-        "../Plugs",
-        "../ui",
-        "../Core/Shared",
-        "../Core/CoreLibraryCompat/src/main/java"
-    )
+    sourceSets {
+        getByName("main") {
+            java.srcDirs(
+                "../Player",
+                "../Plugs",
+                "../ui",
+                "../Core/Shared",
+                "../Core/CoreLibraryCompat/src/main/java"
+            )
+        }
+    }
     
     compileSdk = 35
     defaultConfig {
