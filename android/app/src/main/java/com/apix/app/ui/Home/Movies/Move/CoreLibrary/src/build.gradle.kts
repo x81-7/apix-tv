@@ -10,7 +10,7 @@ plugins {
 kotlin {
     android {
         namespace = "com.lagradost.api"
-        compileSdk = 36
+        compileSdk = 35
         minSdk = 23
         compilerOptions { jvmTarget.set(JvmTarget.JVM_1_8) }
     }
