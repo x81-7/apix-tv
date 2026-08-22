@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <color name="colorPrimary">#FFD24A</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#3b65f5</color> 
+
+    <color name="primaryGrayBackground">#2B2C30</color> 
+    <color name="primaryBlackBackground">#111111</color> 
+    <color name="iconGrayBackground">#1C1C20</color> 
+    <color name="boxItemBackground">#161616</color> 
+
+    <color name="textColor">#e9eaee</color> 
+    <color name="grayTextColor">#9ba0a4</color> 
+    <color name="grayShimmer">#DCDCDC</color> 
+
+    <color name="transparent">#00000000</color>
+
+    <color name="cs_white">#FFF</color>
+    <color name="cs_black">#000</color>
+    <color name="whiteText">#FFF</color>
+    <color name="blackText">#000</color>
+
+    <color name="progressBackgroundColor">#1AFFFFFF</color>
+
+    <color name="amoledModeLight">#121213</color>
+
+    <color name="dubColorBg">#3B65F5</color>
+    <color name="video_ripple">#80FFFFFF</color>
+    <color name="video_button_ripple">#32FFFFFF</color>
+
+    <color name="black_overlay">#66000000</color>
+    <color name="skipOpTransparent">#4D121212</color>
+    <color name="darkBar">#121212</color>
+    <color name="videoProgress">#66B5B5B5</color> 
+     
+
+    <color name="iconColor">#9ba0a6</color>
+
+    
+    
+
+    
+    <color name="lightPrimaryGrayBackground">#f1f1f1</color>
+    <color name="lightBitDarkerGrayBackground">#fff</color>
+    <color name="lightGrayBackground">#eeeeee</color>
+    <color name="lightItemBackground">#eeeeee</color>
+    <color name="lightTextColor">#202125</color>
+    <color name="lightGrayTextColor">#5f6267</color>
+    <color name="DraculaPrimaryGrayBackground">#414450</color>
+    <color name="DraculaBitDarkerGrayBackground">#282a36</color>
+    <color name="DraculaGrayBackground">#44475A</color>
+    <color name="DraculaItemBackground">#373844</color>
+    <color name="DraculaTextColor">#F8F8F2</color>
+    <color name="DraculaIconColor">#6272A4</color>
+
+    
+    <color name="LavenderPrimaryGrayBackground">#f7eefc</color>
+    <color name="LavenderBitDarkerGrayBackground">#fdf0fb</color>
+    <color name="LavenderGrayBackground">#b794f6</color>
+    <color name="LavenderItemBackground">#f8f5ff</color>
+    <color name="LavenderTextColor">#2d1b47</color>
+    <color name="LavenderIconColor">#7c3aed</color>
+
+    
+    <color name="SilentBluePrimaryGrayBackground">#282f49</color>
+    <color name="SilentBlueBitDarkerGrayBackground">#151a30</color>
+    <color name="SilentBlueGrayBackground">#3A446A</color>
+    <color name="SilentBlueItemBackground">#3A446A</color>
+    <color name="SilentBlueTextColor">#E0E1F3</color>
+    <color name="SilentBlueIconColor">#7B83B0</color>
+
+    
+    <color name="colorPrimaryRed">#D50000</color>
+    <color name="colorPrimaryPurple">#6200EA</color> 
+    <color name="colorPrimaryGreen">#00BFA5</color>
+    <color name="colorPrimaryGreenApple">#48E484</color>
+    <color name="colorPrimaryBanana">#E4D448</color>
+    <color name="colorPrimaryParty">#ea596e</color>
+    <color name="colorPrimaryPink">#ff1493</color>
+
+    <color name="colorPrimaryCarnationPink">#BD5DA5</color>
+    <color name="colorPrimaryDarkGreen">#004500</color>
+    <color name="colorPrimaryMaroon">#451010</color>
+    <color name="colorPrimaryNavyBlue">#000080</color>
+    <color name="colorPrimaryGrey">#515151</color>
+    <color name="colorPrimaryWhite">#FFFFFF</color>
+    <color name="colorPrimaryBrown">#622C00</color>
+    <color name="colorPrimaryOrange">#CE8500</color>
+    <color name="colorPrimaryDandelionYellow">#F5BB00</color>
+    <color name="colorPrimaryCoolBlue">#408cac</color>
+    <color name="colorPrimaryLavender">#6F55AF</color>
+
+    <color name="playIconBackground">#B3000000</color>
+</resources>

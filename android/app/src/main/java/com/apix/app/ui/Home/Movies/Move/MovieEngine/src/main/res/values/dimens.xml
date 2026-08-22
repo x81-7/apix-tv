@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    
+    <dimen name="rounded_image_radius">10dp</dimen>
+    <dimen name="rounded_button_radius">4dp</dimen>
+
+    <dimen name="loading_line_height">15dp</dimen>
+    <dimen name="loading_radius">3dp</dimen>
+    <dimen name="loading_margin">15dp</dimen>
+
+    <dimen name="download_size">50dp</dimen>
+    <dimen name="video_frame_width">1dp</dimen>
+
+    <dimen name="dialog_buttons_inset">5dp</dimen>
+
+    <dimen name="home_poster_progress_size">50dp</dimen>
+    <dimen name="continue_watching_progress_size">25dp</dimen>
+    </resources>

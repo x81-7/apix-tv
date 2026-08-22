@@ -1,0 +1,272 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    
+    <string name="cast_format" formatted="true">Cast: %s</string>
+    <string name="next_episode_format" formatted="true">Episode %d will be released in</string>
+    <string name="next_season_episode_format" formatted="true">Season %1$d Episode %2$d will be released in</string>
+    <string name="next_episode_time_day_format" formatted="true">%1$dd %2$dh %3$dm</string>
+    <string name="next_episode_time_hour_format" formatted="true">%1$dh %2$dm</string>
+    <string name="next_episode_time_min_format" formatted="true">%dm</string>
+    <string name="search_poster_img_des">Poster</string>
+    <string name="episode_poster_img_des">Episode Poster</string>
+    <string name="go_back_img_des">Go back</string>
+    <string name="preview_background_img_des">Preview Background</string>
+    
+    <string name="player_speed_text_format" formatted="true">Speed (%.2fx)</string>
+    <string name="rated_format" formatted="true">Rated: %.1f</string>
+    <string name="filler" formatted="true">Filler</string>
+    <string name="search_hint">Search…</string>
+    <string name="next_episode">Next episode</string>
+    <string name="skip_loading">Skip Loading</string>
+    <string name="loading">Loading…</string>
+    <string name="type_watching">Watching</string>
+    <string name="type_on_hold">On-Hold</string>
+    <string name="type_completed">Completed</string>
+    <string name="type_dropped">Dropped</string>
+    <string name="type_plan_to_watch">Plan to Watch</string>
+    <string name="type_re_watching">Rewatching</string>
+    <string name="play_movie_button">Play Movie</string>
+    <string name="play_livestream_button">Play Livestream</string>
+    <string name="play_torrent_button">Stream Torrent</string>
+    <string name="play_full_series_button">Play Full Series</string>
+    <string name="torrent_info">This video is a Torrent, this means that your video activity can be tracked.\nMake sure you understand Torrenting before continuing.</string>
+    <string name="pick_source">Servers</string>
+    <string name="pick_subtitle">Subtitles</string>
+    <string name="go_back">Go Back</string>
+    <string name="download">Download</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="download_started">Download Started</string>
+    <string name="offline_file">Available for watching offline</string>
+    <string name="links_reloaded_toast">Links Reloaded</string>
+    <string name="app_dubbed_text">Dub</string>
+    <string name="app_subbed_text">Sub</string>
+    <string name="sort_apply">Apply</string>
+    <string name="toast_copied">copied!</string>
+    <string name="subtitles_settings">Subtitle Settings</string>
+    <string name="subs_text_color">Text Color</string>
+    <string name="subs_outline_color">Outline Color</string>
+    <string name="subs_background_color">Background Color</string>
+    <string name="subs_window_color">Window Color</string>
+    <string name="subs_edge_type">Edge Type</string>
+    <string name="subs_subtitle_elevation">Subtitle Elevation</string>
+    <string name="subs_font">Font</string>
+    <string name="subs_font_size">Font Size</string>
+    <string name="subs_auto_select_language">Auto-Select Language</string>
+    <string name="subs_download_languages">Download Languages</string>
+    <string name="subs_subtitle_languages">Subtitle Language</string>
+    <string name="subs_hold_to_reset_to_default">Hold to reset to default</string>
+    <string name="subs_import_text" formatted="true">Import fonts by placing them in %s</string>
+    <string name="vpn_might_be_needed">A VPN might be needed for this provider to work correctly</string>
+    <string name="vpn_torrent">This provider is a torrent, a VPN is recommended</string>
+    <string name="provider_info_meta">Metadata is not provided by site, video loading will fail if it does not exist on site.</string>
+    <string name="torrent_plot">Description</string>
+    <string name="normal_no_plot">No Plot Found</string>
+    <string name="torrent_no_plot">No Description Found</string>
+    <string name="chromecast_subtitles_settings">Chromecast Subtitles</string>
+    <string name="extra_brightness_key">extra_brightness_enabled</string>
+    <string name="no_links_found_toast">No Links Found</string>
+    <string name="play_episode_toast">Play Episode</string>
+    <string name="subs_default_reset_toast">Reset to default value</string>
+    <string name="season">Season</string>
+    <string name="season_format">%1$s %2$d%3$s</string>
+    <string name="no_season">No Season</string>
+    <string name="episode">Episode</string>
+    <string name="episodes">Episodes</string>
+    <string name="episodes_range">%1$d-%2$d</string>
+    <string name="episode_format" formatted="true">%1$d %2$s</string>
+    <string name="episode_upcoming_format" formatted="true">Upcoming in %s</string>
+    <string name="season_short">S</string>
+    <string name="episode_short">E</string>
+    <string name="no_episodes_found">No Episodes found</string>
+    <string name="delete">Delete</string>
+    <string name="delete_file">Delete File</string>
+    <string name="cancel">Cancel</string>
+    <string name="cs_pause">Pause</string>
+    <string name="go_back_30">-30</string>
+    <string name="go_forward_30">+30</string>
+    <string name="delete_message" formatted="true">This will permanently delete %s\nAre you sure?</string>
+    <string name="resume_remaining" formatted="true">%s\nremaining</string>
+    <string name="status_ongoing">Ongoing</string>
+    <string name="status_completed">Completed</string>
+    <string name="year">Year</string>
+    <string name="synopsis">Synopsis</string>
+    <string name="no_subtitles">No Subtitles</string>
+    <string name="action_default">Default</string>
+    <string name="movies_singular">Movie</string>
+    <string name="tv_series_singular">Series</string>
+    <string name="cartoons_singular">Cartoon</string>
+    <string name="anime_singular">Anime</string>
+    <string name="ova_singular">OVA</string>
+    <string name="torrent_singular">Torrent</string>
+    <string name="documentaries_singular">Documentary</string>
+    <string name="asian_drama_singular">Asian Drama</string>
+    <string name="live_singular">Livestream</string>
+    <string name="nsfw_singular">NSFW</string>
+    <string name="other_singular">Video</string>
+    <string name="music_singular">Music</string>
+    <string name="audio_book_singular">Audio Book</string>
+    <string name="custom_media_singular">Media</string>
+    <string name="audio_singular">Audio</string>
+    <string name="podcast_singular">Podcast</string>
+    <string name="video_singular">Video</string>
+    <string name="source_error">Source error</string>
+    <string name="remote_error">Remote error</string>
+    <string name="render_error">Renderer error</string>
+    <string name="encoding_error">Encoding error</string>
+    <string name="unsupported_error">Unsupported error</string>
+    <string name="unexpected_error">Unexpected player error</string>
+    <string name="episode_action_chromecast_episode">Chromecast episode</string>
+    <string name="episode_action_chromecast_mirror">Chromecast mirror</string>
+    <string name="episode_action_play_in_app">Play in app</string>
+    <string name="episode_action_play_mirror">Play mirror</string>"
+    <string name="episode_action_play_in_format">Play in %s</string>
+    <string name="episode_action_auto_download">Auto download</string>
+    <string name="episode_action_download_mirror">Download mirror</string>
+    <string name="episode_action_reload_links">Reload links</string>
+    <string name="episode_action_download_subtitle">Download subtitles</string>
+    <string name="video_lock">Lock</string>
+    <string name="video_aspect_ratio_resize">Resize</string>
+    <string name="video_source">Server</string>
+    <string name="video_skip_op">Skip OP</string>
+    <string name="resize_fit">Fit to screen</string>
+    <string name="resize_fill">Stretch</string>
+    <string name="resize_zoom">Zoom</string>
+    <string name="subtitles_encoding">Subtitle encoding</string>
+    <string name="automatic">Auto</string>
+    <string name="authenticated_user_fail" formatted="true">Could not log in at %s</string>
+    
+    <string name="none">None</string>
+    <string name="normal">Normal</string>
+    <string name="subtitles_outline">Outline</string>
+    <string name="subtitles_depressed">Depressed</string>
+    <string name="subtitles_shadow">Shadow</string>
+    <string name="subtitles_raised">Raised</string>
+    <string name="subtitle_offset">Sync subs</string>
+    <string name="subtitle_offset_extra_hint_later_format">Use this if the subtitles are shown %d ms too early</string>
+    <string name="subtitle_offset_extra_hint_before_format">Use this if subtitles are shown %d ms too late</string>
+    <string name="subtitle_offset_extra_hint_none_format">No subtitle delay</string>
+    
+    <string name="subtitles_example_text">The quick brown fox jumps over the lazy dog</string>
+    <string name="player_loaded_subtitles" formatted="true">Loaded %s</string>
+    <string name="player_load_subtitles">Load from file</string>
+    <string name="player_load_subtitles_online">Load from Internet</string>
+    <string name="player_load_one_subtitle_online">Load first available</string>
+    <string name="downloaded_file">Downloaded file</string>
+    <string name="quality_hd">HD</string>
+    <string name="subtitles_remove_captions">Remove closed captions from subtitles</string>
+    <string name="subtitles_remove_bloat">Remove bloat from subtitles</string>
+    <string name="subtitles_filter_lang">Filter by preferred media language</string>
+    <string name="trailer">Trailer</string>
+    <string name="plugin_load_fail" formatted="true">Could not load %s</string>
+    <string name="plugins_downloaded" formatted="true">Downloaded: %d</string>
+    <string name="plugins_updated" formatted="true">Updated %d plugins</string>
+    <string name="uppercase_all_subtitles">Uppercase all subtitles</string>
+    <string name="download_all_plugins_from_repo">Warning: CloudStream does not take any responsibility for using third-party extensions and does not provide any support for them!</string>
+    <string name="single_plugin_disabled" formatted="true">%s (Disabled)</string>
+    <string name="tracks">Tracks</string>
+    <string name="restart">Restart</string>
+    <string name="extension_install_first">Install the extension first</string>
+    <string name="player_pref">Preferred video player</string>
+    <string name="player_settings_always_ask">Always ask</string>
+    <string name="player_settings_select_cast_device">Select cast device</string>
+    <string name="app_not_found_error">App not found</string>
+    <string name="skip_type_format" formatted="true">Skip %s</string>
+    <string name="skip_type_op">Opening</string>
+    <string name="skip_type_ed">Ending</string>
+    <string name="skip_type_recap">Recap</string>
+    <string name="skip_type_mixed_ed">Mixed ending</string>
+    <string name="skip_type_mixed_op">Mixed opening</string>
+    <string name="skip_type_credits">Credits</string>
+    <string name="skip_type_preview">Preview</string>
+    <string name="skip_type_intro">Intro</string>
+    <string name="clipboard_too_large">Too much text. Unable to save to clipboard.</string>
+    <string name="clipboard_permission_error">Error accessing Clipboard, Please try again.</string>
+    <string name="clipboard_unknown_error">Error copying, Please copy logcat and contact app support.</string>
+    <string name="action_mark_as_watched">Mark as watched</string>
+    <string name="action_remove_from_watched">Remove from watched</string>
+    <string name="ok">OK</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="open_downloaded_repo">Open repository</string>
+    <string name="sort_episodes_number_asc">Episode (Ascending)</string>
+    <string name="sort_episodes_number_desc">Episode (Descending)</string>
+    <string name="sort_episodes_rating_high_low">Rating (Highest)</string>
+    <string name="sort_episodes_rating_low_high">Rating (Lowest)</string>
+    <string name="sort_episodes_date_newest">Air Date (Newest)</string>
+    <string name="sort_episodes_date_oldest">Air Date (Oldest)</string>
+    <string name="sort_button_episode">Ep %s</string>
+    <string name="sort_button_rating">Rating %s</string>
+    <string name="sort_button_date">Date %s</string>
+    <string name="subscription_list_name">Subscribed</string>
+    <string name="profile_number">Profile %d</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="mobile_data">Mobile data</string>
+    <string name="set_default">Set default</string>
+    <string name="quality_profile_help">
+        Here you can change how the sources are ordered. If a video has a higher priority it will appear higher in the source selection.
+        The sum of the source priority and the quality priority is the video priority.
+        \n\nSource A: 3
+        \nQuality B: 7
+        \nWill have a combined video priority of 10.
+
+        \n\nNOTE: If the sum is 10 or more the player will automatically skip loading when that link is loaded!
+    </string>
+    <string name="profile_background_des">Profile background</string>
+    <string name="unable_to_inflate">UI was unable to be created correctly, this is a MAJOR BUG and should be reported immediately %s</string>
+    <string name="already_voted">You have already voted</string>
+    <string name="favorites_list_name">Favorites</string>
+    <string name="duplicate_title">Potential Duplicate Found</string>
+    <string name="duplicate_add">Add</string>
+    <string name="duplicate_replace">Replace</string>
+    <string name="duplicate_replace_all">Replace All</string>
+    <string name="duplicate_message_single" formatted="true">
+        It appears that a potentially duplicate item already exists in your library: \'%s.\'
+
+        \n\nWould you like to add this item anyway, replace the existing one, or cancel the action?
+    </string>
+    <string name="duplicate_message_multiple" formatted="true">
+        Potential duplicate items have been found in your library:
+
+        \n\n%s
+
+        \n\nWould you like to add this item anyway, replace the existing ones, or cancel the action?
+    </string>
+    <string name="logged_account" formatted="true">Logged in as %s</string>
+    <string name="rotate_video">Rotate</string>
+    <string name="subs_edge_size">Edge Size</string>
+    <string name="torrent_preferred_media">Enable torrent in Settings/Providers/Preferred media</string>
+    <string name="torrent_not_accepted">Restart app and accept Stream Torrent pop-up to proceed.</string>
+    <string name="volume_exceeded_100">Volume has exceeded 100%</string>
+    <string name="slide_up_again_to_exceed_100">Slide up again to go beyond 100%</string>
+    <string name="starting_plugin_update_manually">Starting plugin update process!</string>
+    <string name="plugins_updated_manually">Successfully updated %d plugin(s)!</string>
+    <string name="no_plugins_updated_manually">No plugins were updated.</string>
+    <string name="player_notification_channel_name">Player notifications</string>
+    <string name="player_notification_channel_description">The player notification for controlling the playback from the background</string>
+    <string name="subtitles_from_embedded">Embedded</string>
+    <string name="subtitles_from_online">Online</string>
+    <string name="all_subtitles_bold">Make all subtitles bold</string>
+    <string name="all_subtitles_italic">Make all subtitles italic</string>
+    <string name="background_radius">Background Radius</string>
+    <string name="action_mark_watched_up_to_this_episode">Mark as watched up to this episode</string>
+    <string name="action_remove_mark_watched_up_to_this_episode">Remove watched up to this episode</string>
+    <string name="subs_subtitle_alignment">Subtitle Alignment</string>
+    <string name="bottom_left">Bottom left</string>
+    <string name="bottom_center">Bottom center</string>
+    <string name="bottom_right">Bottom right</string>
+    <string name="middle_left">Middle left</string>
+    <string name="middle_center">Middle center</string>
+    <string name="middle_right">Middle right</string>
+    <string name="top_left">Top left</string>
+    <string name="top_center">Top center</string>
+    <string name="top_right">Top right</string>
+    <plurals name="downloads_active">
+        <item quantity="one">%d active download</item>
+        <item quantity="other">%d active downloads</item>
+    </plurals>
+    <plurals name="downloads_queued">
+        <item quantity="one">%d download queued</item>
+        <item quantity="other">%d downloads queued</item>
+    </plurals>
+    <string name="player_is_live">Live</string>
+
+    </resources>
