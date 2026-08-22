@@ -8,8 +8,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.CommonActivity
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.mvvm.safe
-import com.lagradost.cloudstream3.ui.player.OfflinePlaybackHelper.playLink
-import com.lagradost.cloudstream3.ui.player.OfflinePlaybackHelper.playUri
+import com.apix.app.ui.Home.Movies.Move.Player.OfflinePlaybackHelper.playLink
+import com.apix.app.ui.Home.Movies.Move.Player.OfflinePlaybackHelper.playUri
 import com.lagradost.cloudstream3.utils.BackPressedCallbackHelper.attachBackPressedCallback
 import com.lagradost.cloudstream3.utils.UIHelper.enableEdgeToEdgeCompat
 
