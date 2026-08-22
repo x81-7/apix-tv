@@ -32,6 +32,7 @@ class ApixApplication : Application(), ImageLoaderFactory {
         } catch (_: Throwable) {}
         // Bind the smart debug-toast dispatcher BEFORE any guard runs.
         try { com.apix.app.security.TostInfo.init(applicationContext) } catch (_: Throwable) {}
+        try { com.lagradost.cloudstream3.CloudStreamApp.initialize(applicationContext) } catch (_: Throwable) {}
         coil.Coil.setImageLoader(newImageLoader())
         try { RewardedAdHelper.initIfNeeded(applicationContext, null) } catch (_: Throwable) {}
         try { RealtimeNotificationManager.start(applicationContext) } catch (_: Throwable) {}
@@ -46,6 +47,10 @@ class ApixApplication : Application(), ImageLoaderFactory {
      * silently before any UI is shown. No visible kill screen.
      */
     private fun checkCachedBanEarly() {
+        // Debug builds defer cached-ban termination until the handshake/guard
+        // pipeline has propagated the control-panel diagnostic toggle.
+        // Release remains fail-closed and terminates immediately.
+        if (BuildConfig.DEBUG) return
         try {
             if (Enforcement.isBannedCached(applicationContext)) {
                 Enforcement.wipeChannelCache(applicationContext)
