@@ -9,10 +9,11 @@ android {
     namespace = "com.lagradost.cloudstream3"
 
     sourceSets["main"].java.srcDirs(
-        "src/main/java",
         "../Player",
         "../Plugs",
-        "../ui"
+        "../ui",
+        "../Core/Shared",
+        "../Core/CoreLibraryCompat/src/main/java"
     )
     compileSdk = 36
     defaultConfig {
