@@ -6,16 +6,9 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <queries>
@@ -41,12 +34,10 @@
         </activity>
         <activity android:name="com.lagradost.cloudstream3.MainActivity" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode" android:exported="false" android:launchMode="singleTask" android:resizeableActivity="true" android:supportsPictureInPicture="true" />
         <activity android:name="com.lagradost.cloudstream3.apix.ApixLauncherActivity" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode" android:exported="false" android:launchMode="singleTask" />
-        <receiver android:name="com.lagradost.cloudstream3.receivers.VideoDownloadRestartReceiver" android:enabled="false" android:exported="false"><intent-filter android:exported="false"><action android:name="restart_service" /></intent-filter></receiver>
         <service android:name="com.lagradost.cloudstream3.services.VideoDownloadService" android:enabled="true" android:foregroundServiceType="dataSync" android:exported="false" />
         <service android:name="com.lagradost.cloudstream3.services.DownloadQueueService" android:enabled="true" android:foregroundServiceType="dataSync" android:exported="false" />
         <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync" tools:node="merge" />
         <activity android:name="com.lagradost.cloudstream3.ui.ControllerActivity" android:exported="false" />
-        <service android:name="com.lagradost.cloudstream3.services.PackageInstallerService" android:foregroundServiceType="dataSync" android:exported="false" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.movies.provider" android:enabled="true" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/movies_provider_paths" /></provider>
     </application>
 </manifest>
