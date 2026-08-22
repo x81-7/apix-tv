@@ -1,6 +1,5 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 apply plugin: 'kotlin-kapt'
